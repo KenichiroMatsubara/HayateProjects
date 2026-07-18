@@ -99,7 +99,7 @@ impl SceneRenderer for SkiaWindowRenderer {
         &mut self,
         scene: &SceneGraph,
         layers: &[ElementId],
-        _layer_raster_bounds: &[LayerRasterBounds],
+        layer_raster_bounds: &[LayerRasterBounds],
         layer_dirty: &HashSet<ElementId>,
         _chrome_dirty: &HashSet<ElementId>,
         scroll_geometry: &HashMap<ElementId, ScrollLayerGeometry>,
@@ -121,6 +121,7 @@ impl SceneRenderer for SkiaWindowRenderer {
             .present(
                 scene,
                 layers,
+                layer_raster_bounds,
                 layer_dirty,
                 scroll_geometry,
                 clear_color,

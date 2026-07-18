@@ -24,7 +24,7 @@ pub use resource_cache::{SkiaResourceWorkCounts, SKIA_PAINT_RESOURCE_CACHE_BUDGE
 
 pub use layer_compositor::{
     SkiaCompositeTarget, SkiaLayerCompositor, SkiaLayerPresenter, SkiaLayerRasterizer,
-    SkiaLayerSurfaceFactory, SkiaRasterLayerSurfaceFactory,
+    SkiaLayerSurfaceFactory, SkiaLayerTexture, SkiaRasterLayerSurfaceFactory,
 };
 
 pub struct SkiaSceneRenderer {
@@ -87,16 +87,23 @@ impl SkiaSceneRenderer {
         canvas.restore();
     }
 
-    /// scroll content の `origin_y` が texture row 0 に来るよう、内容を上へずらして描く。
+    /// `device_origin` が texture pixel (0, 0) に来るよう、内容を上・左へずらして描く。
     pub fn render_scene_at(
         &mut self,
         graph: &SceneGraph,
         canvas: &Canvas,
         clear_color: [f32; 4],
         content_scale: f32,
-        origin_y: f32,
+        device_origin: (i32, i32),
     ) {
-        self.render_scene_with_offset(graph, canvas, clear_color, content_scale, 0.0, -origin_y);
+        self.render_scene_with_offset(
+            graph,
+            canvas,
+            clear_color,
+            content_scale,
+            -(device_origin.0 as f32) / content_scale,
+            -(device_origin.1 as f32) / content_scale,
+        );
     }
 }
 

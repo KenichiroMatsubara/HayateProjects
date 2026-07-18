@@ -28,7 +28,7 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::thread::{self, JoinHandle};
 
 use hayate_core::element::id::ElementId;
-use hayate_core::{CommittedFrame, SceneGraph, ScrollCompositorInput};
+use hayate_core::{CommittedFrame, LayerRasterBounds, SceneGraph, ScrollCompositorInput};
 
 /// UI スレッド → Raster スレッドのハンドオフ（ADR-0128）。スレッド境界はこれ 1 つで、lower 済み
 /// SceneGraph と全レイヤ（描画順）・`layer_dirty`・`chrome_dirty` を owned で渡す。`Send + Sync` 境界。
@@ -37,6 +37,8 @@ pub struct RasterHandoff {
     pub scene: SceneGraph,
     /// 全 compositing layer（描画順 = ADR-0021）。
     pub layers: Vec<ElementId>,
+    /// Core が同じ commit で導出した layer-local logical raster extent。
+    pub layer_raster_bounds: Vec<LayerRasterBounds>,
     /// 本フレームで再 raster すべきレイヤ（#609 の `layer_dirty`）。
     pub layer_dirty: HashSet<ElementId>,
     /// transform 係数だけが変わったレイヤ（#633）。単一 root 経路は per-layer quad 合成を
@@ -57,6 +59,7 @@ impl RasterHandoff {
         Self {
             scene: frame.scene().clone(),
             layers: frame.layers().to_vec(),
+            layer_raster_bounds: frame.layer_raster_bounds().to_vec(),
             layer_dirty: frame.content_dirty_layers().clone(),
             transform_dirty: frame.transform_dirty_layers().clone(),
             chrome_dirty: frame.chrome_dirty_layers().clone(),
@@ -99,6 +102,7 @@ impl Coalesce for RasterCommand {
             (RasterCommand::Frame(existing), RasterCommand::Frame(new)) => {
                 existing.scene = new.scene;
                 existing.layers = new.layers;
+                existing.layer_raster_bounds = new.layer_raster_bounds;
                 existing.layer_dirty.extend(new.layer_dirty);
                 existing.transform_dirty.extend(new.transform_dirty);
                 existing.chrome_dirty.extend(new.chrome_dirty);
@@ -283,6 +287,7 @@ mod tests {
         RasterHandoff {
             scene: SceneGraph::new(),
             layers: dirty.iter().map(|&r| id(r)).collect(),
+            layer_raster_bounds: Vec::new(),
             layer_dirty: dirty.iter().map(|&r| id(r)).collect(),
             transform_dirty: HashSet::new(),
             chrome_dirty: HashSet::new(),
@@ -552,6 +557,7 @@ mod tests {
         let frame = tree.commit_rendered_frame(0.0);
         let snapshot = RasterHandoff::from_committed_frame(&frame);
         assert_eq!(snapshot.layers, frame.layers());
+        assert_eq!(snapshot.layer_raster_bounds, frame.layer_raster_bounds());
         assert_eq!(snapshot.layer_dirty, *frame.content_dirty_layers());
         assert_eq!(snapshot.chrome_dirty, *frame.chrome_dirty_layers());
         assert_eq!(snapshot.transform_dirty, *frame.transform_dirty_layers());

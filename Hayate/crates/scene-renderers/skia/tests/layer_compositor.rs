@@ -6,18 +6,20 @@ mod support;
 
 use std::collections::HashSet;
 
-use hayate_core::element::style::{Dimension, StyleProp};
-use hayate_core::{Color, CommittedFrame, ElementId, ElementKind, ElementTree};
+use hayate_core::element::style::{Dimension, Shadow, StyleProp};
+use hayate_core::{
+    Color, CommittedFrame, ElementId, ElementKind, ElementTree, LayerRasterBounds, SceneGraph,
+};
 use hayate_layer_compositor::layer_scene::{
     collect_layer_placements, extract_layer_scene, extract_root_scene,
 };
 use hayate_layer_compositor::{
     scroll_layer_geometry_from_inputs, CompositeQuad, GpuBudget, LayerCompositor, LayerRasterizer,
-    PresentPlanner,
+    PresentPlanner, RasterBand,
 };
 use hayate_scene_renderer_skia::{
     new_raster_surface, read_rgba, SkiaCompositeTarget, SkiaLayerCompositor, SkiaLayerPresenter,
-    SkiaLayerRasterizer, SkiaLayerSurfaceFactory,
+    SkiaLayerRasterizer, SkiaLayerSurfaceFactory, SkiaLayerTexture,
 };
 
 const W: u32 = 200;
@@ -30,6 +32,40 @@ fn px(v: f32) -> Dimension {
 
 fn render_full(tree: &ElementTree) -> Vec<u8> {
     support::render_scene_to_pixels_scaled(tree.scene_graph(), W, H, 1.0)
+}
+
+fn render_full_at(tree: &ElementTree, scale: f32) -> Vec<u8> {
+    support::render_scene_to_pixels_scaled(
+        tree.scene_graph(),
+        (W as f32 * scale) as u32,
+        (H as f32 * scale) as u32,
+        scale,
+    )
+}
+
+fn render_presented_at(tree: &ElementTree, scale: f32) -> Vec<u8> {
+    let frame = tree.committed_frame();
+    let geometry = scroll_layer_geometry_from_inputs(frame.scroll_inputs());
+    let mut dirty = frame.content_dirty_layers().clone();
+    dirty.extend(frame.chrome_dirty_layers().iter().copied());
+    let width = (W as f32 * scale) as u32;
+    let height = (H as f32 * scale) as u32;
+    let mut presenter = SkiaLayerPresenter::new(width, height, scale);
+    let target = new_raster_surface(width as i32, height as i32).unwrap();
+    let mut target = presenter
+        .present(
+            frame.scene(),
+            frame.layers(),
+            frame.layer_raster_bounds(),
+            &dirty,
+            &geometry,
+            CLEAR,
+            (0.0, 0.0),
+            GpuBudget::from_viewports(width, height, 8.0),
+            target,
+        )
+        .unwrap();
+    read_rgba(&mut target)
 }
 
 /// 本 crate の `SkiaLayerRasterizer` / `SkiaLayerCompositor`（trait 実装）で合成する。
@@ -51,7 +87,7 @@ fn render_layered(tree: &ElementTree, root: ElementId) -> Vec<u8> {
         rasterizer.rasterize(layer, &scene, None).unwrap();
     }
 
-    let quads: Vec<CompositeQuad<'_, skia_safe::Image>> = placements
+    let quads: Vec<CompositeQuad<'_, SkiaLayerTexture>> = placements
         .iter()
         .filter_map(|p| {
             rasterizer.texture(p.layer).map(|texture| CompositeQuad {
@@ -74,6 +110,10 @@ fn render_layered(tree: &ElementTree, root: ElementId) -> Vec<u8> {
 }
 
 fn assert_pixels_equal(full: &[u8], layered: &[u8], label: &str) {
+    assert_pixels_with_tolerance(full, layered, label, 2);
+}
+
+fn assert_pixels_with_tolerance(full: &[u8], layered: &[u8], label: &str, tolerance: u8) {
     // クリップ境界の AA 合成順だけは分解で ±数値ずれる（tiny-skia の oracle と同じ許容）。
     let mut worst = 0u8;
     let mut worst_at = 0usize;
@@ -85,7 +125,7 @@ fn assert_pixels_equal(full: &[u8], layered: &[u8], label: &str) {
         }
     }
     assert!(
-        worst <= 2,
+        worst <= tolerance,
         "{label}: 全面 raster と Skia レイヤ合成の出力が一致しない（byte {worst_at} で {worst} 差）"
     );
 }
@@ -102,6 +142,22 @@ impl SkiaLayerSurfaceFactory for FailingLayerSurfaceFactory {
     }
 }
 
+#[derive(Default)]
+struct RecordingLayerSurfaceFactory {
+    allocations: Vec<(i32, i32)>,
+}
+
+impl SkiaLayerSurfaceFactory for RecordingLayerSurfaceFactory {
+    fn create_layer_surface(
+        &mut self,
+        width: i32,
+        height: i32,
+    ) -> Result<skia_safe::Surface, String> {
+        self.allocations.push((width, height));
+        new_raster_surface(width, height).ok_or_else(|| "recording layer surface".to_string())
+    }
+}
+
 #[test]
 fn layer_surface_failure_is_returned_to_the_render_host() {
     let mut rasterizer = SkiaLayerRasterizer::new(W, H, 1.0);
@@ -115,6 +171,60 @@ fn layer_surface_failure_is_returned_to_the_render_host() {
         .expect_err("surface allocation failure must escape the renderer");
 
     assert_eq!(error, "layer surface unavailable");
+}
+
+#[test]
+fn non_root_cache_uses_core_raster_bounds_at_device_scale() {
+    let layer = ElementId::from_u64(42);
+    let bounds = LayerRasterBounds {
+        layer,
+        origin_x: 10.25,
+        origin_y: 20.5,
+        width: 30.5,
+        height: 20.25,
+    };
+    let mut rasterizer = SkiaLayerRasterizer::new(W * 2, H * 2, 2.0);
+
+    rasterizer
+        .rasterize_with_bounds(layer, &SceneGraph::new(), bounds, None)
+        .unwrap();
+
+    let texture = rasterizer.texture(layer).expect("bounded layer texture");
+    assert_eq!((texture.width(), texture.height()), (62, 41));
+    assert_eq!(texture.device_origin(), (20, 41));
+    assert_eq!(rasterizer.texture_bytes(layer), 62 * 41 * 4);
+}
+
+#[test]
+fn scroll_content_factory_uses_actual_layer_width_and_band_height() {
+    let layer = ElementId::from_u64(43);
+    let bounds = LayerRasterBounds {
+        layer,
+        origin_x: 10.25,
+        origin_y: 0.0,
+        width: 30.5,
+        height: 200.0,
+    };
+    let mut factory = RecordingLayerSurfaceFactory::default();
+    let mut rasterizer = SkiaLayerRasterizer::new(W * 2, H * 2, 2.0);
+
+    rasterizer
+        .rasterize_with_bounds_and_layer_surface_factory(
+            &mut factory,
+            layer,
+            &SceneGraph::new(),
+            bounds,
+            Some(RasterBand {
+                origin_y: 5.25,
+                height: 50.5,
+            }),
+        )
+        .unwrap();
+
+    assert_eq!(factory.allocations, vec![(62, 102)]);
+    let texture = rasterizer.texture(layer).expect("scroll content texture");
+    assert_eq!(texture.device_origin(), (20, 10));
+    assert_eq!(rasterizer.texture_bytes(layer), 62 * 102 * 4);
 }
 
 fn transform_tree() -> (ElementTree, ElementId, ElementId) {
@@ -154,6 +264,106 @@ fn transform_tree() -> (ElementTree, ElementId, ElementId) {
     (tree, boxed, inner)
 }
 
+fn transform_tree_with_translucent_shadow() -> ElementTree {
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(0, ElementKind::View);
+    let boxed = tree.element_create(1, ElementKind::View);
+    tree.element_append_child(root, boxed);
+    tree.set_root(root);
+    tree.set_viewport(W as f32, H as f32);
+    tree.element_set_style(
+        root,
+        &[
+            StyleProp::Width(px(W as f32)),
+            StyleProp::Height(px(H as f32)),
+            StyleProp::Display(hayate_core::DisplayValue::Flex),
+            StyleProp::AlignItems(hayate_core::AlignValue::Center),
+            StyleProp::JustifyContent(hayate_core::JustifyValue::Center),
+            StyleProp::BackgroundColor(Color::new(0.9, 0.85, 0.2, 1.0)),
+        ],
+    );
+    tree.element_set_style(
+        boxed,
+        &[
+            StyleProp::Width(px(60.0)),
+            StyleProp::Height(px(60.0)),
+            StyleProp::BackgroundColor(Color::new(1.0, 1.0, 1.0, 1.0)),
+            StyleProp::BoxShadow(vec![Shadow {
+                offset_x: 0.0,
+                offset_y: 0.0,
+                blur: 20.0,
+                spread: 0.0,
+                color: Color::new(1.0, 0.0, 0.0, 0.3),
+                inset: false,
+            }]),
+        ],
+    );
+    tree.element_set_transform(boxed, Some([1.0, 0.0, 0.0, 1.0, 5.0, 5.0]));
+    tree
+}
+
+#[test]
+fn bounded_shadow_restores_transform_clip_and_origin_at_dpr_1_2_3() {
+    let mut tree = transform_tree_with_translucent_shadow();
+    let _ = tree.render(0.0);
+
+    for scale in [1.0, 2.0, 3.0] {
+        assert_pixels_with_tolerance(
+            &render_full_at(&tree, scale),
+            &render_presented_at(&tree, scale),
+            &format!("bounded Skia shadow at DPR {scale}"),
+            3,
+        );
+    }
+}
+
+#[test]
+fn nested_bounded_layers_match_full_raster_at_dpr_1_2_3() {
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(0, ElementKind::View);
+    let outer = tree.element_create(1, ElementKind::View);
+    let inner = tree.element_create(2, ElementKind::View);
+    tree.element_append_child(root, outer);
+    tree.element_append_child(outer, inner);
+    tree.set_root(root);
+    tree.set_viewport(W as f32, H as f32);
+    tree.element_set_style(
+        root,
+        &[
+            StyleProp::Width(px(W as f32)),
+            StyleProp::Height(px(H as f32)),
+            StyleProp::BackgroundColor(Color::new(0.8, 0.8, 0.8, 1.0)),
+        ],
+    );
+    tree.element_set_style(
+        outer,
+        &[
+            StyleProp::Width(px(100.0)),
+            StyleProp::Height(px(100.0)),
+            StyleProp::BackgroundColor(Color::new(0.0, 0.2, 0.8, 1.0)),
+        ],
+    );
+    tree.element_set_transform(outer, Some([1.0, 0.0, 0.0, 1.0, 20.0, 15.0]));
+    tree.element_set_style(
+        inner,
+        &[
+            StyleProp::Width(px(40.0)),
+            StyleProp::Height(px(40.0)),
+            StyleProp::BackgroundColor(Color::new(0.1, 0.9, 0.2, 1.0)),
+        ],
+    );
+    tree.element_set_transform(inner, Some([1.0, 0.0, 0.0, 1.0, 10.0, 5.0]));
+    let _ = tree.render(0.0);
+
+    for scale in [1.0, 2.0, 3.0] {
+        assert_pixels_equal(
+            &render_full_at(&tree, scale),
+            &render_presented_at(&tree, scale),
+            &format!("nested bounded Skia layers at DPR {scale}"),
+        );
+    }
+}
+
 #[test]
 fn transform_layer_skia_composite_matches_full_raster() {
     let (mut tree, _boxed, _inner) = transform_tree();
@@ -170,12 +380,14 @@ fn transform_layer_skia_composite_matches_full_raster() {
 fn native_shared_presenter_matches_full_raster() {
     let (mut tree, _boxed, _inner) = transform_tree();
     let _ = tree.render(0.0);
+    let frame = tree.committed_frame();
     let mut presenter = SkiaLayerPresenter::new(W, H, 1.0);
     let target = new_raster_surface(W as i32, H as i32).unwrap();
     let mut target = presenter
         .present(
             tree.scene_graph(),
             tree.frame_layers(),
+            frame.layer_raster_bounds(),
             tree.frame_layer_dirty(),
             &Default::default(),
             CLEAR,
@@ -189,6 +401,71 @@ fn native_shared_presenter_matches_full_raster() {
         &read_rgba(&mut target),
         "shared native skia presenter",
     );
+}
+
+#[test]
+fn bounded_transition_frame_matches_full_raster_while_reusing_content() {
+    let (mut tree, boxed, _inner) = transform_tree();
+    let mut presenter = SkiaLayerPresenter::new(W, H, 1.0);
+    let budget = GpuBudget::from_viewports(W, H, 8.0);
+    let frame = tree.commit_rendered_frame(0.0);
+    let _ = present_committed_frame(&frame, &mut presenter, budget);
+
+    tree.element_set_transform(boxed, Some([1.0, 0.0, 0.0, 1.0, 70.0, 45.0]));
+    let frame = tree.commit_rendered_frame(16.0);
+    let pixels = present_committed_frame(&frame, &mut presenter, budget);
+
+    assert_eq!(
+        presenter.last_raster_count(),
+        0,
+        "a transform-only transition frame must reuse bounded content"
+    );
+    assert_pixels_equal(
+        &render_full(&tree),
+        &pixels,
+        "bounded transform transition frame",
+    );
+}
+
+#[test]
+fn presenter_accounts_actual_root_and_bounded_texture_bytes() {
+    let (mut tree, _boxed, _inner) = transform_tree();
+    let frame = tree.commit_rendered_frame(0.0);
+    let scale = 2.0;
+    let width = W * 2;
+    let height = H * 2;
+    let mut presenter = SkiaLayerPresenter::new(width, height, scale);
+    let target = new_raster_surface(width as i32, height as i32).unwrap();
+    let _target = presenter
+        .present(
+            frame.scene(),
+            frame.layers(),
+            frame.layer_raster_bounds(),
+            frame.content_dirty_layers(),
+            &Default::default(),
+            CLEAR,
+            (0.0, 0.0),
+            GpuBudget::from_viewports(width, height, 8.0),
+            target,
+        )
+        .unwrap();
+
+    let bounded_bytes: u64 = frame
+        .layer_raster_bounds()
+        .iter()
+        .filter(|bounds| Some(bounds.layer) != frame.layers().first().copied())
+        .map(|bounds| {
+            let left = (bounds.origin_x * scale).floor() as i32;
+            let top = (bounds.origin_y * scale).floor() as i32;
+            let right = ((bounds.origin_x + bounds.width) * scale).ceil() as i32;
+            let bottom = ((bounds.origin_y + bounds.height) * scale).ceil() as i32;
+            (right - left).max(1) as u64 * (bottom - top).max(1) as u64 * 4
+        })
+        .sum();
+    let expected = u64::from(width) * u64::from(height) * 4 + bounded_bytes;
+
+    assert_eq!(presenter.cached_texture_bytes(), expected);
+    assert_eq!(presenter.last_raster_pixels(), expected / 4);
 }
 
 fn scroll_tree() -> (ElementTree, ElementId) {
@@ -268,6 +545,7 @@ fn present_committed_frame(
         .present(
             frame.scene(),
             frame.layers(),
+            frame.layer_raster_bounds(),
             &dirty,
             &geometry,
             CLEAR,
@@ -309,6 +587,39 @@ fn native_presenter_keeps_app_like_in_band_scroll_composite_only() {
         &pixels,
         "composite-only native skia scroll",
     );
+}
+
+#[test]
+fn scroll_cache_budget_counts_actual_content_and_chrome_surfaces() {
+    let (mut tree, _scroll) = scroll_tree();
+    let frame = tree.commit_rendered_frame(0.0);
+    let geometry = scroll_layer_geometry_from_inputs(frame.scroll_inputs());
+    let mut dirty = frame.content_dirty_layers().clone();
+    dirty.extend(frame.chrome_dirty_layers().iter().copied());
+    let mut presenter = SkiaLayerPresenter::new(W, H, 1.0);
+    let mut factory = RecordingLayerSurfaceFactory::default();
+    let target = new_raster_surface(W as i32, H as i32).unwrap();
+    let _target = presenter
+        .present_with_layer_surface_factory(
+            frame.scene(),
+            frame.layers(),
+            frame.layer_raster_bounds(),
+            &dirty,
+            &geometry,
+            CLEAR,
+            (0.0, 0.0),
+            GpuBudget::from_viewports(W, H, 8.0),
+            &mut factory,
+            target,
+        )
+        .unwrap();
+
+    let allocated_bytes: u64 = factory
+        .allocations
+        .iter()
+        .map(|(width, height)| *width as u64 * *height as u64 * 4)
+        .sum();
+    assert_eq!(presenter.cached_texture_bytes(), allocated_bytes);
 }
 
 #[test]

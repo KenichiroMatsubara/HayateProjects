@@ -23,7 +23,7 @@ use std::collections::HashSet;
 use std::ffi::{c_char, c_void, CStr, CString};
 use std::ptr;
 
-use hayate_core::{ElementId, SceneGraph, ScrollCompositorInput};
+use hayate_core::{ElementId, LayerRasterBounds, SceneGraph, ScrollCompositorInput};
 use hayate_layer_compositor::{scroll_layer_geometry_from_inputs, tunables, GpuBudget};
 use hayate_scene_renderer_skia::{SkiaLayerPresenter, SkiaLayerSurfaceFactory};
 use ndk::native_window::NativeWindow;
@@ -408,6 +408,7 @@ impl SkiaGlSurface {
         &mut self,
         scene: &SceneGraph,
         layers: &[ElementId],
+        layer_raster_bounds: &[LayerRasterBounds],
         layer_dirty: &HashSet<ElementId>,
         _transform_dirty: &HashSet<ElementId>,
         chrome_dirty: &HashSet<ElementId>,
@@ -478,6 +479,7 @@ impl SkiaGlSurface {
             self.presenter.present_with_layer_surface_factory(
                 scene,
                 layers,
+                layer_raster_bounds,
                 &present_dirty,
                 &scroll_geometry,
                 crate::app::CLEAR_COLOR,
