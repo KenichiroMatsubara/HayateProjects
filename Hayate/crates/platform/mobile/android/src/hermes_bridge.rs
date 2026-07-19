@@ -48,6 +48,7 @@ mod ffi {
             ops: &[f64],
             styles: &[f32],
             texts: &CxxVector<CxxString>,
+            draws: &[f32],
         ) -> Result<()>;
         fn dispatch_edit_intent(self: &JsHostBridge, target: f64, intent: &[f64]) -> Result<u32>;
         fn render(self: &JsHostBridge, timestamp_ms: f64);
@@ -118,12 +119,13 @@ impl JsHostBridge {
         ops: &[f64],
         styles: &[f32],
         texts: &cxx::CxxVector<cxx::CxxString>,
+        draws: &[f32],
     ) -> Result<(), String> {
         let texts: Vec<String> = texts
             .iter()
             .map(|s| s.to_str().map(|s| s.to_owned()).unwrap_or_default())
             .collect();
-        self.host.apply_mutations(ops, styles, &texts)
+        self.host.apply_mutations(ops, styles, &texts, draws)
     }
 
     fn dispatch_edit_intent(&self, target: f64, intent: &[f64]) -> Result<u32, String> {

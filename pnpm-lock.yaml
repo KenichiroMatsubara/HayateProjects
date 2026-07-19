@@ -358,6 +358,9 @@ importers:
       '@torimi/tsubame-app':
         specifier: workspace:*
         version: link:../../packages/app
+      '@torimi/tsubame-protocol-generated':
+        specifier: workspace:*
+        version: link:../../proto
       '@torimi/tsubame-renderer-dom':
         specifier: workspace:*
         version: link:../../packages/renderer-dom

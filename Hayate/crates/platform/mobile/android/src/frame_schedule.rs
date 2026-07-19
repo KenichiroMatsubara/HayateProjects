@@ -44,9 +44,13 @@ impl OnDemandFrameLoop {
 
     /// フレームを 1 枚 produce した直後に呼ぶ。wake 要求を消費し、描画後に残る pending visual
     /// work（進行中 transition / カーソル点滅 / スクロール物理）を継続として記録する。
-    pub fn note_frame_rendered(&mut self, pending_visual_work: bool) {
+    /// 戻り値は renderer 側の one-shot clock も再武装すべきか。Android では Core が
+    /// スクロール物理を所有するため、native loop の継続だけでは `pumpFrame` の callback が
+    /// 空になり得る。pending 中は host が両方を揃えて起こす。
+    pub fn note_frame_rendered(&mut self, pending_visual_work: bool) -> bool {
         self.wake_requested = false;
         self.continuation_pending = pending_visual_work;
+        pending_visual_work
     }
 }
 
@@ -80,6 +84,14 @@ mod tests {
         assert!(loop_.wants_frame());
         loop_.note_frame_rendered(false);
         assert!(!loop_.wants_frame());
+    }
+
+    #[test]
+    fn pending_native_work_requests_renderer_clock_rearm() {
+        let mut loop_ = OnDemandFrameLoop::started();
+
+        assert!(loop_.note_frame_rendered(true));
+        assert!(!loop_.note_frame_rendered(false));
     }
 
     #[test]

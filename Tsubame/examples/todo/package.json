@@ -23,6 +23,7 @@
     "@torimi/bundle": "workspace:*",
     "@torimi/host-web": "workspace:*",
     "@torimi/tsubame-app": "workspace:*",
+    "@torimi/tsubame-protocol-generated": "workspace:*",
     "@torimi/tsubame-renderer-dom": "workspace:*",
     "@torimi/tsubame-renderer-hayate": "workspace:*",
     "@torimi/tsubame-renderer-protocol": "workspace:*",

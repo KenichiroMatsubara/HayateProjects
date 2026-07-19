@@ -513,8 +513,13 @@ pub(crate) fn run(app: AndroidApp) {
         }
 
         // 描画後に残る pending visual work（進行中 transition / カーソル点滅 / スクロール物理）を
-        // 継続として記録する。残れば次イテレーションで自走し、無ければ idle へ落ちる。
+        // 継続として記録する。残れば native loop と JS の one-shot frame callback の両方を
+        // 再武装する。Core が直接開始したスクロール物理は JS mutation を伴わないため、native
+        // loop だけを継続しても `pumpFrame` が空振りし、端の overscroll 位置で次の入力まで
+        // 固まることがある。無ければ両方とも idle へ落ちる。
         let pending = runtime.tree.borrow().has_pending_visual_work();
-        frame_loop.note_frame_rendered(pending);
+        if frame_loop.note_frame_rendered(pending) {
+            runtime.hermes.pin_mut().request_redraw();
+        }
     }
 }
