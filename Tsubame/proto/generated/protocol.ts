@@ -1,7 +1,7 @@
 // 自動生成ファイル（Tsubame/proto/generator） — 手動で編集しないこと
 // 生成元: @torimi/hayate-protocol-spec
 
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 
 export const OP = {
   APPEND_CHILD: 0,
@@ -156,6 +156,9 @@ export const EVENT_KIND = {
   FETCH_FONT: 15,
   SELECTION_CHANGE: 16,
   LAYOUT_RESIZE: 17,
+  POINTER_DOWN: 18,
+  POINTER_DRAG: 19,
+  POINTER_UP: 20,
 } as const;
 export type EVENT_KIND = typeof EVENT_KIND;
 
@@ -178,6 +181,9 @@ export const EVENT_WIRE_ROLE = {
   FETCH_FONT: 'hayate-internal',
   SELECTION_CHANGE: 'interaction',
   LAYOUT_RESIZE: 'hayate-internal',
+  POINTER_DOWN: 'interaction',
+  POINTER_DRAG: 'interaction',
+  POINTER_UP: 'interaction',
 } as const;
 export type EVENT_WIRE_ROLE = typeof EVENT_WIRE_ROLE;
 
@@ -200,6 +206,9 @@ export const EVENT_ADAPTER_TIER = {
   FETCH_FONT: 'none',
   SELECTION_CHANGE: 'none',
   LAYOUT_RESIZE: 'none',
+  POINTER_DOWN: 'forward',
+  POINTER_DRAG: 'forward',
+  POINTER_UP: 'forward',
 } as const;
 export type EVENT_ADAPTER_TIER = typeof EVENT_ADAPTER_TIER;
 
@@ -496,6 +505,9 @@ export type EventPayload =
   | { kind: 'fetch_font'; value: 15; family: string }
   | { kind: 'selection_change'; value: 16 }
   | { kind: 'layout_resize'; value: 17; targetId: number; width: number; height: number }
+  | { kind: 'pointer_down'; value: 18; targetId: number; x: number; y: number; pointerKind: number }
+  | { kind: 'pointer_drag'; value: 19; targetId: number; x: number; y: number; pointerKind: number }
+  | { kind: 'pointer_up'; value: 20; targetId: number; x: number; y: number; pointerKind: number }
 ;
 
 export function parseEvent(ev: unknown[]): EventPayload {
@@ -554,6 +566,15 @@ export function parseEvent(ev: unknown[]): EventPayload {
     }
     case 17: { // layout_resize
       return { kind: 'layout_resize' as const, value: 17, targetId: ev[1] as number, width: ev[2] as number, height: ev[3] as number };
+    }
+    case 18: { // pointer_down
+      return { kind: 'pointer_down' as const, value: 18, targetId: ev[1] as number, x: ev[2] as number, y: ev[3] as number, pointerKind: ev[4] as number };
+    }
+    case 19: { // pointer_drag
+      return { kind: 'pointer_drag' as const, value: 19, targetId: ev[1] as number, x: ev[2] as number, y: ev[3] as number, pointerKind: ev[4] as number };
+    }
+    case 20: { // pointer_up
+      return { kind: 'pointer_up' as const, value: 20, targetId: ev[1] as number, x: ev[2] as number, y: ev[3] as number, pointerKind: ev[4] as number };
     }
     default:
       throw new Error(`parseEvent: unknown event kind ${kind}`);

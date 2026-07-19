@@ -77,6 +77,27 @@ pub enum Event {
         width: f32,
         height: f32,
     },
+    /// Starts a pointer gesture on the hit element. Coordinates are safe-area-corrected logical viewport pixels.
+    PointerDown {
+        target_id: ElementId,
+        x: f32,
+        y: f32,
+        pointer_kind: PointerKind,
+    },
+    /// Moves the active pointer gesture. Delivery remains captured by the element pressed at pointer-down.
+    PointerDrag {
+        target_id: ElementId,
+        x: f32,
+        y: f32,
+        pointer_kind: PointerKind,
+    },
+    /// Ends the active pointer gesture and is delivered to the pointer-down target before active state is cleared.
+    PointerUp {
+        target_id: ElementId,
+        x: f32,
+        y: f32,
+        pointer_kind: PointerKind,
+    },
 }
 
 /// Event kinds registerable via `register_listener`.
@@ -96,6 +117,9 @@ pub enum DocumentEventKind {
     KeyDown,
     ActiveStart,
     LayoutResize,
+    PointerDown,
+    PointerDrag,
+    PointerUp,
 }
 
 impl DocumentEventKind {
@@ -115,6 +139,9 @@ impl DocumentEventKind {
             Self::KeyDown => true,
             Self::ActiveStart => false,
             Self::LayoutResize => false,
+            Self::PointerDown => true,
+            Self::PointerDrag => true,
+            Self::PointerUp => true,
         }
     }
 
@@ -134,6 +161,9 @@ impl DocumentEventKind {
             12 => Some(Self::KeyDown),
             13 => Some(Self::ActiveStart),
             17 => Some(Self::LayoutResize),
+            18 => Some(Self::PointerDown),
+            19 => Some(Self::PointerDrag),
+            20 => Some(Self::PointerUp),
             _ => None,
         }
     }
@@ -156,6 +186,9 @@ pub fn event_document_kind(event: &Event) -> Option<DocumentEventKind> {
         Event::KeyDown { .. } => Some(DocumentEventKind::KeyDown),
         Event::ActiveStart { .. } => Some(DocumentEventKind::ActiveStart),
         Event::LayoutResize { .. } => Some(DocumentEventKind::LayoutResize),
+        Event::PointerDown { .. } => Some(DocumentEventKind::PointerDown),
+        Event::PointerDrag { .. } => Some(DocumentEventKind::PointerDrag),
+        Event::PointerUp { .. } => Some(DocumentEventKind::PointerUp),
         _ => None,
     }
 }

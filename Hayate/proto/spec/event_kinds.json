@@ -216,5 +216,53 @@
     "bubbles": false,
     "interactionKind": null,
     "description": "A listening element's border-box size was first resolved or changed (browser ResizeObserver equivalent; #725 / ADR-0143). Values are logical-px border-box width/height. Sourced internally by Hayate's layout commit — not host-echoed — and delivered only to elements with a registered listener (register_listener / DocumentEventKind::LayoutResize), so it rides Event Delivery (poll_deliveries), not the raw queue. Fires on first layout and on every commit where the resolved size changes; a commit that leaves the size unchanged does not fire."
+  },
+  {
+    "name": "pointer_down",
+    "value": 18,
+    "params": [
+      { "name": "target_id", "type": "element_id" },
+      { "name": "x", "type": "f32" },
+      { "name": "y", "type": "f32" },
+      { "name": "pointer_kind", "type": "pointer_kind" }
+    ],
+    "wireRole": "interaction",
+    "adapterTier": "forward",
+    "documentRuntime": true,
+    "bubbles": true,
+    "interactionKind": "pointerdown",
+    "description": "Starts a pointer gesture on the hit element. Coordinates are safe-area-corrected logical viewport pixels."
+  },
+  {
+    "name": "pointer_drag",
+    "value": 19,
+    "params": [
+      { "name": "target_id", "type": "element_id" },
+      { "name": "x", "type": "f32" },
+      { "name": "y", "type": "f32" },
+      { "name": "pointer_kind", "type": "pointer_kind" }
+    ],
+    "wireRole": "interaction",
+    "adapterTier": "forward",
+    "documentRuntime": true,
+    "bubbles": true,
+    "interactionKind": "pointermove",
+    "description": "Moves the active pointer gesture. Delivery remains captured by the element pressed at pointer-down."
+  },
+  {
+    "name": "pointer_up",
+    "value": 20,
+    "params": [
+      { "name": "target_id", "type": "element_id" },
+      { "name": "x", "type": "f32" },
+      { "name": "y", "type": "f32" },
+      { "name": "pointer_kind", "type": "pointer_kind" }
+    ],
+    "wireRole": "interaction",
+    "adapterTier": "forward",
+    "documentRuntime": true,
+    "bubbles": true,
+    "interactionKind": "pointerup",
+    "description": "Ends the active pointer gesture and is delivered to the pointer-down target before active state is cleared."
   }
 ]

@@ -13,6 +13,9 @@ describe('adapter event vocabulary (Tsubame ADR-0010, #483)', () => {
       onKeyDown: 'keydown',
       onFocus: 'focus',
       onBlur: 'blur',
+      onPointerDown: 'pointerdown',
+      onPointerMove: 'pointermove',
+      onPointerUp: 'pointerup',
     });
   });
 

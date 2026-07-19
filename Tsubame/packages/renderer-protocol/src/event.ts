@@ -23,6 +23,11 @@ export interface InteractionEvent {
   value?: string;
   /** keydown などキーボード系イベントで使うキー名。 */
   key?: string;
+  /** pointer event のsafe-area補正済み論理viewport座標。 */
+  x?: number;
+  y?: number;
+  /** 物理入力種別。0=mouse, 1=touch, 2=pen。 */
+  pointerKind?: number;
 }
 
 export type EventHandler = (event: InteractionEvent) => void;
@@ -43,6 +48,9 @@ export const EVENT_PROP: Record<string, EventKind> = {
   onKeyDown: 'keydown',
   onFocus: 'focus',
   onBlur: 'blur',
+  onPointerDown: 'pointerdown',
+  onPointerMove: 'pointermove',
+  onPointerUp: 'pointerup',
 };
 
 /**

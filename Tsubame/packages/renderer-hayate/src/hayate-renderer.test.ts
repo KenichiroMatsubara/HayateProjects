@@ -212,6 +212,24 @@ describe('HayateRenderer delivery poll (ADR-0053)', () => {
     expect(received).toEqual([{ kind: 'input', target: input, value: 'ab' }]);
   });
 
+  it('delivers captured pointer coordinates and kind through the renderer seam', () => {
+    const hayate = new StubHayate();
+    const sched = manualScheduler();
+    const renderer = new HayateRenderer({ raw: hayate, ...sched });
+    renderer.start();
+
+    const canvas = renderer.createElement('view');
+    const received: unknown[] = [];
+    renderer.addEventListener(canvas, 'pointermove', (event) => received.push(event));
+
+    hayate.events = [[1, EVENT_KIND.POINTER_DRAG, canvas, 30, 40, 1]];
+    sched.tick();
+
+    expect(received).toEqual([
+      { kind: 'pointermove', target: canvas, x: 30, y: 40, pointerKind: 1 },
+    ]);
+  });
+
   it('removeChild requires adapter unsubscribe before stale deliveries stop', () => {
     const hayate = new StubHayate();
     const sched = manualScheduler();

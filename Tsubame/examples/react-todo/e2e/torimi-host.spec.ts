@@ -14,7 +14,7 @@ const TORIMI_DEV_PORT = Number(process.env.TORIMI_DEV_PORT ?? 5183);
 const DEV_SERVER_URL = `http://localhost:${TORIMI_DEV_PORT}`;
 
 test.describe('Torimi host — renders the HTTP-served react bundle', () => {
-  test('ホストページを開くと react-todo が canvas に描画される', async ({ page }) => {
+  test('ホストページでreact-sketchへpointer gestureを送れる', async ({ page }) => {
     test.setTimeout(60_000);
     await page.goto(`/host.html?dev=${encodeURIComponent(DEV_SERVER_URL)}`);
 
@@ -32,10 +32,7 @@ test.describe('Torimi host — renders the HTTP-served react bundle', () => {
       .poll(async () => canvas.evaluate((el) => (el as HTMLCanvasElement).width))
       .toBeGreaterThan(0);
 
-    // 描画証明：tiny-skia Canvas は DOM テキストを持たないので、seed todo（選択可能テキスト）の
-    // 上で I-beam（text）カーソルが出ることを以て「react-todo が描画された」とする
-    // （examples/todo の同型テスト / ADR-0105）。EditContext 非対応なら Canvas モードに
-    // 入れないため skip。
+    // EditContext 非対応なら Canvas モードに入れないため skip。
     const editContextSupported = await page.evaluate(
       () => typeof (globalThis as { EditContext?: unknown }).EditContext !== 'undefined',
     );
@@ -46,22 +43,12 @@ test.describe('Torimi host — renders the HTTP-served react bundle', () => {
     expect(box, 'canvas bounding box').not.toBeNull();
     if (!box) return;
 
-    const cursors = new Set<string>();
-    const cols = 5;
-    const rows = 6;
-    for (let r = 1; r < rows; r++) {
-      for (let c = 1; c < cols; c++) {
-        const x = box.x + (box.width * c) / cols;
-        const y = box.y + (box.height * r) / rows;
-        await page.mouse.move(x, y);
-        const cursor = await canvas.evaluate((el) => (el as HTMLCanvasElement).style.cursor);
-        if (cursor) cursors.add(cursor);
-      }
-    }
+    await page.mouse.move(box.x + box.width * 0.25, box.y + box.height * 0.4);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width * 0.7, box.y + box.height * 0.7, { steps: 12 });
+    await page.mouse.up();
 
-    expect(
-      cursors.has('text'),
-      `seed todo（選択可能テキスト）の上で I-beam（text）が出るべき。観測した cursor: ${[...cursors].join(', ')}`,
-    ).toBe(true);
+    await expect(page.locator('html')).toHaveAttribute('data-torimi-status', 'mounted');
+    await expect(canvas).toHaveCSS('cursor', 'crosshair');
   });
 });

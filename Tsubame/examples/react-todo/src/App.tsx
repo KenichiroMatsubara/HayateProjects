@@ -1,113 +1,82 @@
-import { useMemo, useState } from 'react';
-import type { HayateCssStyle } from '@torimi/tsubame-renderer-protocol';
+import { useReducer, useState } from 'react';
+import type {
+  HayateCssStyle,
+  InteractionEvent,
+} from '@torimi/tsubame-renderer-protocol';
+import { SketchDocument, type Sample } from './sketch-document.js';
 
-interface Todo {
-  id: number;
-  text: string;
-  done: boolean;
-}
-
-const SEED: readonly Todo[] = [
-  { id: 1, text: 'tsubame-react のデモを動かす', done: true },
-  { id: 2, text: 'view / text / button を組む', done: false },
-  { id: 3, text: 'text-input で新規タスクを追加', done: false },
-];
-
-// 単一カードの落ち着いたダークパレット（デモ用にハードコード）。
 const C = {
-  bg: '#0b1020',
-  panel: '#141a2e',
-  line: '#26304a',
-  ink: '#e7edf8',
-  muted: '#8a97b3',
-  accent: '#14b8a6',
-  black: '#06140f',
-  danger: '#f0648c',
+  paper: '#f7f3ea',
+  panel: '#fffdf8ee',
+  ink: '#171a21',
+  muted: '#6c706f',
+  line: '#d9d3c8',
+  accent: '#f06449',
+  accentSoft: '#fbe1d9',
+  shadow: '#2b211a24',
 } as const;
 
+const THIN_WIDTH = 5;
+const THICK_WIDTH = 11;
+
+function sampleOf(event: InteractionEvent): Sample | null {
+  return event.x === undefined || event.y === undefined
+    ? null
+    : { x: event.x, y: event.y };
+}
+
 export function App() {
-  const [todos, setTodos] = useState<Todo[]>(() => SEED.map((t) => ({ ...t })));
-  const [draft, setDraft] = useState('');
-  const [nextId, setNextId] = useState(1000);
+  const [document] = useState(() => new SketchDocument());
+  const [, redraw] = useReducer((revision: number) => revision + 1, 0);
 
-  const remaining = useMemo(() => todos.filter((t) => !t.done).length, [todos]);
-
-  const add = () => {
-    const text = draft.trim();
-    if (!text) return;
-    setTodos((prev) => [{ id: nextId, text, done: false }, ...prev]);
-    setNextId((n) => n + 1);
-    setDraft('');
+  const updateFromPointer = (
+    event: InteractionEvent,
+    update: (sample: Sample) => boolean,
+  ) => {
+    const sample = sampleOf(event);
+    if (sample !== null && update(sample)) redraw();
   };
 
-  const toggle = (id: number) =>
-    setTodos((prev) => prev.map((t) => (t.id === id ? { ...t, done: !t.done } : t)));
+  const undo = () => {
+    if (document.undo()) redraw();
+  };
 
-  const remove = (id: number) => setTodos((prev) => prev.filter((t) => t.id !== id));
+  const clear = () => {
+    if (document.clear()) redraw();
+  };
 
-  const clearDone = () => setTodos((prev) => prev.filter((t) => !t.done));
+  const toggleWidth = () => {
+    const next = document.strokeWidth === THIN_WIDTH ? THICK_WIDTH : THIN_WIDTH;
+    if (document.setStrokeWidth(next)) redraw();
+  };
 
   return (
-    <view style={shell}>
-      <scroll-view style={page}>
-        <view style={card}>
-          <view style={{ display: 'flex', flexDirection: 'row', alignItems: 'baseline', gap: 10 }}>
-            <text style={{ defaultColor: C.ink, defaultFontSize: 22, fontWeight: 700 }}>
-              React TODO
-            </text>
-            <text style={{ defaultColor: C.muted, defaultFontSize: 13 }}>
-              {`残り ${remaining} / ${todos.length} 件`}
-            </text>
-          </view>
+    <view style={shell} draw={document.frame()}>
+      <view
+        style={drawingSurface}
+        user-select="none"
+        onPointerDown={(event) => updateFromPointer(event, (sample) => document.begin(sample))}
+        onPointerMove={(event) => updateFromPointer(event, (sample) => document.append(sample))}
+        onPointerUp={(event) => updateFromPointer(event, (sample) => document.end(sample))}
+      />
 
-          <view style={{ display: 'flex', flexDirection: 'row', gap: 8 }}>
-            <view style={{ flexGrow: 1 }}>
-              <text-input
-                value={draft}
-                placeholder="新しいタスクを入力…"
-                style={input}
-                onInput={(e) => setDraft(e.value ?? '')}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') add();
-                }}
-              />
-            </view>
-            <button style={primaryBtn} onClick={add}>
-              追加
-            </button>
-          </view>
-
-          <view style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {todos.length === 0 ? (
-              <text style={{ defaultColor: C.muted, defaultFontSize: 14 }}>
-                タスクはありません 🎉
-              </text>
-            ) : (
-              todos.map((todo) => (
-                <view key={todo.id} style={row}>
-                  <button style={check(todo.done)} onClick={() => toggle(todo.id)}>
-                    {todo.done ? '✓' : ''}
-                  </button>
-                  <view style={{ flexGrow: 1 }} onClick={() => toggle(todo.id)}>
-                    <text style={label(todo.done)}>{todo.text}</text>
-                  </view>
-                  <button style={removeBtn} onClick={() => remove(todo.id)}>
-                    ×
-                  </button>
-                </view>
-              ))
-            )}
-          </view>
-
-          <view style={{ height: 1, backgroundColor: C.line }} />
-
-          <view style={{ display: 'flex', flexDirection: 'row', justifyContent: 'flex-end' }}>
-            <button style={ghostBtn} onClick={clearDone}>
-              完了済みを削除
-            </button>
-          </view>
+      <view style={topBar}>
+        <view style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <text style={title}>Sketch</text>
+          <text style={status}>{`${document.strokeCount} strokes`}</text>
         </view>
-      </scroll-view>
+        <view style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <button style={toolButton} onClick={toggleWidth}>
+            {document.strokeWidth === THIN_WIDTH ? '細' : '太'}
+          </button>
+          <button style={toolButton} onClick={undo}>Undo</button>
+          <button style={clearButton} onClick={clear}>Clear</button>
+        </view>
+      </view>
+
+      <view style={hintPill}>
+        <text style={hint}>1本指で描く</text>
+      </view>
     </view>
   );
 }
@@ -116,136 +85,99 @@ const shell: HayateCssStyle = {
   width: '100%',
   height: '100%',
   display: 'flex',
-  flexDirection: 'column',
-  backgroundColor: C.bg,
+  backgroundColor: C.paper,
   defaultColor: C.ink,
-  defaultFontSize: 14,
   defaultFontFamily: 'Inter, Segoe UI, system-ui, sans-serif',
+  overflow: 'hidden',
 };
 
-const page: HayateCssStyle = {
-  flexGrow: 1,
+const drawingSurface: HayateCssStyle = {
+  position: 'absolute',
+  top: 0,
+  left: 0,
   width: '100%',
   height: '100%',
-  display: 'flex',
-  flexDirection: 'column',
-  alignItems: 'center',
-  paddingTop: 36,
-  paddingBottom: 36,
-  paddingLeft: 16,
-  paddingRight: 16,
+  backgroundColor: 'transparent',
+  cursor: 'crosshair',
+  zIndex: 0,
 };
 
-const card: HayateCssStyle = {
-  width: 520,
-  maxWidth: '100%',
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 16,
-  padding: 22,
-  backgroundColor: C.panel,
-  borderRadius: 16,
-  borderWidth: 1,
-  borderStyle: 'solid',
-  borderColor: C.line,
-  boxShadow: [{ offsetX: 0, offsetY: 18, blur: 40, spread: -8, color: '#00000066', inset: false }],
-};
-
-const input: HayateCssStyle = {
-  width: '100%',
-  height: 40,
-  paddingLeft: 12,
-  paddingRight: 12,
-  backgroundColor: C.bg,
-  defaultColor: C.ink,
-  defaultFontSize: 14,
-  borderRadius: 9,
-  borderWidth: 1,
-  borderStyle: 'solid',
-  borderColor: C.line,
-};
-
-const primaryBtn: HayateCssStyle = {
-  height: 40,
-  paddingLeft: 18,
-  paddingRight: 18,
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  backgroundColor: C.accent,
-  defaultColor: C.black,
-  defaultFontSize: 13,
-  fontWeight: 700,
-  borderRadius: 9,
-  cursor: 'pointer',
-  ':hover': { opacity: 0.9 },
-};
-
-const row: HayateCssStyle = {
+const topBar: HayateCssStyle = {
+  position: 'absolute',
+  top: 12,
+  left: 12,
+  right: 12,
+  height: 64,
   display: 'flex',
   flexDirection: 'row',
   alignItems: 'center',
-  gap: 10,
-  padding: 10,
-  backgroundColor: C.bg,
-  borderRadius: 10,
+  justifyContent: 'space-between',
+  paddingLeft: 16,
+  paddingRight: 10,
+  backgroundColor: C.panel,
+  borderRadius: 18,
   borderWidth: 1,
   borderStyle: 'solid',
   borderColor: C.line,
+  boxShadow: [{ offsetX: 0, offsetY: 8, blur: 24, spread: -8, color: C.shadow, inset: false }],
+  zIndex: 10,
 };
 
-const check = (done: boolean): HayateCssStyle => ({
-  width: 24,
-  height: 24,
+const title: HayateCssStyle = {
+  defaultColor: C.ink,
+  defaultFontSize: 19,
+  fontWeight: 750,
+};
+
+const status: HayateCssStyle = {
+  defaultColor: C.muted,
+  defaultFontSize: 11,
+};
+
+const toolButton: HayateCssStyle = {
+  height: 40,
+  paddingLeft: 13,
+  paddingRight: 13,
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  backgroundColor: done ? C.accent : 'transparent',
-  defaultColor: C.black,
-  defaultFontSize: 14,
-  fontWeight: 700,
-  borderRadius: 6,
+  backgroundColor: '#ffffff',
+  defaultColor: C.ink,
+  defaultFontSize: 12,
+  fontWeight: 650,
+  borderRadius: 12,
   borderWidth: 1,
   borderStyle: 'solid',
-  borderColor: done ? C.accent : C.line,
+  borderColor: C.line,
   cursor: 'pointer',
-});
+  ':active': { backgroundColor: C.accentSoft },
+};
 
-const label = (done: boolean): HayateCssStyle => ({
-  defaultColor: done ? C.muted : C.ink,
-  defaultFontSize: 14,
-  textDecoration: done ? 'line-through' : 'none',
-  cursor: 'pointer',
-});
+const clearButton: HayateCssStyle = {
+  ...toolButton,
+  backgroundColor: C.accent,
+  borderColor: C.accent,
+  defaultColor: '#ffffff',
+};
 
-const removeBtn: HayateCssStyle = {
-  width: 28,
-  height: 28,
+const hintPill: HayateCssStyle = {
+  position: 'absolute',
+  bottom: 18,
+  left: 0,
+  right: 0,
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  backgroundColor: 'transparent',
-  defaultColor: C.muted,
-  defaultFontSize: 18,
-  borderRadius: 6,
-  cursor: 'pointer',
-  ':hover': { defaultColor: C.danger },
+  zIndex: 10,
 };
 
-const ghostBtn: HayateCssStyle = {
-  height: 34,
+const hint: HayateCssStyle = {
+  paddingTop: 8,
+  paddingBottom: 8,
   paddingLeft: 14,
   paddingRight: 14,
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  backgroundColor: 'transparent',
+  backgroundColor: '#fffdf8cc',
   defaultColor: C.muted,
-  defaultFontSize: 13,
-  borderRadius: 8,
-  borderWidth: 1,
-  borderStyle: 'solid',
-  borderColor: C.line,
-  cursor: 'pointer',
-  ':hover': { defaultColor: C.ink, borderColor: C.muted },
+  defaultFontSize: 11,
+  borderRadius: 999,
 };
