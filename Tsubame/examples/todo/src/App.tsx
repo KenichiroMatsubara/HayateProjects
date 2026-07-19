@@ -1,10 +1,7 @@
 import { createEffect, createMemo, createSignal } from 'solid-js';
 import { CssGallery } from './CssGallery';
-import { AddForm } from './components/AddForm';
 import { AppBar } from './components/AppBar';
-import { EmptyState, Footer, Header, SelectableNote } from './components/TaskCard';
-import { TodoRow } from './components/TodoRow';
-import { Toolbar } from './components/Toolbar';
+import { FreeDrawPrototype } from './prototype/FreeDrawPrototype';
 import {
   loadTheme,
   palette,
@@ -14,7 +11,6 @@ import {
 } from './theme';
 import {
   add,
-  canReorder,
   clearDone,
   completion,
   editText,
@@ -127,81 +123,31 @@ export function TodoApp() {
 
       {page() === 'gallery'
         ? <CssGallery colors={colors()} />
-        : <scroll-view
-          style={{
-            flexGrow: 1,
-            width: '100%',
-            height: '100%',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            paddingTop: 28,
-            paddingBottom: 28,
-            paddingLeft: 16,
-            paddingRight: 16,
-            backgroundColor: colors().bg,
-          }}
-          // 狭幅では左右余白を詰める。カードが画面端へ密着しないよう左右パディングは残す。
-          styleVariants={[
-            { condition: { maxWidth: 719 }, style: { paddingTop: 16, paddingBottom: 16, paddingLeft: 12, paddingRight: 12 } },
-          ]}
-        >
-          <view
-            style={{
-              width: 620,
-              maxWidth: '100%',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 16,
-              padding: 22,
-              backgroundColor: colors().panel,
-              borderRadius: 18,
-              borderWidth: 1,
-              borderStyle: 'solid',
-              borderColor: colors().line,
-              boxShadow: [{ offsetX: 0, offsetY: 18, blur: 40, spread: -8, color: colors().shadow, inset: false }],
-            }}
-            // 狭幅では余白と角丸を詰める（本物の @media・ADR-0081）。
-            styleVariants={[
-              { condition: { maxWidth: 719 }, style: { padding: 14, gap: 12, borderRadius: 12 } },
-            ]}
-          >
-            <Header colors={colors()} remaining={summary().remaining} total={summary().total} percent={summary().percent} />
-            <SelectableNote colors={colors()} />
-            <AddForm
-              colors={colors()}
-              draft={draft()}
-              prio={draftPrio()}
-              onInput={setDraft}
-              onPrio={setDraftPrio}
-              onAdd={addTask}
-            />
-            <Toolbar colors={colors()} filter={filter()} sort={sort()} onFilter={setFilter} onSort={setSort} />
-            <view style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {visible().length === 0
-                ? <EmptyState colors={colors()} />
-                : visible().map((todo) => (
-                  <TodoRow
-                    colors={colors()}
-                    todo={todo}
-                    reorderable={canReorder(sort())}
-                    editing={editingId() === todo.id}
-                    editDraft={editDraft()}
-                    onToggle={() => toggle(todo.id)}
-                    onRemove={() => removeTask(todo.id)}
-                    onBeginEdit={() => beginEdit(todo)}
-                    onEditInput={setEditDraft}
-                    onCommitEdit={commitEdit}
-                    onCancelEdit={cancelEdit}
-                    onMoveUp={() => moveTaskUp(todo.id)}
-                    onMoveDown={() => moveTaskDown(todo.id)}
-                  />
-                ))}
-            </view>
-            <view style={{ height: 1, backgroundColor: colors().line }} />
-            <Footer colors={colors()} percent={summary().percent} onClearDone={clearCompleted} />
-          </view>
-        </scroll-view>}
+        : <FreeDrawPrototype
+          colors={colors()}
+          todos={visible()}
+          filter={filter()}
+          sort={sort()}
+          draft={draft()}
+          draftPrio={draftPrio()}
+          editingId={editingId()}
+          editDraft={editDraft()}
+          summary={summary()}
+          onDraft={setDraft}
+          onDraftPrio={setDraftPrio}
+          onAdd={addTask}
+          onFilter={setFilter}
+          onSort={setSort}
+          onToggle={toggle}
+          onRemove={removeTask}
+          onBeginEdit={beginEdit}
+          onEditInput={setEditDraft}
+          onCommitEdit={commitEdit}
+          onCancelEdit={cancelEdit}
+          onMoveUp={moveTaskUp}
+          onMoveDown={moveTaskDown}
+          onClearDone={clearCompleted}
+        />}
     </view>
   );
 }

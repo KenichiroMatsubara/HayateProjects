@@ -75,16 +75,14 @@ impl JsHost {
 
     /// バッチ適用（ADR-0052）。共有の中立 dispatch を通す。
     ///
-    /// `draws` チャネル（#724）: Android の JSI/C++ ホストはまだ draws を運ばない
-    /// （デバイスビルド側の C++ 配線が未対応）。中立 dispatch には空チャネルを渡す。
-    /// C++ ホストが draws を学んだら hermes_bridge ごと引数を増やす（follow-up）。
     pub(crate) fn apply_mutations(
         &self,
         ops: &[f64],
         styles: &[f32],
         texts: &[String],
+        draws: &[f32],
     ) -> Result<(), String> {
-        js_apply::apply_mutations(&mut self.tree.borrow_mut(), ops, styles, texts, &[])
+        js_apply::apply_mutations(&mut self.tree.borrow_mut(), ops, styles, texts, draws)
     }
 
     pub(crate) fn dispatch_edit_intent(&self, target: f64, intent: &[f64]) -> Result<u32, String> {
@@ -237,10 +235,47 @@ mod tests {
     #[test]
     fn empty_apply_and_render_ok() {
         let h = host();
-        assert!(h.apply_mutations(&[], &[], &[]).is_ok());
+        assert!(h.apply_mutations(&[], &[], &[], &[]).is_ok());
         h.render(0.0);
         // 何も登録していなければ配信は空。
         assert!(h.poll_events().is_empty());
+    }
+
+    #[test]
+    fn native_host_forwards_draws_channel_to_wire_dispatch() {
+        use hayate_core::wire::{
+            DRAW_OP_CLOSE, DRAW_OP_FILL, DRAW_OP_LINE_TO, DRAW_OP_MOVE_TO, DRAW_PAINT_COLOR,
+            ELEMENT_KIND_VIEW, OP_CREATE, OP_SET_DRAW,
+        };
+
+        let h = host();
+        let ops = [
+            OP_CREATE as f64,
+            5.0,
+            ELEMENT_KIND_VIEW as f64,
+            OP_SET_DRAW as f64,
+            5.0,
+            0.0,
+            14.0,
+        ];
+        let draws = [
+            DRAW_OP_MOVE_TO as f32,
+            0.0,
+            0.0,
+            DRAW_OP_LINE_TO as f32,
+            10.0,
+            0.0,
+            DRAW_OP_CLOSE as f32,
+            DRAW_OP_FILL as f32,
+            5.0,
+            DRAW_PAINT_COLOR as f32,
+            1.0,
+            0.0,
+            0.0,
+            1.0,
+        ];
+
+        assert!(h.apply_mutations(&ops, &[], &[], &draws).is_ok());
     }
 
     #[test]

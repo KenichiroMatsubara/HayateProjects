@@ -118,18 +118,20 @@ class HayateHostObject : public jsi::HostObject {
 
     if (prop == "apply_mutations") {
       return jsi::Function::createFromHostFunction(
-          rt, name, 3,
+          rt, name, 4,
           [&b](jsi::Runtime& rt, const jsi::Value&, const jsi::Value* args,
                size_t /*count*/) -> jsi::Value {
             auto ops = typed_array_to_vec<double>(rt, args[0]);
             auto styles = typed_array_to_vec<float>(rt, args[1]);
             auto texts = string_array_to_vec(rt, args[2]);
+            auto draws = typed_array_to_vec<float>(rt, args[3]);
             std::vector<std::string> texts_v(texts.begin(), texts.end());
             // rust::Vec<rust::String> ではなく std::vector を & で渡す（cxx の
             // CxxVector<CxxString>）。
             b.apply_mutations(rust::Slice<const double>(ops.data(), ops.size()),
                               rust::Slice<const float>(styles.data(), styles.size()),
-                              texts_v);
+                              texts_v,
+                              rust::Slice<const float>(draws.data(), draws.size()));
             return jsi::Value::undefined();
           });
     }
