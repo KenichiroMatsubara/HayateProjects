@@ -8,7 +8,8 @@ use tiny_skia::{Color, Pixmap};
 use painter::TinySkiaPainter;
 
 pub use layer_compositor::{
-    TinySkiaCompositeTarget, TinySkiaLayerCompositor, TinySkiaLayerRasterizer, TinySkiaLayerTexture,
+    TinySkiaCompositeTarget, TinySkiaLayerCompositor, TinySkiaLayerPresentationAdapter,
+    TinySkiaLayerRasterizer, TinySkiaLayerTexture,
 };
 
 pub struct TinySkiaSceneRenderer;
