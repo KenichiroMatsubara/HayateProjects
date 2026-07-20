@@ -217,5 +217,5 @@ tasks.matching { it.name.matches(Regex("merge.*JniLibFolders")) }.configureEach 
 // デーモンの環境に pnpm/node が無いと失敗する（CreateProcess error=2 や exit 1）ため、
 // ビルド時の Node 依存を排除した。JS を変更したら手動で再生成して差し替える:
 //   cd Tsubame && pnpm --filter @tsubame/example-solid-demo run torimi:native:build
-//   cp examples/solid-demo/dist-android/tsubame.js \
+//   cp examples/solid-demo/dist-torimi/bundle.hermes.js \
 //      ../Hayate/crates/platform/mobile/android/android-app/app/src/main/assets/tsubame.js

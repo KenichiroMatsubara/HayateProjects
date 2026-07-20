@@ -20,7 +20,7 @@ import {
   invokePainter,
 } from '@torimi/tsubame-renderer-protocol';
 import type { RawHayate } from './hayate.js';
-import { HayateMutationPacket } from './hayate-mutation-packet.js';
+import { encodeMutations, type SemanticMutation } from './encode-mutations.js';
 import { EVENT_KIND } from '@torimi/tsubame-protocol-generated/protocol';
 import { Canvas } from '@torimi/tsubame-protocol-generated/recorder';
 import { HAYATE_LISTENER_KIND, parseDelivery, toInteractionEvent } from '@torimi/tsubame-protocol-generated/delivery';
@@ -59,7 +59,12 @@ export class HayateRenderer implements IRenderer {
   private readonly drawListeners = new Map<number, ElementId>();
   private nextId = 1;
 
-  private readonly packet = new HayateMutationPacket();
+  /**
+   * フレーム transaction に属する順序付き semantic mutation queue。enqueue 時点で
+   * caller 可変値を snapshot し、flush 成功時だけ clear する。wire 形式の生成は
+   * pure な `encodeMutations` に委譲する（ADR-0052）。
+   */
+  private readonly mutations: SemanticMutation[] = [];
 
   private readonly requestFrame: (cb: FrameRequestCallback) => number;
   private readonly cancelFrame: (handle: number) => void;
@@ -109,48 +114,48 @@ export class HayateRenderer implements IRenderer {
 
   createElement(kind: ElementKind): ElementId {
     const id = asElementId(this.nextId++);
-    this.packet.enqueueCreateElement(id, kind);
+    this.mutations.push({ kind: 'createElement', id, elementKind: kind });
     this.scheduleFrame();
     return id;
   }
 
   setRoot(id: ElementId): void {
-    this.packet.enqueueSetRoot(id);
+    this.mutations.push({ kind: 'setRoot', id });
     this.scheduleFrame();
   }
 
   appendChild(parent: ElementId, child: ElementId): void {
-    this.packet.enqueueAppendChild(parent, child);
+    this.mutations.push({ kind: 'appendChild', parent, child });
     this.scheduleFrame();
   }
 
   insertBefore(parent: ElementId, child: ElementId, before: ElementId): void {
-    this.packet.enqueueInsertBefore(parent, child, before);
+    this.mutations.push({ kind: 'insertBefore', parent, child, before });
     this.scheduleFrame();
   }
 
   removeChild(_parent: ElementId, child: ElementId): void {
-    this.packet.enqueueRemove(child);
+    this.mutations.push({ kind: 'remove', id: child });
     this.scheduleFrame();
   }
 
   setStyle(id: ElementId, style: StylePatch): void {
-    this.packet.enqueueSetStyle(id, style);
+    this.mutations.push({ kind: 'setStyle', id, style: { ...style } });
     this.scheduleFrame();
   }
 
   setPseudoStyle(id: ElementId, pseudo: PseudoStyleKey, style: StylePatch): void {
-    this.packet.enqueueSetPseudoStyle(id, pseudo, style);
+    this.mutations.push({ kind: 'setPseudoStyle', id, pseudo, style: { ...style } });
     this.scheduleFrame();
   }
 
   setStyleVariant(id: ElementId, condition: ViewportCondition, style: StylePatch): void {
-    this.packet.enqueueSetStyleVariant(id, condition, style);
+    this.mutations.push({ kind: 'setStyleVariant', id, condition, style: { ...style } });
     this.scheduleFrame();
   }
 
   setText(id: ElementId, text: string): void {
-    this.packet.enqueueSetText(id, text);
+    this.mutations.push({ kind: 'setText', id, text });
     this.scheduleFrame();
   }
 
@@ -165,7 +170,7 @@ export class HayateRenderer implements IRenderer {
     if (value === null) {
       if (state === undefined) return;
       this.drawStates.delete(id);
-      this.packet.enqueueSetDraw(id, []);
+      this.mutations.push({ kind: 'setDraw', id, list: [] });
       this.scheduleFrame();
       return;
     }
@@ -189,7 +194,7 @@ export class HayateRenderer implements IRenderer {
   private recordDraw(id: ElementId, state: DrawState): void {
     const canvas = new Canvas();
     invokePainter(state.value, canvas, state.size!);
-    this.packet.enqueueSetDraw(id, canvas.finish());
+    this.mutations.push({ kind: 'setDraw', id, list: [...canvas.finish()] });
     this.scheduleFrame();
   }
 
@@ -199,12 +204,12 @@ export class HayateRenderer implements IRenderer {
     // 共有のスペック生成ディスパッチ（ADR-0008）。Canvas アダプタは enqueue 効果
     // ハンドラだけを埋め、op 種別の分岐はプロトコル側に一度だけ存在する。
     dispatchElementPropertyOp<void>(op, {
-      'text-content': ({ text }) => this.packet.enqueueSetTextContent(id, text),
-      placeholder: ({ text }) => this.packet.enqueueSetText(id, text),
-      src: ({ text }) => this.packet.enqueueSetSrc(id, text),
-      disabled: ({ disabled }) => this.packet.enqueueSetDisabled(id, disabled),
-      'user-select': ({ value }) => this.packet.enqueueSetUserSelect(id, value),
-      multiline: ({ multiline }) => this.packet.enqueueSetMultiline(id, multiline),
+      'text-content': ({ text }) => this.mutations.push({ kind: 'setTextContent', id, text }),
+      placeholder: ({ text }) => this.mutations.push({ kind: 'setText', id, text }),
+      src: ({ text }) => this.mutations.push({ kind: 'setSrc', id, url: text }),
+      disabled: ({ disabled }) => this.mutations.push({ kind: 'setDisabled', id, disabled }),
+      'user-select': ({ value }) => this.mutations.push({ kind: 'setUserSelect', id, value }),
+      multiline: ({ multiline }) => this.mutations.push({ kind: 'setMultiline', id, multiline }),
     });
     this.scheduleFrame();
   }
@@ -228,7 +233,12 @@ export class HayateRenderer implements IRenderer {
 
   /** 順序付きミューテーションパケットを Hayate WASM 境界へ流し込む。 */
   private flush(): void {
-    this.packet.flush(this.raw);
+    if (this.mutations.length === 0) return;
+    const { ops, styles, texts, draws } = encodeMutations(this.mutations);
+    if (ops.length > 0) {
+      this.raw.apply_mutations(ops, styles, texts, draws);
+    }
+    this.mutations.length = 0;
   }
 
   private dispatchDeliveries(rows: unknown[]): void {
@@ -275,7 +285,7 @@ export class HayateRenderer implements IRenderer {
     this.frameHandle = null;
     const [rawFrameId, ...deliveries] = this.raw.prepare_frame(timestampMs);
     if (typeof rawFrameId !== 'number' || !Number.isSafeInteger(rawFrameId)) {
-      this.packet.discard();
+      this.mutations.length = 0;
       throw new TypeError('Hayate prepare_frame returned an invalid frame id');
     }
     try {
@@ -284,7 +294,7 @@ export class HayateRenderer implements IRenderer {
       // より前に同じ packet として境界へ流す（ADR-0151 / #827）。
       this.flush();
     } catch (error) {
-      this.packet.discard();
+      this.mutations.length = 0;
       this.raw.abort_frame(rawFrameId);
       throw error;
     }

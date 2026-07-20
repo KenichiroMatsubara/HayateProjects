@@ -31,7 +31,7 @@ import {
 
 /**
  * HayateRenderer → Hayate WASM 境界へ向けて順序付きでキューされる意味操作1件。
- * パケットがこれらをバッファし、{@link encodeMutations} が低レベルの
+ * HayateRenderer がこれらをバッファし、{@link encodeMutations} が低レベルの
  * op/style/text ワイヤバッファへ変換する（ADR-0052）。
  */
 export type SemanticMutation =

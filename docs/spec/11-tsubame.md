@@ -26,9 +26,9 @@ Hayate との結合点（apply_mutations / poll_events）の wire は §10。
 **備考:** Hayate HTML Mode（§8）とは別概念（Hayate 不関与）。
 
 ### TSUB-04 — Canvas Renderer（apply_mutations を1回/frame）
-**規範文:** Canvas Renderer は JS 内でフレーム分の mutations を `HayateMutationPacket` に積み、frame-clock の tick ごとに `apply_mutations(ops, styles, texts)` を1回呼ぶ。これで JS→WASM 境界を O(1)/frame にする。Canvas Renderer は **host 盲目**のコアであり、構築入力は `{ raw, requestFrame, cancelFrame }` のみ（surface/canvas・resize・IME・pointer・DPR・`ResizeObserver`・RAF 既定は持たない）。frame-clock は host が確立し注入する。構築は副作用なしで、ループは明示 `start()`/`stop()` でのみ駆動する（native は vsync 準備後に開始）。
+**規範文:** HayateRenderer は JS 内でフレーム分の mutations を自身の semantic queue に積み、frame-clock の tick ごとに `apply_mutations(ops, styles, texts)` を1回呼ぶ。これで JS→WASM 境界を O(1)/frame にする。Canvas Renderer は **host 盲目**のコアであり、構築入力は `{ raw, requestFrame, cancelFrame }` のみ（surface/canvas・resize・IME・pointer・DPR・`ResizeObserver`・RAF 既定は持たない）。frame-clock は host が確立し注入する。構築は副作用なしで、ループは明示 `start()`/`stop()` でのみ駆動する（native は vsync 準備後に開始）。
 **出典:** Tsubame ADR-0002, ADR-0003（→§10）, ADR-0004（host-blind コア・clock 注入）
-**状況:** ✅ — `renderer-canvas/src/canvas-renderer.ts`（`CanvasRenderer({ raw, requestFrame, cancelFrame })`・`start()`/`stop()`・`frame()` で flush→`render`→`poll_events`）+ `hayate-mutation-packet.ts`（enqueue→flush）。`HTMLCanvasElement` 型・`canvas` 参照・`ResizeObserver` はコアに不在（#476/#477、ADR-0004）。
+**状況:** ✅ — `renderer-hayate/src/hayate-renderer.ts`（`HayateRenderer({ raw, requestFrame, cancelFrame })`・`start()`/`stop()`・`frame()` で flush→prepare/commit） が自身の semantic queue を所有する。`HTMLCanvasElement` 型・`canvas` 参照・`ResizeObserver` はコアに不在（#476/#477、ADR-0004）。
 **備考:** wire 詳細・検証は §10（PROTO-04〜11）。host bootstrap（surface 取得・WASM ロード・backend 選択・clock 源）は App entry ＋ Hayate `@torimi/hayate-host` が所有（ADR-0004・WEBA-01）。
 
 ### TSUB-05 — adapter は既存ランタイムを持ち込む
