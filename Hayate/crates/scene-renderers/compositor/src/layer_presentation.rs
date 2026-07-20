@@ -190,13 +190,13 @@ impl LayerPresentation {
             });
         }
         for (&layer, geometry) in frame.scroll_geometry {
-            let needs_raster = geometry.content_dirty
+            let needs_content_raster = geometry.content_dirty
                 || self.planner.scroll_layer_needs_raster(
                     layer,
                     geometry.visible_top,
                     geometry.viewport_height,
                 );
-            if needs_raster {
+            if needs_content_raster {
                 let scene = extract_scroll_layer_scene(
                     frame.scene,
                     layer,
