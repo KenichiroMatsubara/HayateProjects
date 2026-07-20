@@ -42,7 +42,7 @@ describe('createBundleDevServer', () => {
   });
 
   it('allows a cross-origin host page to fetch the bundle (CORS)', async () => {
-    // ホストページは別 origin（examples/todo の vite）で動き、fetch でバンドルを取りに来る。
+    // ホストページは別 origin（examples/solid-demo の vite）で動き、fetch でバンドルを取りに来る。
     const res = await fetch(`${origin}${devServerContract.bundleRoute}`);
 
     expect(res.headers.get('access-control-allow-origin')).toBe('*');

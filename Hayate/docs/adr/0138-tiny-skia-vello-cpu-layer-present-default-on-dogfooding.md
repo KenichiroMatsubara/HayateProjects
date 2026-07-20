@@ -20,7 +20,7 @@ tiny-skia は `Cargo.toml` の `default = ["backend-vello", "backend-tiny-skia"]
 Pages にデプロイされる既定ビルドに最初から含まれ、`renderer_selection.rs` の
 `PRODUCTION_RENDERERS`／選好順 `[Vello, TinySkia]` により WebGPU 非対応ブラウザの
 実際のフォールバック先になる。vello_cpu は既定 features には無いが、
-`Tsubame/examples/todo/index.html` の renderer 切替 UI（`auto`/`vello`/`tiny-skia`/
+`Tsubame/examples/solid-demo/index.html` の renderer 切替 UI（`auto`/`vello`/`tiny-skia`/
 `vello-cpu`/`dom` ボタン）から警告表示なしに誰でも一クリックで選べる、デプロイ済みの
 本番導線に既に乗っている。かつレイヤー昇格（`hayate-core::element::tree` の
 `capture_frame_layers`、ADR-0125）は feature flag と無関係に常時動作するため、

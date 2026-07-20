@@ -10,15 +10,15 @@
     "test":       "pnpm -r --filter \"!tsubame-monorepo\" run test",
     "clean":      "pnpm -r --filter \"!tsubame-monorepo\" run clean",
 
-    "dev":        "pnpm --filter @tsubame/example-todo dev",
+    "dev":        "pnpm --filter @tsubame/example-solid-demo dev",
 
     "check:proto":    "pnpm --filter hayate run check:proto && pnpm --filter tsubame-monorepo run check:proto",
 
     "hayate:desktop:run":     "pnpm --filter hayate run hayate:desktop:run",
     "hayate:desktop:build":   "pnpm --filter hayate run hayate:desktop:build",
 
-    "torimi:native:dev":      "pnpm --filter @tsubame/example-todo run torimi:native:dev",
-    "torimi:web:dev":         "pnpm --filter @tsubame/example-todo run torimi:web:dev",
+    "torimi:native:dev":      "pnpm --filter @tsubame/example-solid-demo run torimi:native:dev",
+    "torimi:web:dev":         "pnpm --filter @tsubame/example-solid-demo run torimi:web:dev",
     "torimi:android:install": "pnpm --filter hayate run torimi:android:install",
 
     "changeset":              "changeset",

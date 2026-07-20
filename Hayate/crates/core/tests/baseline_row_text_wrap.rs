@@ -1,5 +1,5 @@
 //! 回帰: `align-items: baseline` の flex 行に置いた `text` 子が、ボックス幅は正しいのに
-//! グリフだけ min-content（1 文字/単語ごと）で折り返す不具合（react-todo のタイトル折れ）。
+//! グリフだけ min-content（1 文字/単語ごと）で折り返す不具合（react-demo のタイトル折れ）。
 //!
 //! 原因: measure クロージャは Taffy のサイズ解決中に何度も呼ばれ、retained text_layout は
 //! 最後の呼び出しのシェイプを保持する（last-wins）。`align-items: baseline` の行では、確定
@@ -18,7 +18,7 @@ use hayate_core::{
 
 static FONT: &[u8] = include_bytes!("../assets/fonts/NotoSansJP.ttf");
 
-/// react-todo のカード冒頭（page=scroll-view > card > title-row）を最小再現し、
+/// react-demo のカード冒頭（page=scroll-view > card > title-row）を最小再現し、
 /// タイトル行の `align-items` を引数にして (title, sub) の行数を返す。
 fn title_row_line_counts(align: AlignValue) -> (Option<usize>, Option<usize>) {
     let mut tree = ElementTree::new();

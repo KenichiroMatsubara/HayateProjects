@@ -83,7 +83,7 @@ test.describe('Torimi host — full reload on source change', () => {
     await page.addInitScript(() => window.localStorage.clear());
   });
 
-  test('examples/todo のソースを編集するとホストが手動リロード無しで再 mount する', async ({
+  test('examples/solid-demo のソースを編集するとホストが手動リロード無しで再 mount する', async ({
     page,
   }) => {
     test.setTimeout(120_000);

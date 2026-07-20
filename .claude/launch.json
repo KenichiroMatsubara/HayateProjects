@@ -4,14 +4,14 @@
     {
       "name": "tsubame-todo",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "@tsubame/example-todo", "exec", "vite", "--port", "5177", "--strictPort"],
+      "runtimeArgs": ["--filter", "@tsubame/example-solid-demo", "exec", "vite", "--port", "5177", "--strictPort"],
       "port": 5177,
       "autoPort": false
     },
     {
       "name": "torimi-host",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "@tsubame/example-react-todo", "exec", "vite", "--port", "5182", "--strictPort"],
+      "runtimeArgs": ["--filter", "@tsubame/example-react-demo", "exec", "vite", "--port", "5182", "--strictPort"],
       "port": 5182,
       "autoPort": false
     },

@@ -1,7 +1,7 @@
-# @tsubame/example-react-todo
+# @tsubame/example-react-demo
 
 `@torimi/tsubame-react`からHayate独自の入力・即時2D描画を使う、スマホ向けの簡易スケッチデモ。
-パッケージ名と配信URLの`react-todo`は互換のため維持している。
+デモ内容をTodoなど特定の題材へ固定しないため、ディレクトリとパッケージ名は中立な`react-demo`とする。
 
 ## MVP
 

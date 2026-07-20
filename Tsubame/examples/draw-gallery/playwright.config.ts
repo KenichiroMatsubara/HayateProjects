@@ -3,7 +3,7 @@ import { defineConfig, devices } from '@playwright/test';
 
 // Claude Code on the web のリモート環境は Chromium を `/opt/pw-browsers/chromium` に
 // 事前配置している（`playwright install` は不可）。その symlink があればそれを使い、
-// 無ければ Playwright 管理のブラウザに委ねる（examples/todo と同じ流儀）。
+// 無ければ Playwright 管理のブラウザに委ねる（examples/solid-demo と同じ流儀）。
 const PREINSTALLED_CHROMIUM = '/opt/pw-browsers/chromium';
 const executablePath = existsSync(PREINSTALLED_CHROMIUM) ? PREINSTALLED_CHROMIUM : undefined;
 

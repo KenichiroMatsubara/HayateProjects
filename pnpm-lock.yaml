@@ -292,7 +292,7 @@ importers:
         specifier: ^3.2.0
         version: 3.2.6(@types/node@22.19.19)(happy-dom@17.6.3)(lightningcss@1.32.0)(yaml@2.9.0)
 
-  Tsubame/examples/react-todo:
+  Tsubame/examples/react-demo:
     dependencies:
       '@torimi/bundle':
         specifier: workspace:*
@@ -347,7 +347,7 @@ importers:
         specifier: ^3.2.0
         version: 3.2.6(@types/node@22.19.19)(happy-dom@17.6.3)(lightningcss@1.32.0)(yaml@2.9.0)
 
-  Tsubame/examples/todo:
+  Tsubame/examples/solid-demo:
     dependencies:
       '@torimi/bundle':
         specifier: workspace:*

@@ -19,8 +19,8 @@ layer-present を実ブラウザで動かせる唯一の場所は、デプロイ
 具体的な変更:
 
 - **既定値**: Web は ON。native は ADR-0135 のまま OFF（変更なし）。
-- **逃げ道トグルは維持**: `Hayate/host/src/index.ts` の `layerPresent` オプション、`Tsubame/examples/todo/src/main.tsx` の `?layerPresent` クエリパラメータ読み取り、`index.html` の「最適化」行によるトグル UI は削除せず残す。デフォルト値だけを反転させ、全面raster版に戻して比較できる経路として使う。
-- **警告UIは撤去**: `Tsubame/examples/todo/index.html` の「⚠️ 実験的機能: 既知の描画バグあり（ADR-0135・非推奨）」という警告色・title/aria-label の注意書きは削除する。既定経路として扱う以上、常時警告を出す必要はない（検証者は本人のみで、既知バグを理解した上での判断であるため）。
+- **逃げ道トグルは維持**: `Hayate/host/src/index.ts` の `layerPresent` オプション、`Tsubame/examples/solid-demo/src/main.tsx` の `?layerPresent` クエリパラメータ読み取り、`index.html` の「最適化」行によるトグル UI は削除せず残す。デフォルト値だけを反転させ、全面raster版に戻して比較できる経路として使う。
+- **警告UIは撤去**: `Tsubame/examples/solid-demo/index.html` の「⚠️ 実験的機能: 既知の描画バグあり（ADR-0135・非推奨）」という警告色・title/aria-label の注意書きは削除する。既定経路として扱う以上、常時警告を出す必要はない（検証者は本人のみで、既知バグを理解した上での判断であるため）。
 
 ## Considered Options
 

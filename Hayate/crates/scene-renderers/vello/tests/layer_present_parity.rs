@@ -125,7 +125,7 @@ fn assert_layered_matches_full(
 }
 
 /// #680 実機回帰の再現構成: 2 要素（優先度セグメントボタン相当）が同一フレームで同時に transition
-/// を開始し、同じ duration（160ms・`Tsubame/examples/todo/src/ui/styles.ts` の `EASE` と同値）で
+/// を開始し、同じ duration（160ms・`Tsubame/examples/solid-demo/src/ui/styles.ts` の `EASE` と同値）で
 /// 同時に終わる。root > [a, b] の横並びで、a は緑→灰、b は灰→緑へ同時に切り替わる。
 fn dual_transition_tree() -> (ElementTree, ElementId, ElementId, ElementId) {
     let mut tree = ElementTree::new();

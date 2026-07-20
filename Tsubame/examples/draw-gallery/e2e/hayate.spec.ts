@@ -3,7 +3,7 @@ import { expect, test, type Page } from '@playwright/test';
 /**
  * Hayate Renderer 経路の e2e（issue #732）。`?renderer=tiny-skia` で同じギャラリーを
  * 起動する。tiny-skia は CPU ラスタライザなので WebGPU の無いヘッドレスでも Canvas
- * モードに入れる（prior art: examples/todo の canvas-a11y-mirror.spec.ts）。同一 painter
+ * モードに入れる（prior art: examples/solid-demo の canvas-a11y-mirror.spec.ts）。同一 painter
  * が Hayate 経路（wire の `draws` チャネル → WASM ラスタライザ）でも `<canvas>` に
  * 描画されることを確認する。両レンダラー間のピクセル一致は要求しない（形状の目視
  * 同等のみ・issue #732）。

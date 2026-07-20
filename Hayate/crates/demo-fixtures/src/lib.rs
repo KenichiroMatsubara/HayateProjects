@@ -99,7 +99,7 @@ pub const PRIO_LABEL: [&str; 4] = ["", "低", "中", "高"];
 /// Delete control glyph used by the todo rows + footer hint. The bundled Canvas
 /// font (NotoSansJP.ttf) must have an outline for it. U+2715 ✕ is absent (Canvas
 /// falls back to `.notdef` / 0 ink), but U+00D7 × renders. Kept in sync with
-/// `Tsubame/examples/todo`.
+/// `Tsubame/examples/solid-demo`.
 pub const DELETE_GLYPH: &str = "×";
 
 /// Imperative [`ElementTree`] builder shared by the demo fixtures. Registers the
@@ -730,7 +730,7 @@ pub fn tasks_tree(renderer_label: &str) -> ElementTree {
     b.tree
 }
 
-/// issue #680 実機回帰の再現構成: 優先度セグメントボタン（`Tsubame/examples/todo/src/components/
+/// issue #680 実機回帰の再現構成: 優先度セグメントボタン（`Tsubame/examples/solid-demo/src/components/
 /// AddForm.tsx` の `seg()`）と同型に、2 要素が同一フレームで同時に transition を開始し、同じ
 /// duration（160ms・`seg()` が使う `EASE` 定数と同値）で同時に終わる。選択されていた方（`a`）が
 /// 非アクティブ色へ、新しく選択された方（`b`）がアクティブ色へ切り替わる。

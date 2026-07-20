@@ -1,12 +1,12 @@
 import { expect, test } from '@playwright/test';
 
 /**
- * Torimi の FW 非依存 e2e（#531 / ADR-0001）。solid（examples/todo）と**同じ FW 非依存ホスト**
+ * Torimi の FW 非依存 e2e（#531 / ADR-0001）。solid（examples/solid-demo）と**同じ FW 非依存ホスト**
  * （host.html / @torimi/host-web）が、HTTP 配信された **react** App Bundle を fetch → eval し、
  * `createHayateWebHost` で canvas 上に host bootstrap を確立してバンドルの mount に渡す。ホスト側に
  * react 固有のコードは一切無く、react は流し込むバンドルが持ち込む。
  *
- * 「Viewer 一本で全 JS フレームワークが動く」ことを、solid のテスト（examples/todo の
+ * 「Viewer 一本で全 JS フレームワークが動く」ことを、solid のテスト（examples/solid-demo の
  * torimi-host.spec）と同型の描画証明で本物の Chromium に対して確かめる。
  */
 

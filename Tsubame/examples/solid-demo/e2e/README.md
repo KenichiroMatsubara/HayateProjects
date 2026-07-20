@@ -8,7 +8,7 @@ AI / 人間が **本物の Chromium** でアプリを起動して挙動を確認
 ## 使い方
 
 ```bash
-# Tsubame/examples/todo で
+# Tsubame/examples/solid-demo で
 pnpm test:e2e            # ヘッドレスで全 spec を実行（vite dev は自動起動）
 pnpm test:e2e -- smoke   # spec を絞る
 pnpm test:e2e:ui         # Playwright UI モード（人間向け・要 GUI）
@@ -57,7 +57,7 @@ WebGPU canvas の画素パリティは `hayate-scene-renderer-vello` の GPU rea
 スモークを止めずに走らせるため、専用の config/script に分離してある）。
 
 ```bash
-# Tsubame/examples/todo で（標準 pkg の再ビルド込み）
+# Tsubame/examples/solid-demo で（標準 pkg の再ビルド込み）
 pnpm test:e2e:layer-present
 ```
 
