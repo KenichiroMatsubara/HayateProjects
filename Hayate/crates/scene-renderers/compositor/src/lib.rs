@@ -33,6 +33,11 @@ pub mod pipeline_cache;
 pub use pipeline_cache::PipelineCacheKey;
 pub mod present;
 pub use present::PresentPlanner;
+pub mod layer_presentation;
+pub use layer_presentation::{
+    LayerPresentation, LayerPresentationAdapter, LayerPresentationError, LayerPresentationFrame,
+    Placement, PlacementPlan, RasterJob, RasterJobKind,
+};
 pub mod raster_thread;
 pub use raster_thread::{RasterCommand, RasterHandoff, RasterHandoffError, RasterThread};
 pub mod scroll_geometry;

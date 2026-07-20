@@ -7,12 +7,12 @@ use hayate_layer_compositor::layer_scene::{
     extract_scroll_chrome_scene, extract_scroll_layer_scene,
 };
 use hayate_layer_compositor::{
-    tunables, CompositeQuad, GpuBudget, LayerCompositor, LayerRasterizer, PresentPlanner,
-    ScrollLayerGeometry,
+    tunables, CompositeQuad, GpuBudget, LayerCompositor, LayerPresentation, LayerPresentationFrame,
+    LayerRasterizer, PresentPlanner, ScrollLayerGeometry,
 };
 use hayate_scene_renderer_tiny_skia::{
     premultiplied_to_straight, TinySkiaCompositeTarget, TinySkiaLayerCompositor,
-    TinySkiaLayerRasterizer, TinySkiaSceneRenderer,
+    TinySkiaLayerPresentationAdapter, TinySkiaLayerRasterizer, TinySkiaSceneRenderer,
 };
 use tiny_skia::Pixmap;
 use wasm_bindgen::prelude::*;
@@ -30,6 +30,8 @@ pub(crate) struct SelectedBackend {
     // per-layer present（#636）。dirty レイヤだけ Pixmap 再 raster し、clean レイヤはキャッシュ面を
     // draw_pixmap 合成する。planner は backend 非依存の台帳（`plan_raster` / 予算）を握る。
     planner: PresentPlanner,
+    /// Shared backend-independent prepare → execute → commit transaction (#872).
+    presentation: LayerPresentation,
     rasterizer: TinySkiaLayerRasterizer,
     chrome_rasterizer: TinySkiaLayerRasterizer,
     compositor: TinySkiaLayerCompositor,
@@ -67,6 +69,7 @@ impl SelectedBackend {
             height,
             content_scale: 1.0,
             planner: PresentPlanner::new(),
+            presentation: LayerPresentation::new(),
             rasterizer: TinySkiaLayerRasterizer::new(width, height, 1.0),
             chrome_rasterizer: TinySkiaLayerRasterizer::new(width, height, 1.0),
             compositor: TinySkiaLayerCompositor::new(1.0),
@@ -119,6 +122,39 @@ impl CanvasBackend for SelectedBackend {
         scroll_geometry: &HashMap<ElementId, ScrollLayerGeometry>,
         clear_color: ClearColor,
     ) -> Result<(), anyhow::Error> {
+        // #872: the shared transaction validates the complete committed frame before tiny-skia
+        // touches Pixmaps, then commits its ledger/LRU only after composite and Canvas blit work
+        // succeeds. Pixmap raster and Canvas-facing composition remain this adapter's concern.
+        let mut adapter = TinySkiaLayerPresentationAdapter {
+            rasterizer: &mut self.rasterizer,
+            chrome_rasterizer: &mut self.chrome_rasterizer,
+            compositor: &mut self.compositor,
+            target: &mut self.pixmap,
+            clear: clear_color,
+        };
+        self.presentation
+            .present(
+                LayerPresentationFrame {
+                    scene,
+                    layers,
+                    layer_raster_bounds,
+                    layer_dirty,
+                    chrome_dirty,
+                    scroll_geometry,
+                },
+                &mut adapter,
+            )
+            .map_err(|error| anyhow::anyhow!("layer presentation: {error:?}"))?;
+        let budget = GpuBudget::from_viewports(
+            self.width,
+            self.height,
+            tunables::GPU_BUDGET_VIEWPORTS_DESKTOP,
+        );
+        self.presentation.enforce_budget(budget, &mut adapter);
+        drop(adapter);
+        return blit_to_canvas(&self.ctx, &self.pixmap, self.width, self.height)
+            .map_err(js_to_anyhow);
+
         let Some(&root) = layers.first() else {
             return Ok(());
         };
@@ -295,6 +331,7 @@ impl CanvasBackend for SelectedBackend {
             self.chrome_rasterizer
                 .resize(self.width, self.height, self.content_scale);
             self.planner.invalidate();
+            self.presentation.invalidate();
             return;
         }
         if let Some(pixmap) = Pixmap::new(width, height) {
@@ -307,6 +344,7 @@ impl CanvasBackend for SelectedBackend {
             self.chrome_rasterizer
                 .resize(width, height, self.content_scale);
             self.planner.invalidate();
+            self.presentation.invalidate();
         }
     }
 }

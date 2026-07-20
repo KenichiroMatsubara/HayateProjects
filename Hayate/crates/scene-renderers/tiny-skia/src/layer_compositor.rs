@@ -15,7 +15,10 @@ use std::collections::HashMap;
 
 use hayate_core::element::id::ElementId;
 use hayate_core::{LayerRasterBounds, SceneGraph};
-use hayate_layer_compositor::{CompositeQuad, LayerCompositor, LayerRasterizer, RasterBand};
+use hayate_layer_compositor::{
+    CompositeQuad, LayerCompositor, LayerPresentationAdapter, LayerRasterizer, PlacementPlan,
+    RasterBand, RasterJob, RasterJobKind,
+};
 use tiny_skia::{Color, FillRule, Mask, PathBuilder, Pixmap, PixmapPaint, Point, Rect, Transform};
 
 use crate::TinySkiaSceneRenderer;
@@ -301,5 +304,68 @@ impl LayerCompositor for TinySkiaLayerCompositor {
             );
         }
         Ok(())
+    }
+}
+
+/// Adapter for the shared `LayerPresentation` transaction. It owns only tiny-skia resources;
+/// planning, frame validation, cache ledger and commit ordering remain backend-independent.
+pub struct TinySkiaLayerPresentationAdapter<'a> {
+    pub rasterizer: &'a mut TinySkiaLayerRasterizer,
+    pub chrome_rasterizer: &'a mut TinySkiaLayerRasterizer,
+    pub compositor: &'a mut TinySkiaLayerCompositor,
+    pub target: &'a mut Pixmap,
+    pub clear: [f32; 4],
+}
+
+impl LayerPresentationAdapter for TinySkiaLayerPresentationAdapter<'_> {
+    type Error = String;
+
+    fn rasterize(&mut self, job: &RasterJob<'_>) -> Result<u64, Self::Error> {
+        let rasterizer = match job.kind {
+            RasterJobKind::Content => &mut *self.rasterizer,
+            RasterJobKind::ScrollChrome => &mut *self.chrome_rasterizer,
+        };
+        match job.bounds {
+            Some(bounds) => {
+                rasterizer.rasterize_with_bounds(job.layer, job.scene, bounds, job.band)?
+            }
+            None => rasterizer.rasterize(job.layer, job.scene, job.band)?,
+        }
+        Ok(rasterizer.texture_bytes(job.layer))
+    }
+
+    fn composite(&mut self, plan: &PlacementPlan) -> Result<(), Self::Error> {
+        let mut quads = Vec::with_capacity(plan.planes.len());
+        for plane in &plan.planes {
+            let texture = match plane.kind {
+                RasterJobKind::Content => self.rasterizer.texture(plane.layer),
+                RasterJobKind::ScrollChrome => self.chrome_rasterizer.texture(plane.layer),
+            };
+            if let Some(texture) = texture {
+                quads.push(CompositeQuad {
+                    layer: plane.layer,
+                    transform: plane.transform,
+                    opacity: 1.0,
+                    clip: plane.clip,
+                    texture,
+                });
+            }
+        }
+        let replacement = Pixmap::new(1, 1).expect("1x1 pixmap");
+        let pixmap = std::mem::replace(self.target, replacement);
+        let mut target = TinySkiaCompositeTarget {
+            pixmap,
+            clear: self.clear,
+        };
+        let result = self.compositor.composite(&mut target, &quads);
+        *self.target = target.pixmap;
+        result
+    }
+
+    fn discard(&mut self, layers: &[ElementId]) {
+        for &layer in layers {
+            self.rasterizer.discard(layer);
+            self.chrome_rasterizer.discard(layer);
+        }
     }
 }
