@@ -362,6 +362,63 @@ fn pointer_intents_keep_canvas_hit_test_and_html_explicit_target_in_parity() {
 }
 
 #[test]
+fn direct_pointer_cancel_intent_uses_the_real_tree_session_and_suppresses_release_click() {
+    // Public intent application is the regression surface: down/move/cancel/up all
+    // go through the same private session and retain the pointer-cancel contract.
+    let (mut tree, button, listener) = {
+        let mut tree = ElementTree::new();
+        let button = tree.element_create(1, ElementKind::Button);
+        tree.set_root(button);
+        tree.set_viewport(100.0, 100.0);
+        tree.element_set_style(
+            button,
+            &[
+                StyleProp::Width(Dimension::px(100.0)),
+                StyleProp::Height(Dimension::px(100.0)),
+            ],
+        );
+        tree.render(0.0);
+        let listener = tree.register_listener(button, DocumentEventKind::Click);
+        (tree, button, listener)
+    };
+
+    for intent in [
+        InteractionIntent::PointerDown {
+            x: 10.0,
+            y: 20.0,
+            modifiers: 0,
+            pointer_kind: PointerKind::Touch,
+            routing: PointerRouting::CanvasHitTest,
+        },
+        InteractionIntent::PointerMove {
+            x: 20.0,
+            y: 30.0,
+            pointer_kind: PointerKind::Touch,
+            routing: PointerRouting::CanvasHitTest,
+        },
+        InteractionIntent::PointerCancel,
+        InteractionIntent::PointerUp {
+            x: 20.0,
+            y: 30.0,
+            pointer_kind: PointerKind::Touch,
+            routing: PointerRouting::HtmlExplicitTarget(Some(button)),
+        },
+    ] {
+        assert_ne!(
+            tree.apply_interaction_intent(intent),
+            InteractionResult::Ignored
+        );
+    }
+
+    assert!(
+        tree.poll_deliveries()
+            .into_iter()
+            .all(|delivery| delivery.listener_id != listener),
+        "a cancelled press must not release a click through the real ElementTree session"
+    );
+}
+
+#[test]
 fn coordinates_only_pointer_move_returns_a_closed_result_without_hit_testing() {
     let mut tree = ElementTree::new();
 

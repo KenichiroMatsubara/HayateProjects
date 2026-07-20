@@ -336,7 +336,7 @@ impl ElementTree {
     /// 進行中の preedit を確定し、text-input の内容を `value` で置換し、`TextInput`
     /// イベントをキューしてアプリのリスナーが通常の編集と同様に観測できるようにする。
     /// `text-input` 以外の対象では何もせず、表示値が変わらない場合も無音。`apply_intent`
-    /// の `SetValue` arm が `InteractionTreeView::apply_set_value` 越しに呼ぶ実体（#575）。
+    /// の `SetValue` arm が private interaction session から呼ぶ実体（#575）。
     pub(crate) fn apply_semantic_set_value(&mut self, target: ElementId, value: &str) {
         let el = match self.elements.get_mut(&target) {
             Some(e) if e.kind == ElementKind::TextInput => e,
