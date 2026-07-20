@@ -4,6 +4,8 @@
 
 **Date: 2026-06-30**
 
+> 2026-07-20: Android の Choreographer 駆動、wake coalescing、overload 時の latest-wins handoff は ADR-0154 で accepted decision として確定した。
+
 ## Context
 
 ADR-0117 は App Host のフレームループを **`tick(timestamp_ms)` ＋ 構築時注入の `request_redraw()`** で定義し、**pending（進行中 transition / カーソル点滅 / スクロール物理 = `visual_dirty`）が無ければ idle に落ちる**（毎フレーム回し続けない）on-demand モデルを規定している。wake 源は三つ（継続・入力到着・非同期 signal 変化）で、入口は `request_redraw()` の一つ。
@@ -40,3 +42,4 @@ ADR-0117 は App Host のフレームループを **`tick(timestamp_ms)` ＋ 構
 - **enforces** ADR-0117（App Host boot seam: tick / request_redraw / idle）。
 - ADR-0125 のロールアウト Phase 0。
 - ADR-0080（入力 ingress は Platform Adapter 所有 = 入力 wake の出所）。
+- ADR-0154（Android Latest-Wins Frame Scheduling）が本ADRのAndroid schedulingを具体化する。

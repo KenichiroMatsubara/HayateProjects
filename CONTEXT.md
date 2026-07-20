@@ -222,8 +222,12 @@ _Avoid_: 物理演算と混同する理解、slop 値を core 固定にする設
 _Avoid_: 物理を Platform Adapter が所有する設計（ADR-0046 を supersede）、定数差だけで両 OS を表す理解（アルゴリズム自体が別）、起動時 form-factor 固定、Scroll Gesture（意図分類）との混同
 
 **Z-Order**:
-React Native 方式の描画順序制御。同一 parent 内の兄弟間でのみ有効で、デフォルトは document order（後勝ち）、`z-index` で上書きする。CSS stacking context は持たない。
-_Avoid_: NodeKind::Layer、グローバル z-index 順序
+React Native 方式の描画順序制御。同一 parent 内の兄弟間でのみ有効で、デフォルトは document order（後勝ち）、`z-index` で上書きし、Element Document Runtime が retained `Paint Order` として解決する。CSS stacking context は持たない。
+_Avoid_: NodeKind::Layer、グローバル z-index 順序、consumer ごとの再ソート
+
+**Paint Order（描画順）**:
+Element Document Runtime が同一 parent の document order と effective `z-index` から確定する canonical child order。描画は正順、hit-test は逆順で消費し、HTML・accessibility の document order とは分ける。
+_Avoid_: document order との同一視、frame ごとの clone + sort、SceneGraph 側の第二の正本
 
 **Transform Group**:
 Scene Graph の Node 種別の一つ。affine 変換行列を保持し子 Node 群に GPU 側で適用する。layout 再計算なしにサブツリー全体を変換でき、アニメーションの基盤となる。
