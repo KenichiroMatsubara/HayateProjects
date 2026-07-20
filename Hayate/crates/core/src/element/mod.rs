@@ -53,7 +53,8 @@ pub use ime_reconcile::{
     apply_ime_action, translate_text_input, ImeAction, TextInputState, TextSpan,
 };
 pub use interaction::{
-    InputModality, Interaction, InteractionIntent, InteractionTreeView, PointerMoveResult,
+    InputModality, Interaction, InteractionIntent, InteractionResult, InteractionTreeView,
+    PointerMoveResult, PointerRouting,
 };
 pub use kind::ElementKind;
 pub use layout_pass::LayoutPass;

@@ -19,7 +19,8 @@ use hayate_core::render_scale::tunables::FRAME_BUDGET_60HZ_MS;
 use hayate_core::{
     effective_content_scale, BorderStyleValue, Color, CommittedFrame, CursorValue,
     DocumentEventKind, EditIntent, ElementId, ElementTree, FontFetcher, FontStyleValue,
-    PointerKind, RenderImage, RenderScaleDriver, StyleProp, TextDecorationValue,
+    InteractionIntent, InteractionResult, PointerKind, PointerRouting, RenderImage,
+    RenderScaleDriver, StyleProp, TextDecorationValue,
 };
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
@@ -754,16 +755,40 @@ impl HayateElementRenderer {
     }
 
     pub fn on_pointer_down(&mut self, x: f32, y: f32) {
-        self.tree.on_pointer_down(x, y);
+        let _ = self
+            .tree
+            .apply_interaction_intent(InteractionIntent::PointerDown {
+                x,
+                y,
+                modifiers: 0,
+                pointer_kind: PointerKind::Mouse,
+                routing: PointerRouting::CanvasHitTest,
+            });
     }
 
     pub fn on_pointer_up(&mut self, x: f32, y: f32) {
-        self.tree.on_pointer_up(x, y);
+        let _ = self
+            .tree
+            .apply_interaction_intent(InteractionIntent::PointerUp {
+                x,
+                y,
+                pointer_kind: PointerKind::Mouse,
+                routing: PointerRouting::CanvasHitTest,
+            });
     }
 
     pub fn on_pointer_move(&mut self, x: f32, y: f32) {
-        let result = self.tree.on_pointer_move(x, y);
-        apply_resolved_cursor(&self.canvas, result.resolved_cursor);
+        if let InteractionResult::PointerMove(result) =
+            self.tree
+                .apply_interaction_intent(InteractionIntent::PointerMove {
+                    x,
+                    y,
+                    pointer_kind: PointerKind::Mouse,
+                    routing: PointerRouting::CanvasHitTest,
+                })
+        {
+            apply_resolved_cursor(&self.canvas, result.resolved_cursor);
+        }
     }
 
     pub fn on_wheel(&mut self, x: f32, y: f32, delta_x: f32, delta_y: f32) {
@@ -799,7 +824,15 @@ impl HayateElementRenderer {
             .pending_pointer_down
             .take()
             .expect("pending press checked above");
-        self.tree.on_pointer_down_with_kind(x, y, modifiers, kind);
+        let _ = self
+            .tree
+            .apply_interaction_intent(InteractionIntent::PointerDown {
+                x,
+                y,
+                modifiers,
+                pointer_kind: kind,
+                routing: PointerRouting::CanvasHitTest,
+            });
         true
     }
 
@@ -829,7 +862,15 @@ impl HayateElementRenderer {
                     }
                 }
                 if !deferred {
-                    self.tree.on_pointer_down_with_kind(x, y, modifiers, kind);
+                    let _ = self
+                        .tree
+                        .apply_interaction_intent(InteractionIntent::PointerDown {
+                            x,
+                            y,
+                            modifiers,
+                            pointer_kind: kind,
+                            routing: PointerRouting::CanvasHitTest,
+                        });
                 }
             }
             PointerInput::Move { x, y, kind } => {
@@ -854,8 +895,17 @@ impl HayateElementRenderer {
                     }
                     self.scroll_gesture = Some(gesture);
                 } else {
-                    let result = self.tree.on_pointer_move_with_kind(x, y, kind);
-                    apply_resolved_cursor(&self.canvas, result.resolved_cursor);
+                    if let InteractionResult::PointerMove(result) = self
+                        .tree
+                        .apply_interaction_intent(InteractionIntent::PointerMove {
+                            x,
+                            y,
+                            pointer_kind: kind,
+                            routing: PointerRouting::CanvasHitTest,
+                        })
+                    {
+                        apply_resolved_cursor(&self.canvas, result.resolved_cursor);
+                    }
                 }
             }
             PointerInput::Up { x, y, kind } => {
@@ -871,10 +921,24 @@ impl HayateElementRenderer {
                         if let Some((down_x, down_y, modifiers, down_kind, _)) =
                             self.pending_pointer_down.take()
                         {
-                            self.tree
-                                .on_pointer_down_with_kind(down_x, down_y, modifiers, down_kind);
+                            let _ = self.tree.apply_interaction_intent(
+                                InteractionIntent::PointerDown {
+                                    x: down_x,
+                                    y: down_y,
+                                    modifiers,
+                                    pointer_kind: down_kind,
+                                    routing: PointerRouting::CanvasHitTest,
+                                },
+                            );
                         }
-                        self.tree.on_pointer_up_with_kind(x, y, kind);
+                        let _ = self
+                            .tree
+                            .apply_interaction_intent(InteractionIntent::PointerUp {
+                                x,
+                                y,
+                                pointer_kind: kind,
+                                routing: PointerRouting::CanvasHitTest,
+                            });
                     }
                 }
             }

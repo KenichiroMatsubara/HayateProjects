@@ -34,6 +34,27 @@ pub struct PointerMoveResult {
     pub resolved_cursor: CursorValue,
 }
 
+/// ポインタ座標を target へ解決する policy。platform-facing wrapper は物理入力とこの値を
+/// 組み立てるだけで、hit-test や release target の解決を別経路で行わない。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PointerRouting {
+    /// Canvas のレイアウト済み ElementTree に対して hit-test する。
+    CanvasHitTest,
+    /// HTML の `event.target` から得た target。`None` は所属しない DOM target を表す。
+    HtmlExplicitTarget(Option<ElementId>),
+    /// target を解決せず、座標だけを document event stream へ流す。
+    CoordinatesOnly,
+}
+
+/// [`InteractionIntent`] の閉じた適用結果。adapter は `Consumed` / `Ignored` を解釈し、
+/// pointer-move だけは cursor projection を含む [`PointerMoveResult`] を受け取る。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum InteractionResult {
+    Consumed,
+    Ignored,
+    PointerMove(PointerMoveResult),
+}
+
 /// 直近の入力イベントのモダリティ（ADR-0102）。Chromium の `:focus-visible`
 /// ヒューリスティクは最後の操作を基準にする。キーボード操作は次の focus を
 /// リング対象にし、ポインタ操作は不要なウィジェット（例: ボタン）でリングを
@@ -70,13 +91,29 @@ pub enum InteractionIntent {
     /// canvas `(x, y)` での pointer-down（#572）。スクロールバー／ツールバー／ハンドル
     /// 押下の消費判定、hit-test 駆動の active/focus 遷移、drag-mode 分類（selection /
     /// edit / scrollbar thumb の排他）をこの単一 seam に通す。
-    PointerDown { x: f32, y: f32, modifiers: u32 },
+    PointerDown {
+        x: f32,
+        y: f32,
+        modifiers: u32,
+        pointer_kind: PointerKind,
+        routing: PointerRouting,
+    },
     /// pointer-up（#572）。`explicit_target` は active セッションが無いときの HTML
     /// フォールバック。生きた押下があればリリースで Click を確定する（ADR-0082）。
-    PointerUp { explicit_target: Option<ElementId> },
+    PointerUp {
+        x: f32,
+        y: f32,
+        pointer_kind: PointerKind,
+        routing: PointerRouting,
+    },
     /// canvas `(x, y)` での pointer-move（#572）。hover/cursor 更新と進行中ドラッグの
     /// 駆動を通す。`on_pointer_move` 側で 1px dedup 済み。
-    PointerMove { x: f32, y: f32 },
+    PointerMove {
+        x: f32,
+        y: f32,
+        pointer_kind: PointerKind,
+        routing: PointerRouting,
+    },
     /// pointer-cancel（タッチ中断／キャプチャ喪失、#572）。active な押下を解除して
     /// 以降のリリースで Click を発火させない。
     PointerCancel,
@@ -236,11 +273,11 @@ impl Interaction {
         &mut self,
         view: &mut dyn InteractionTreeView,
         intent: InteractionIntent,
-    ) -> bool {
+    ) -> InteractionResult {
         match intent {
             InteractionIntent::Focus(id) => {
                 self.transition_focus(view, id);
-                true
+                InteractionResult::Consumed
             }
             InteractionIntent::Click { target, x, y } => {
                 view.emit_event(Event::Click {
@@ -248,31 +285,37 @@ impl Interaction {
                     x,
                     y,
                 });
-                true
+                InteractionResult::Consumed
             }
-            InteractionIntent::Edit { target, intent } => view.apply_edit(target, intent),
-            InteractionIntent::PointerUp { explicit_target } => {
-                self.pointer_up(view, explicit_target);
-                true
+            InteractionIntent::Edit { target, intent } => {
+                if view.apply_edit(target, intent) {
+                    InteractionResult::Consumed
+                } else {
+                    InteractionResult::Ignored
+                }
+            }
+            InteractionIntent::PointerUp { .. } => {
+                debug_assert!(false, "pointer up is dispatched by ElementTree");
+                InteractionResult::Ignored
             }
             InteractionIntent::PointerCancel => {
                 self.pointer_cancel(view);
-                true
+                InteractionResult::Consumed
             }
             InteractionIntent::SetValue { target, value } => {
                 view.apply_set_value(target, &value);
-                true
+                InteractionResult::Consumed
             }
             InteractionIntent::ScrollToReveal { target } => {
                 view.scroll_to_reveal(target);
-                true
+                InteractionResult::Consumed
             }
             // pointer-down / -move の重い hit-test / hover / begin パイプラインは
             // `ElementTree` の dispatch が直接走らせる（`apply_interaction_intent` が
             // mem-take せず分岐するので self.interaction を直読みできる）。ここへは届かない。
             InteractionIntent::PointerDown { .. } | InteractionIntent::PointerMove { .. } => {
-                debug_assert!(false, "pointer down/move are dispatched without mem-take");
-                false
+                debug_assert!(false, "pointer input is dispatched by ElementTree");
+                InteractionResult::Ignored
             }
         }
     }
@@ -486,25 +529,25 @@ impl ElementTree {
     /// (`last_pointer_kind`)。選択／active 挙動は
     /// [`on_pointer_down_with`](Self::on_pointer_down_with) と同一。
     pub fn on_pointer_down_with_kind(&mut self, x: f32, y: f32, modifiers: u32, kind: PointerKind) {
-        self.interaction.last_pointer_kind = kind;
-        self.on_pointer_down_with(x, y, modifiers);
+        let _ = self.apply_interaction_intent(InteractionIntent::PointerDown {
+            x,
+            y,
+            modifiers,
+            pointer_kind: kind,
+            routing: PointerRouting::CanvasHitTest,
+        });
     }
 
     /// キーボード修飾を伴うポインタダウン（ADR-0097）。Shift は新規選択を始めず
     /// 現在の選択の focus を拡張する。
     pub fn on_pointer_down_with(&mut self, x: f32, y: f32, modifiers: u32) {
-        // 新規押下は惰性中のフリック／スプリングバックを中断し、コンテンツを即座に
-        // 掴めるようにする（ADR-0082）。慣性は Core が所有するのでここで止める
-        // （旧: Platform Adapter 側で個別にクリアしていた）。
-        self.interaction.scroll_momentum = None;
-        // pointer-down を単一 seam（`InteractionIntent::PointerDown`）に通す（#572）。
-        self.apply_interaction_intent(InteractionIntent::PointerDown { x, y, modifiers });
+        self.on_pointer_down_with_kind(x, y, modifiers, self.interaction.last_pointer_kind);
     }
 
     /// pointer-down の hit-test／消費判定／begin パイプライン本体（#572）。
     /// `apply_interaction_intent` が mem-take せず直接呼ぶので、`self.interaction.
     /// pointer_gesture` 等を直読みでき、挙動は移行前と同一。
-    fn dispatch_pointer_down(&mut self, x: f32, y: f32, modifiers: u32) {
+    fn dispatch_canvas_pointer_down(&mut self, x: f32, y: f32, modifiers: u32) {
         // Mouse/Pen スクロールバー（サム／トラック）上の押下はそれを操作して
         // ジェスチャを消費する。オーバーレイ chrome はコンテンツの上にあるため、
         // その押下がコンテンツの選択／focus に届くことはない（ADR-0110）。
@@ -558,7 +601,13 @@ impl ElementTree {
 
     /// 明示ターゲットへのポインタダウン（HTML Mode）。
     pub fn on_pointer_down_on(&mut self, target: ElementId, x: f32, y: f32) {
-        self.pointer_down_on_target(Some(target), x, y);
+        let _ = self.apply_interaction_intent(InteractionIntent::PointerDown {
+            x,
+            y,
+            modifiers: 0,
+            pointer_kind: self.interaction.last_pointer_kind,
+            routing: PointerRouting::HtmlExplicitTarget(Some(target)),
+        });
     }
 
     fn pointer_down_on_target(&mut self, target: Option<ElementId>, x: f32, y: f32) {
@@ -592,29 +641,36 @@ impl ElementTree {
 
     /// ポインタアップ。`explicit_target` は active セッションが無いときだけ使う。
     pub fn on_pointer_up(&mut self, x: f32, y: f32) {
-        let fallback = self.hit_test(x, y);
-        self.pointer_up_with_fallback(fallback, x, y);
-        self.interaction.pointer_gesture.end_drag();
+        let _ = self.apply_interaction_intent(InteractionIntent::PointerUp {
+            x,
+            y,
+            pointer_kind: self.interaction.last_pointer_kind,
+            routing: PointerRouting::CanvasHitTest,
+        });
     }
 
     /// 物理 [`PointerKind`] を伴うポインタアップ。操作ごとに保持する。リリース挙動
     /// は [`on_pointer_up`](Self::on_pointer_up) と同一。
     pub fn on_pointer_up_with_kind(&mut self, x: f32, y: f32, kind: PointerKind) {
-        self.interaction.last_pointer_kind = kind;
-        self.on_pointer_up(x, y);
+        let _ = self.apply_interaction_intent(InteractionIntent::PointerUp {
+            x,
+            y,
+            pointer_kind: kind,
+            routing: PointerRouting::CanvasHitTest,
+        });
     }
 
     /// 明示フォールバックターゲットを伴うポインタアップ（HTML Mode）。
-    pub fn on_pointer_up_on(&mut self, explicit_target: Option<ElementId>) {
-        let (x, y) = self
-            .interaction
-            .last_pointer_pos
-            .or(self.interaction.active_press_pos)
-            .unwrap_or((0.0, 0.0));
-        self.pointer_up_with_fallback(explicit_target, x, y);
+    pub fn on_pointer_up_on(&mut self, explicit_target: Option<ElementId>, x: f32, y: f32) {
+        let _ = self.apply_interaction_intent(InteractionIntent::PointerUp {
+            x,
+            y,
+            pointer_kind: self.interaction.last_pointer_kind,
+            routing: PointerRouting::HtmlExplicitTarget(explicit_target),
+        });
     }
 
-    fn pointer_up_with_fallback(&mut self, explicit_target: Option<ElementId>, x: f32, y: f32) {
+    fn dispatch_pointer_up(&mut self, explicit_target: Option<ElementId>, x: f32, y: f32) {
         if let Some(target_id) = self.interaction.active_element.or(explicit_target) {
             self.emit_interaction(Event::PointerUp {
                 target_id,
@@ -624,8 +680,18 @@ impl ElementTree {
             });
         }
         // リリース確定（click-on-release・active 解除）は `Interaction` の状態機械が
-        // 所有し、単一 seam（`InteractionIntent::PointerUp`）に通す（ADR-0082 / #572）。
-        self.apply_interaction_intent(InteractionIntent::PointerUp { explicit_target });
+        // 所有する。pointer input envelope の routing 解決はこの呼び出し元だけが行う。
+        let focused = self.interaction.focused_element;
+        let mut interaction = std::mem::replace(
+            &mut self.interaction,
+            Interaction {
+                focused_element: focused,
+                ..Interaction::default()
+            },
+        );
+        interaction.pointer_up(self, explicit_target);
+        self.interaction = interaction;
+        self.interaction.pointer_gesture.end_drag();
     }
 
     /// ポインタキャンセル（タッチ中断／ポインタキャプチャ喪失）。座標非依存で、
@@ -650,36 +716,22 @@ impl ElementTree {
         y: f32,
         kind: PointerKind,
     ) -> PointerMoveResult {
-        self.interaction.last_pointer_kind = kind;
-        self.on_pointer_move(x, y)
+        match self.apply_interaction_intent(InteractionIntent::PointerMove {
+            x,
+            y,
+            pointer_kind: kind,
+            routing: PointerRouting::CanvasHitTest,
+        }) {
+            InteractionResult::PointerMove(result) => result,
+            _ => unreachable!("pointer move always returns a PointerMoveResult"),
+        }
     }
 
     /// レイアウトガードと 1px dedup 付きのポインタムーブ。合流時 `moved` は false。
     /// `resolved_cursor` はポインタ下の要素から解決したカーソル（ADR-0088）で、
     /// 合流した移動では不変のまま持ち越す。
     pub fn on_pointer_move(&mut self, x: f32, y: f32) -> PointerMoveResult {
-        if !self.has_layout() {
-            return PointerMoveResult {
-                moved: false,
-                resolved_cursor: self.interaction.last_cursor,
-            };
-        }
-        if let Some((lx, ly)) = self.interaction.last_pointer_pos {
-            if (x - lx).abs() < POINTER_MOVE_DEDUP_PX && (y - ly).abs() < POINTER_MOVE_DEDUP_PX {
-                return PointerMoveResult {
-                    moved: false,
-                    resolved_cursor: self.interaction.last_cursor,
-                };
-            }
-        }
-        self.interaction.last_pointer_pos = Some((x, y));
-        // dedup を抜けた実移動だけを単一 seam（`InteractionIntent::PointerMove`）に
-        // 通す。hover/cursor 更新と進行中ドラッグの駆動はその裏で行う（#572）。
-        self.apply_interaction_intent(InteractionIntent::PointerMove { x, y });
-        PointerMoveResult {
-            moved: true,
-            resolved_cursor: self.interaction.last_cursor,
-        }
+        self.on_pointer_move_with_kind(x, y, self.interaction.last_pointer_kind)
     }
 
     /// pointer-move の本体（#572）：`PointerMove` ワイヤイベント送出・hover/cursor の
@@ -705,6 +757,47 @@ impl ElementTree {
         let resolved_cursor = self.resolve_cursor(hit);
         self.interaction.last_cursor = resolved_cursor;
         self.drive_active_drag(x, y);
+    }
+
+    fn dispatch_coordinates_pointer_move(&mut self, x: f32, y: f32) {
+        self.push_event(Event::PointerMove {
+            x,
+            y,
+            pointer_kind: self.interaction.last_pointer_kind,
+        });
+    }
+
+    fn dispatch_pointer_move_with_routing(
+        &mut self,
+        x: f32,
+        y: f32,
+        routing: PointerRouting,
+    ) -> PointerMoveResult {
+        if matches!(routing, PointerRouting::CanvasHitTest) && !self.has_layout() {
+            return PointerMoveResult {
+                moved: false,
+                resolved_cursor: self.interaction.last_cursor,
+            };
+        }
+        if let Some((lx, ly)) = self.interaction.last_pointer_pos {
+            if (x - lx).abs() < POINTER_MOVE_DEDUP_PX && (y - ly).abs() < POINTER_MOVE_DEDUP_PX {
+                return PointerMoveResult {
+                    moved: false,
+                    resolved_cursor: self.interaction.last_cursor,
+                };
+            }
+        }
+        self.interaction.last_pointer_pos = Some((x, y));
+        match routing {
+            PointerRouting::CanvasHitTest => self.dispatch_pointer_move(x, y),
+            PointerRouting::HtmlExplicitTarget(_) | PointerRouting::CoordinatesOnly => {
+                self.dispatch_coordinates_pointer_move(x, y)
+            }
+        }
+        PointerMoveResult {
+            moved: true,
+            resolved_cursor: self.interaction.last_cursor,
+        }
     }
 
     /// 進行中ドラッグの駆動を `Interaction::drive_active_drag` へ委譲する橋（#572）。
@@ -773,18 +866,15 @@ impl ElementTree {
     /// ターゲットなしのポインタムーブ（ヒットテスト hover を伴わない HTML Mode
     /// 座標ストリーム）。
     pub fn on_pointer_move_coords(&mut self, x: f32, y: f32) -> bool {
-        if let Some((lx, ly)) = self.interaction.last_pointer_pos {
-            if (x - lx).abs() < POINTER_MOVE_DEDUP_PX && (y - ly).abs() < POINTER_MOVE_DEDUP_PX {
-                return false;
-            }
-        }
-        self.interaction.last_pointer_pos = Some((x, y));
-        self.push_event(Event::PointerMove {
-            x,
-            y,
-            pointer_kind: self.interaction.last_pointer_kind,
-        });
-        true
+        matches!(
+            self.apply_interaction_intent(InteractionIntent::PointerMove {
+                x,
+                y,
+                pointer_kind: self.interaction.last_pointer_kind,
+                routing: PointerRouting::CoordinatesOnly,
+            }),
+            InteractionResult::PointerMove(PointerMoveResult { moved: true, .. })
+        )
     }
 
     /// ポインタが surface を離れた（座標非依存）。hover 集合全体をクリアし
@@ -2221,39 +2311,71 @@ impl ElementTree {
     /// [`InteractionIntent`] を `Interaction` deep module に適用する単一の橋
     /// （ADR-0122）。`Interaction` を一時的に取り出すことで、残りの `ElementTree`
     /// を [`InteractionTreeView`] として排他借用できる（単一書き手・aliasing なし）。
-    pub(crate) fn apply_interaction_intent(&mut self, intent: InteractionIntent) -> bool {
-        // pointer-down / -move は hit-test・hover・begin パイプラインが
-        // `self.interaction.pointer_gesture` 等を直読み／直書きするので、mem-take した
-        // placeholder では壊れる。これらは tree dispatch を直接走らせて seam を通す
-        // （intent 封筒が 2-producer の seam 値。#572）。
-        match &intent {
-            InteractionIntent::PointerDown { x, y, modifiers } => {
-                let (x, y, modifiers) = (*x, *y, *modifiers);
-                self.dispatch_pointer_down(x, y, modifiers);
-                return true;
+    pub fn apply_interaction_intent(&mut self, intent: InteractionIntent) -> InteractionResult {
+        // pointer state は intent が運ぶ物理入力からここでだけ更新する。platform wrapper は
+        // hit-test・last-pointer-kind・release target を別に解決せず、intent construction と
+        // result projection に留まる（#873）。
+        match intent {
+            InteractionIntent::PointerDown {
+                x,
+                y,
+                modifiers,
+                pointer_kind,
+                routing,
+            } => {
+                self.interaction.last_pointer_kind = pointer_kind;
+                self.interaction.scroll_momentum = None;
+                match routing {
+                    PointerRouting::CanvasHitTest => {
+                        self.dispatch_canvas_pointer_down(x, y, modifiers)
+                    }
+                    PointerRouting::HtmlExplicitTarget(target) => {
+                        self.pointer_down_on_target(target, x, y)
+                    }
+                    PointerRouting::CoordinatesOnly => self.pointer_down_on_target(None, x, y),
+                }
+                return InteractionResult::Consumed;
             }
-            InteractionIntent::PointerMove { x, y } => {
-                let (x, y) = (*x, *y);
-                self.dispatch_pointer_move(x, y);
-                return true;
+            InteractionIntent::PointerUp {
+                x,
+                y,
+                pointer_kind,
+                routing,
+            } => {
+                self.interaction.last_pointer_kind = pointer_kind;
+                let explicit_target = match routing {
+                    PointerRouting::CanvasHitTest => self.hit_test(x, y),
+                    PointerRouting::HtmlExplicitTarget(target) => target,
+                    PointerRouting::CoordinatesOnly => None,
+                };
+                self.dispatch_pointer_up(explicit_target, x, y);
+                return InteractionResult::Consumed;
             }
-            _ => {}
+            InteractionIntent::PointerMove {
+                x,
+                y,
+                pointer_kind,
+                routing,
+            } => {
+                self.interaction.last_pointer_kind = pointer_kind;
+                return InteractionResult::PointerMove(
+                    self.dispatch_pointer_move_with_routing(x, y, routing),
+                );
+            }
+            intent => {
+                let focused = self.interaction.focused_element;
+                let mut interaction = std::mem::replace(
+                    &mut self.interaction,
+                    Interaction {
+                        focused_element: focused,
+                        ..Interaction::default()
+                    },
+                );
+                let result = interaction.apply_intent(self, intent);
+                self.interaction = interaction;
+                return result;
+            }
         }
-        // `Interaction` を一時取り出して残りの tree を排他借用する（単一書き手）。
-        // ただし seam の裏で走る tree 側ロジック（`Edit` arm 越しの `edit_selection_owner`
-        // 等が現在 focus 中 text-input を解決する）が focus を読むため、placeholder にも
-        // 引き継ぎ、apply 中も正しい focus を観測できるようにする。
-        let focused = self.interaction.focused_element;
-        let mut interaction = std::mem::replace(
-            &mut self.interaction,
-            Interaction {
-                focused_element: focused,
-                ..Interaction::default()
-            },
-        );
-        let consumed = interaction.apply_intent(self, intent);
-        self.interaction = interaction;
-        consumed
     }
 
     /// 単一 text-input の編集選択をキャレットへ畳み、実際に範囲を持っていたときだけ
@@ -2660,7 +2782,11 @@ mod seam_tests {
         let consumed =
             interaction.apply_intent(&mut view, InteractionIntent::Edit { target, intent });
 
-        assert!(consumed, "apply_edit が true を返せば intent も消費扱い");
+        assert_eq!(
+            consumed,
+            InteractionResult::Consumed,
+            "apply_edit が true を返せば intent も消費扱い"
+        );
         assert_eq!(
             view.edits,
             vec![(target, intent)],
@@ -2690,7 +2816,11 @@ mod seam_tests {
             },
         );
 
-        assert!(!consumed, "apply_edit が false なら未消費");
+        assert_eq!(
+            consumed,
+            InteractionResult::Ignored,
+            "apply_edit が false なら未消費"
+        );
     }
 
     // --- #572: pointer 状態機械（click-on-release / pointer-cancel / drag-mode）---
@@ -2705,12 +2835,7 @@ mod seam_tests {
         interaction.active_element = Some(t);
         interaction.active_press_pos = Some((3.0, 4.0));
 
-        interaction.apply_intent(
-            &mut view,
-            InteractionIntent::PointerUp {
-                explicit_target: None,
-            },
-        );
+        interaction.pointer_up(&mut view, None);
 
         assert!(
             matches!(
@@ -2730,12 +2855,7 @@ mod seam_tests {
         let mut interaction = Interaction::default();
         let mut view = FakeView::default();
 
-        interaction.apply_intent(
-            &mut view,
-            InteractionIntent::PointerUp {
-                explicit_target: None,
-            },
-        );
+        interaction.pointer_up(&mut view, None);
 
         assert!(
             view.events.is_empty(),
@@ -2752,12 +2872,7 @@ mod seam_tests {
         let mut view = FakeView::default();
         let t = id(9);
 
-        interaction.apply_intent(
-            &mut view,
-            InteractionIntent::PointerUp {
-                explicit_target: Some(t),
-            },
-        );
+        interaction.pointer_up(&mut view, Some(t));
 
         assert!(
             matches!(view.events.as_slice(), [Event::ActiveEnd { target_id }] if *target_id == t),
@@ -2789,12 +2904,7 @@ mod seam_tests {
         );
 
         view.events.clear();
-        interaction.apply_intent(
-            &mut view,
-            InteractionIntent::PointerUp {
-                explicit_target: None,
-            },
-        );
+        interaction.pointer_up(&mut view, None);
         assert!(
             view.events.is_empty(),
             "a cancelled press fires no click on release, got {:?}",
@@ -2930,7 +3040,7 @@ mod seam_tests {
             },
         );
 
-        assert!(consumed);
+        assert_eq!(consumed, InteractionResult::Consumed);
         assert_eq!(view.set_values, vec![(target, "hello".to_string())]);
     }
 
@@ -2945,7 +3055,7 @@ mod seam_tests {
         let consumed =
             interaction.apply_intent(&mut view, InteractionIntent::ScrollToReveal { target });
 
-        assert!(consumed);
+        assert_eq!(consumed, InteractionResult::Consumed);
         assert_eq!(view.reveals, vec![target]);
     }
 }

@@ -78,13 +78,13 @@ pub use element::{
     DisplayValue, DocumentEventKind, EditIntent, EditState, ElementId, ElementKind, ElementTree,
     Event, EventDelivery, FlexDirectionValue, FlexWrapValue, FontFetcher, FontStyleValue,
     Granularity, GridAutoFlowValue, GridLineValue, GridPlacementValue, ImeAction, ImeBridge,
-    ImeBuffer, ImeCommand, ImePresentation, InputModality, JustifyItemsValue, JustifySelfValue,
-    JustifyValue, LayoutPass, ListenerId, OverflowMenu, OverflowValue, PointerKind,
-    PointerMoveResult, PositionValue, Preedit, PseudoState, ResolvedElement, Selection,
-    SelectionChromeStyle, SelectionHandle, SelectionHandleEnd, SelectionHandles, SelectionPoint,
-    SelectionToolbar, Shadow, StyleProp, StylePropKind, TextDecorationValue, TextOverflowValue,
-    ToolbarAction, ToolbarButton, ToolbarHit, ToolbarRect, TransitionTimingValue, UserSelectValue,
-    ViewportCondition,
+    ImeBuffer, ImeCommand, ImePresentation, InputModality, InteractionIntent, InteractionResult,
+    JustifyItemsValue, JustifySelfValue, JustifyValue, LayoutPass, ListenerId, OverflowMenu,
+    OverflowValue, PointerKind, PointerMoveResult, PointerRouting, PositionValue, Preedit,
+    PseudoState, ResolvedElement, Selection, SelectionChromeStyle, SelectionHandle,
+    SelectionHandleEnd, SelectionHandles, SelectionPoint, SelectionToolbar, Shadow, StyleProp,
+    StylePropKind, TextDecorationValue, TextOverflowValue, ToolbarAction, ToolbarButton,
+    ToolbarHit, ToolbarRect, TransitionTimingValue, UserSelectValue, ViewportCondition,
 };
 pub use layer_raster_bounds::LayerRasterBounds;
 pub use node::{
