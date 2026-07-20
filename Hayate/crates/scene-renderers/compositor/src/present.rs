@@ -57,6 +57,12 @@ impl PresentPlanner {
         self.cache.total_bytes()
     }
 
+    /// Refresh the total allocation of an existing cache entry without changing its scroll-band
+    /// coverage. A chrome-only update must retain the content band's cache-validity decision.
+    pub fn update_cached_bytes(&mut self, layer: ElementId, bytes: u64) {
+        self.cache.update_bytes(layer, bytes);
+    }
+
     /// scroll レイヤの帯 raster をサイズ付きで記録する（#634）。`band` は今回 raster した縦帯
     /// （可視域＋overscan）、`bytes` は帯サイズの texture バイト（content 全高でなく帯サイズ）。
     pub fn note_scroll_rasterized(

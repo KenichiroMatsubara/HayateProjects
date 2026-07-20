@@ -174,6 +174,32 @@ fn layer_surface_failure_is_returned_to_the_render_host() {
 }
 
 #[test]
+fn presenter_rejects_an_invalid_frame_before_requesting_a_skia_surface() {
+    let layers = [ElementId::from_u64(1), ElementId::from_u64(2)];
+    let mut presenter = SkiaLayerPresenter::new(W, H, 1.0);
+    let mut factory = FailingLayerSurfaceFactory;
+    let error = presenter
+        .present_with_layer_surface_factory(
+            &SceneGraph::new(),
+            &layers,
+            &[],
+            &Default::default(),
+            &Default::default(),
+            CLEAR,
+            (0.0, 0.0),
+            GpuBudget::from_viewports(W, H, 8.0),
+            &mut factory,
+            new_raster_surface(W as i32, H as i32).unwrap(),
+        )
+        .expect_err("missing non-root Core bounds must fail before Skia allocates a surface");
+
+    assert!(
+        error.contains("InvalidFrame"),
+        "the shared invalid-frame policy must win, got: {error}"
+    );
+}
+
+#[test]
 fn non_root_cache_uses_core_raster_bounds_at_device_scale() {
     let layer = ElementId::from_u64(42);
     let bounds = LayerRasterBounds {

@@ -23,8 +23,8 @@ use resource_cache::PaintResourceCache;
 pub use resource_cache::{SkiaResourceWorkCounts, SKIA_PAINT_RESOURCE_CACHE_BUDGET_BYTES};
 
 pub use layer_compositor::{
-    SkiaCompositeTarget, SkiaLayerCompositor, SkiaLayerPresenter, SkiaLayerRasterizer,
-    SkiaLayerSurfaceFactory, SkiaLayerTexture, SkiaRasterLayerSurfaceFactory,
+    SkiaCompositeTarget, SkiaLayerCompositor, SkiaLayerPresentationAdapter, SkiaLayerPresenter,
+    SkiaLayerRasterizer, SkiaLayerSurfaceFactory, SkiaLayerTexture, SkiaRasterLayerSurfaceFactory,
 };
 
 pub struct SkiaSceneRenderer {

@@ -95,6 +95,8 @@ pub enum LayerPresentationError {
 pub struct LayerPresentation {
     planner: PresentPlanner,
     previous_layers: HashSet<ElementId>,
+    content_bytes: HashMap<ElementId, u64>,
+    chrome_bytes: HashMap<ElementId, u64>,
 }
 
 impl LayerPresentation {
@@ -109,6 +111,8 @@ impl LayerPresentation {
     pub fn invalidate(&mut self) {
         self.planner.invalidate();
         self.previous_layers.clear();
+        self.content_bytes.clear();
+        self.chrome_bytes.clear();
     }
 
     /// Presents one committed frame. No planner or LRU mutation is performed until all raster,
@@ -184,13 +188,13 @@ impl LayerPresentation {
             });
         }
         for (&layer, geometry) in frame.scroll_geometry {
-            let needs_raster = geometry.content_dirty
+            let needs_content_raster = geometry.content_dirty
                 || self.planner.scroll_layer_needs_raster(
                     layer,
                     geometry.visible_top,
                     geometry.viewport_height,
                 );
-            if needs_raster {
+            if needs_content_raster {
                 let scene = extract_scroll_layer_scene(
                     frame.scene,
                     layer,
@@ -207,7 +211,9 @@ impl LayerPresentation {
                     scroll_band: Some(geometry.band),
                 });
             }
-            if frame.chrome_dirty.contains(&layer) {
+            // Content-cache eviction invalidates the adapter's paired chrome texture as well.
+            // Recreate chrome on that cache miss even when Core did not mark it dirty.
+            if frame.chrome_dirty.contains(&layer) || needs_content_raster {
                 if let Some(scene) = extract_scroll_chrome_scene(frame.scene, layer, &boundaries) {
                     let mut chrome_bounds = *bounds.get(&layer).expect("validated bounds");
                     chrome_bounds.origin_y = geometry.absolute_top;
@@ -254,19 +260,45 @@ impl LayerPresentation {
                 transform,
                 clip: placement.clip,
             });
+            if frame.scroll_geometry.contains_key(&placement.layer) {
+                // Scroll chrome is fixed to the layer's placement. Its texture carries the
+                // absolute layer origin already, so it must not receive the live scroll affine.
+                placement_plan.planes.push(Placement {
+                    layer: placement.layer,
+                    kind: RasterJobKind::ScrollChrome,
+                    transform: placement.transform,
+                    clip: placement.clip,
+                });
+            }
         }
         adapter
             .composite(&placement_plan)
             .map_err(|error| LayerPresentationError::Adapter(error.to_string()))?;
 
         // Commit only after the adapter has successfully rastered, composited and blitted.
+        let mut content_updates = HashMap::new();
+        let mut chrome_updates = HashMap::new();
         for (layer, kind, band, bytes) in staged {
-            match (kind, band) {
-                (RasterJobKind::Content, Some(band)) => {
-                    self.planner.note_scroll_rasterized(layer, band, bytes)
+            match kind {
+                RasterJobKind::Content => {
+                    self.content_bytes.insert(layer, bytes);
+                    content_updates.insert(layer, band);
                 }
-                (RasterJobKind::Content, None) => self.planner.note_layer_rasterized(layer, bytes),
-                (RasterJobKind::ScrollChrome, _) => {}
+                RasterJobKind::ScrollChrome => {
+                    self.chrome_bytes.insert(layer, bytes);
+                    chrome_updates.insert(layer, ());
+                }
+            }
+        }
+        for layer in content_updates.keys().chain(chrome_updates.keys()) {
+            let total_bytes = self.content_bytes.get(layer).copied().unwrap_or(0)
+                + self.chrome_bytes.get(layer).copied().unwrap_or(0);
+            match content_updates.get(layer) {
+                Some(Some(band)) => self
+                    .planner
+                    .note_scroll_rasterized(*layer, *band, total_bytes),
+                Some(None) => self.planner.note_layer_rasterized(*layer, total_bytes),
+                None => self.planner.update_cached_bytes(*layer, total_bytes),
             }
         }
         for plane in &placement_plan.planes {
@@ -274,6 +306,8 @@ impl LayerPresentation {
         }
         for stale_layer in &stale {
             self.planner.evict(*stale_layer);
+            self.content_bytes.remove(stale_layer);
+            self.chrome_bytes.remove(stale_layer);
         }
         adapter.discard(&stale);
         self.previous_layers = boundaries;
@@ -287,5 +321,9 @@ impl LayerPresentation {
     ) {
         let evicted = self.planner.enforce_budget(budget);
         adapter.discard(&evicted);
+        for layer in evicted {
+            self.content_bytes.remove(&layer);
+            self.chrome_bytes.remove(&layer);
+        }
     }
 }

@@ -210,6 +210,13 @@ impl LayerCache {
         self.cached.values().map(|e| e.bytes).sum()
     }
 
+    /// Updates an existing entry's allocation while retaining its LRU and scroll-band state.
+    pub fn update_bytes(&mut self, layer: ElementId, bytes: u64) {
+        if let Some(entry) = self.cached.get_mut(&layer) {
+            entry.bytes = bytes;
+        }
+    }
+
     /// GPU 予算超過なら、最も長く composite に使われていないレイヤ texture から LRU 退避し、合計を
     /// 予算内に収める（ADR-0127）。退避したレイヤ id を退避順に返す（再要求時に再 raster される）。
     /// 予算 0 や同点は決定的に（古い tick → 小さい ElementId 順で）退避する。
