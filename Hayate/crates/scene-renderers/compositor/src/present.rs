@@ -68,6 +68,12 @@ impl PresentPlanner {
         self.cache.mark_scroll_rasterized(layer, band, bytes);
     }
 
+    /// Record a backend-local chrome-plane size change while retaining this layer's existing
+    /// content cache classification and scroll coverage.
+    pub fn update_cached_bytes(&mut self, layer: ElementId, bytes: u64) {
+        self.cache.update_bytes(layer, bytes);
+    }
+
     /// scroll レイヤが本フレームで（差分）raster を要するか（#634）。キャッシュ帯が現在の可視域
     /// `[visible_top, visible_top + viewport_height]` を覆っていれば false（composite-only スクロール）。
     pub fn scroll_layer_needs_raster(

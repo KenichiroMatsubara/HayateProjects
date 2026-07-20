@@ -185,6 +185,15 @@ impl LayerCache {
         self.cached.get(&layer).and_then(|e| e.scroll_band)
     }
 
+    /// Replace the byte accounting for an existing cache entry without changing its scroll band
+    /// or LRU age. A chrome-only update changes the backend resource footprint but must not turn
+    /// a scroll cache into a non-scroll cache.
+    pub fn update_bytes(&mut self, layer: ElementId, bytes: u64) {
+        if let Some(entry) = self.cached.get_mut(&layer) {
+            entry.bytes = bytes;
+        }
+    }
+
     /// レイヤを composite に使ったと記録し、LRU 直近性を更新する（ADR-0127）。退避は「最も長く
     /// composite に使われていない」面から行うため、合成のたびにこれを呼ぶ。
     pub fn note_composited(&mut self, layer: ElementId) {
