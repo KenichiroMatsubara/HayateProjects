@@ -493,6 +493,13 @@ impl LayerPresentationAdapter for SkiaLayerPresentationAdapter<'_> {
     type Error = String;
 
     fn rasterize(&mut self, job: &RasterJob<'_>) -> Result<u64, Self::Error> {
+        if job.kind == RasterJobKind::ScrollChrome
+            && !job.repaint
+            && self.chrome_rasterizer.texture(job.layer).is_some()
+        {
+            return Ok(self.rasterizer.texture_bytes(job.layer)
+                + self.chrome_rasterizer.texture_bytes(job.layer));
+        }
         let rasterizer = match job.kind {
             RasterJobKind::Content => &mut *self.rasterizer,
             RasterJobKind::ScrollChrome => &mut *self.chrome_rasterizer,
@@ -517,7 +524,8 @@ impl LayerPresentationAdapter for SkiaLayerPresentationAdapter<'_> {
             *self.last_raster_count += 1;
             *self.last_raster_pixels += bytes / tunables::BYTES_PER_PIXEL;
         }
-        Ok(bytes)
+        Ok(self.rasterizer.texture_bytes(job.layer)
+            + self.chrome_rasterizer.texture_bytes(job.layer))
     }
 
     fn composite(&mut self, plan: &PlacementPlan) -> Result<(), Self::Error> {
