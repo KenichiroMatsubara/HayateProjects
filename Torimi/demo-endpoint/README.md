@@ -21,6 +21,10 @@ pnpm --filter @torimi/demo-endpoint run dev           # wrangler dev
 push ではデプロイしない — Play 配布済みホストに焼き込まれた Protocol Version とデモバンドルの
 整合を構造で守るため、ホスト（将来の AAB）とデモは常に同じタグ付きコミットから作る。
 
+`pnpm run deploy` は手動実行時にも古い `public/` を公開しないよう、Manifest に載る全デモの
+`build:demos` を必ず先に実行する。`wrangler deploy` の直接実行は生成物のProtocol Versionを
+更新しないため使用しない。
+
 ### 必要な GitHub Secrets（登録は人力）
 
 CI の wrangler deploy は次の 2 つの Secrets を要する。登録作業そのものは完全人力スライスの
