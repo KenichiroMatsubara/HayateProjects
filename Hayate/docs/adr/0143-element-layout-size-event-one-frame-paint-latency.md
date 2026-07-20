@@ -19,7 +19,7 @@ Tsubame はこのイベント受信時（初回確定・サイズ変化）に pa
 ## Considered Options
 
 - **size 非依存の記録（正規化座標や宣言サイズ基準で記録し、実サイズへは Hayate 側で伸縮）**: 遅延は消えるが、painter が size で分岐できず（Flutter 同等の表現力を最初から損なう）、伸縮で stroke 幅が歪む。却下。
-- **同期レイアウト問い合わせ（JS から要素サイズを同期 query）**: フレーム内で mutation → layout → query → mutation の往復を要求し、`tick` の単一 flush 点（ADR-0117）と HayateMutationPacket のフレーム単位バッチ契約を壊す。却下。
+- **同期レイアウト問い合わせ（JS から要素サイズを同期 query）**: フレーム内で mutation → layout → query → mutation の往復を要求し、`tick` の単一 flush 点（ADR-0117）と HayateRenderer 所有 semantic queue のフレーム単位バッチ契約を壊す。却下。
 
 ## Consequences
 

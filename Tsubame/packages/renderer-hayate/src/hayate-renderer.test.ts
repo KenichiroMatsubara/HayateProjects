@@ -168,6 +168,49 @@ describe('HayateRenderer delivery poll (ADR-0053)', () => {
     expect(hayate.mutations.flatMap((batch) => batch.texts)).not.toContain('must-not-leak');
   });
 
+  it('aborts a prepared frame and discards queued mutations when apply_mutations fails', () => {
+    const hayate = new StubHayate();
+    const sched = manualScheduler();
+    const renderer = new HayateRenderer({ raw: hayate, ...sched });
+    renderer.start();
+    const failed = renderer.createElement('text');
+    renderer.setText(failed, 'must-not-leak');
+    const apply = hayate.apply_mutations.bind(hayate);
+    hayate.apply_mutations = (ops, styles, texts, draws) => {
+      apply(ops, styles, texts, draws);
+      throw new Error('apply failed');
+    };
+
+    expect(() => sched.tick(16)).toThrow('apply failed');
+    expect(hayate.abortedFrames).toEqual([1]);
+    expect(hayate.committedFrames).toEqual([]);
+
+    hayate.apply_mutations = apply;
+    const next = renderer.createElement('text');
+    renderer.setText(next, 'next-frame');
+    sched.tick(32);
+
+    expect(hayate.mutations.at(-1)?.texts).toEqual(['next-frame']);
+    expect(hayate.committedFrames).toEqual([2]);
+  });
+
+  it('snapshots a style patch when it is enqueued', () => {
+    const hayate = new StubHayate();
+    const sched = manualScheduler();
+    const renderer = new HayateRenderer({ raw: hayate, ...sched });
+    renderer.start();
+    const view = renderer.createElement('view');
+    const patch = { opacity: 0.2 };
+
+    renderer.setStyle(view, patch);
+    patch.opacity = 0.8;
+    sched.tick(16);
+
+    const batch = hayate.mutations[0]!;
+    expect(batch.styles[0]).toBe(TAG.OPACITY);
+    expect(batch.styles[1]).toBeCloseTo(0.2);
+  });
+
   it('registers Hayate listeners and dispatches poll deliveries', () => {
     const hayate = new StubHayate();
     const sched = manualScheduler();

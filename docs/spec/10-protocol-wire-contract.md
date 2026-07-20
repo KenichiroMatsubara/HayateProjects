@@ -35,7 +35,7 @@ Hayate（Rust + WASM）と Tsubame（TypeScript）の**唯一の結合点**。Ha
 ### PROTO-04 — apply_mutations 署名
 **規範文:** `apply_mutations(ops: Float64Array, styles: Float32Array, texts: string[], draws: Float32Array)` の4引数。hot path（1回/frame）のため typed array で転送効率を最優先する。
 **出典:** ADR-0052（supersedes ADR-0039 の2引数署名）、ADR-0141（`draws` チャネル）
-**状況:** ✅ — Rust `wire.rs::apply_mutations`、TS `hayate-mutation-packet.ts`。
+**状況:** ✅ — Rust `wire.rs::apply_mutations`、TS `HayateRenderer`。
 **備考:** [履歴] 0039 は `(ops, styles)` の2引数だった。string table 導入（PROTO-07）で `texts` を、draw display list 導入（PROTO-21）で `draws` を追加。
 
 ### PROTO-05 — ops 固定長レコード
@@ -53,7 +53,7 @@ Hayate（Rust + WASM）と Tsubame（TypeScript）の**唯一の結合点**。Ha
 ### PROTO-07 — string table
 **規範文:** 文字列 op は `texts[]` に集約し、`OP_SET_TEXT=10`（`op, id, text_index`）と `OP_UNSET_STYLE=11`（`op, id, kind`）が index/kind で参照する。呼び出し順序管理は Rust 側に置き、TS は ops と texts を組み立てて一括送信するだけでよい。
 **出典:** ADR-0052（supersedes ADR-0039 の「文字列 op は apply_mutations 外」）
-**状況:** ✅ — `opcodes.json` SET_TEXT=10 / UNSET_STYLE=11、TS `hayate-mutation-packet.ts:160-161`（texts.push）。
+**状況:** ✅ — `opcodes.json` SET_TEXT=10 / UNSET_STYLE=11、TS `encode-mutations.ts`（texts.push）。
 **備考:** [履歴 C-10.4] 0039 は文字列 op を個別 WASM 呼び出しにしていたため、TS 側に「typed batch を先に、string を後に」という順序ポリシーが漏れていた。0052 がそれを Rust に移譲。
 
 ### PROTO-08 — style packet
@@ -81,7 +81,7 @@ Hayate（Rust + WASM）と Tsubame（TypeScript）の**唯一の結合点**。Ha
 ### PROTO-11 — codec 検証（C3 結合）
 **規範文:** TS flush → WASM `apply_mutations` の結合テスト（C3）で、生成 codec 経由の実 wire が WASM に通ることを保証する。
 **出典:** ADR-0055（C3）
-**状況:** ✅ — `Tsubame/packages/renderer-canvas/src/wasm-integration.test.ts` が `HayateMutationPacket` flush → 実 `apply_mutations`（`pkg-null` / `backend-null`）を検証。`element_get_text` / `element_subtree_ids` でツリー反映を確認。CI: `.github/workflows/wasm-c3.yml`（wasm 変更時ゲート）。
+**状況:** ✅ — `Tsubame/packages/renderer-hayate/src/wasm-integration.test.ts` が HayateRenderer flush → 実 `apply_mutations`（`pkg-null` / `backend-null`）を検証。`element_get_text` / `element_subtree_ids` でツリー反映を確認。CI: `.github/workflows/wasm-c3.yml`（wasm 変更時ゲート）。
 **備考:** delivery poll の単体は `canvas-renderer.test.ts` が `StubHayate` を継続利用（関心の分離）。C3 は wasm プロジェクトに分離。
 
 ---
@@ -129,7 +129,7 @@ Hayate（Rust + WASM）と Tsubame（TypeScript）の**唯一の結合点**。Ha
 ## 境界と未決
 
 ### PROTO-18 — semantic 層は Contract 外
-**規範文:** `StylePatch` / `HayateMutationPacket` / `IRenderer` の tree・style・imperative メソッド型、`setProperty`・`addEventListener` 購読 API は spec 化しない（Renderer Protocol の領分、§11）。`resize` も spec 化しない（codegen 対象外）が、これは Renderer Protocol surface ではなく **host 側 adapter の責務**である（ADR-0004 が「resize＝Renderer Protocol surface」記述を誤分類として訂正、§11 TSUB-08 / PROTO-16）。
+**規範文:** `StylePatch` / HayateRenderer 所有の semantic queue / `IRenderer` の tree・style・imperative メソッド型、`setProperty`・`addEventListener` 購読 API は spec 化しない（Renderer Protocol の領分、§11）。`resize` も spec 化しない（codegen 対象外）が、これは Renderer Protocol surface ではなく **host 側 adapter の責務**である（ADR-0004 が「resize＝Renderer Protocol surface」記述を誤分類として訂正、§11 TSUB-08 / PROTO-16）。
 **出典:** ADR-0053, ADR-0055, ADR-0004（resize の再分類）
 **状況:** ✅ — spec は wire（定数・codec・delivery）のみを所有し、semantic 型を含まない（意図通りの境界）。`resize` は spec にも `IRenderer` にも載らない（host adapter 所有）。
 **備考:** これは「やらないこと」の規範。spec の肥大化と Renderer Protocol への侵食を防ぐ。resize は「必要になった時に API 化」とし当面 spec Contract に入れない（ADR-0004）。

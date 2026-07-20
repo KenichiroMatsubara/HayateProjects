@@ -1,3 +1,4 @@
+function _toArray(r) { return _arrayWithHoles(r) || _iterableToArray(r) || _unsupportedIterableToArray(r) || _nonIterableRest(); }
 function _classCallCheck(a, n) { if (!(a instanceof n)) throw new TypeError("Cannot call a class as a function"); }
 function _defineProperties(e, r) { for (var t = 0; t < r.length; t++) { var o = r[t]; o.enumerable = o.enumerable || !1, o.configurable = !0, "value" in o && (o.writable = !0), Object.defineProperty(e, _toPropertyKey(o.key), o); } }
 function _createClass(e, r, t) { return r && _defineProperties(e.prototype, r), t && _defineProperties(e, t), Object.defineProperty(e, "prototype", { writable: !1 }), e; }
@@ -1015,9 +1016,22 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
     onInput: "input",
     onKeyDown: "keydown",
     onFocus: "focus",
-    onBlur: "blur"
+    onBlur: "blur",
+    onPointerDown: "pointerdown",
+    onPointerMove: "pointermove",
+    onPointerUp: "pointerup"
   };
   var REJECTED_EVENT_PROPS = /* @__PURE__ */new Set(["onHoverEnter", "onHoverLeave"]);
+  function drawNeedsRepaint(next, prev) {
+    var _next$shouldRepaint, _next$shouldRepaint2;
+    if (prev === void 0) return true;
+    if (next === prev) return false;
+    if (typeof next === "function" || typeof prev === "function") return true;
+    return (_next$shouldRepaint = (_next$shouldRepaint2 = next.shouldRepaint) === null || _next$shouldRepaint2 === void 0 ? void 0 : _next$shouldRepaint2.call(next, prev)) !== null && _next$shouldRepaint !== void 0 ? _next$shouldRepaint : true;
+  }
+  function invokePainter(value, canvas, size) {
+    if (typeof value === "function") value(canvas, size);else value.paint(canvas, size);
+  }
   var ELEMENT_PROPERTY_NAMES = ["value", "placeholder", "src", "disabled", "user-select", "multiline"];
   function coerceElementProperty(name, value) {
     switch (name) {
@@ -1164,6 +1178,11 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
         this.inner.setText(id, text);
       }
     }, {
+      key: "setDraw",
+      value: function setDraw(id, value) {
+        this.inner.setDraw(id, value);
+      }
+    }, {
       key: "setProperty",
       value: function setProperty(id, name, value) {
         this.inner.setProperty(id, name, value);
@@ -1224,6 +1243,10 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
       return;
     }
     if (target.kind === "text") return;
+    if (name === "draw") {
+      renderer.setDraw(target.id, value !== null && value !== void 0 ? value : null);
+      return;
+    }
     if (REJECTED_EVENT_PROPS.has(name)) throw new Error("".concat(name, " is not supported as an event prop. Use ':hover' / ':active' / ':focus' in style for visual feedback (ADR-0056, ADR-0059)."));
     var eventKind = EVENT_PROP[name];
     if (eventKind !== void 0) {
@@ -1362,150 +1385,6 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
     };
   }
   //#endregion
-  //#region src/android-prelude.ts
-  var g = globalThis;
-  var nativeLog = g["__hayateLog"];
-  if (g["console"] === void 0) {
-    var make = function make(level) {
-      return function () {
-        for (var _len2 = arguments.length, args = new Array(_len2), _key2 = 0; _key2 < _len2; _key2++) {
-          args[_key2] = arguments[_key2];
-        }
-        nativeLog === null || nativeLog === void 0 || nativeLog(level, args.map(function (a) {
-          return String(a);
-        }).join(" "));
-      };
-    };
-    g["console"] = {
-      log: make("log"),
-      info: make("info"),
-      warn: make("warn"),
-      error: make("error"),
-      debug: make("debug")
-    };
-  }
-  if (typeof g["queueMicrotask"] !== "function") g["queueMicrotask"] = function (cb) {
-    Promise.resolve().then(cb);
-  };
-  if (typeof g["requestAnimationFrame"] !== "function") g["requestAnimationFrame"] = function (_cb) {
-    return 0;
-  };
-  if (typeof g["cancelAnimationFrame"] !== "function") g["cancelAnimationFrame"] = function (_handle) {};
-  if (typeof g["fetch"] !== "function") g["fetch"] = function () {
-    return Promise.reject(/* @__PURE__ */new Error("fetch is unavailable on Android (ADR-0112)"));
-  };
-  function createMemoryStorage() {
-    var map = /* @__PURE__ */new Map();
-    return {
-      get length() {
-        return map.size;
-      },
-      clear: function clear() {
-        return map.clear();
-      },
-      getItem: function getItem(key) {
-        var _map$get;
-        return (_map$get = map.get(key)) !== null && _map$get !== void 0 ? _map$get : null;
-      },
-      key: function key(index) {
-        var _index;
-        return (_index = _toConsumableArray(map.keys())[index]) !== null && _index !== void 0 ? _index : null;
-      },
-      removeItem: function removeItem(key) {
-        map.delete(key);
-      },
-      setItem: function setItem(key, value) {
-        map.set(key, String(value));
-      }
-    };
-  }
-  if (typeof g["URLSearchParams"] !== "function") {
-    var MinimalURLSearchParams = /*#__PURE__*/function () {
-      function MinimalURLSearchParams(init) {
-        _classCallCheck(this, MinimalURLSearchParams);
-        _defineProperty(this, "map", /* @__PURE__ */new Map());
-        if (typeof init === "string") {
-          var _iterator8 = _createForOfIteratorHelper(init.replace(/^\?/, "").split("&")),
-            _step8;
-          try {
-            for (_iterator8.s(); !(_step8 = _iterator8.n()).done;) {
-              var pair = _step8.value;
-              if (pair === "") continue;
-              var eq = pair.indexOf("=");
-              var k = eq < 0 ? pair : pair.slice(0, eq);
-              var v = eq < 0 ? "" : pair.slice(eq + 1);
-              try {
-                this.map.set(decodeURIComponent(k), decodeURIComponent(v));
-              } catch (_unused) {
-                this.map.set(k, v);
-              }
-            }
-          } catch (err) {
-            _iterator8.e(err);
-          } finally {
-            _iterator8.f();
-          }
-        }
-      }
-      return _createClass(MinimalURLSearchParams, [{
-        key: "get",
-        value: function get(key) {
-          return this.map.has(key) ? this.map.get(key) : null;
-        }
-      }, {
-        key: "has",
-        value: function has(key) {
-          return this.map.has(key);
-        }
-      }, {
-        key: "getAll",
-        value: function getAll(key) {
-          return this.map.has(key) ? [this.map.get(key)] : [];
-        }
-      }]);
-    }();
-    g["URLSearchParams"] = MinimalURLSearchParams;
-  }
-  if (g["window"] === void 0) g["window"] = {
-    addEventListener: function addEventListener(_type, _handler) {},
-    removeEventListener: function removeEventListener(_type, _handler) {},
-    innerWidth: 0,
-    innerHeight: 0,
-    location: {
-      search: "",
-      href: "",
-      pathname: "/"
-    },
-    localStorage: createMemoryStorage()
-  };
-  if (g["document"] === void 0) g["document"] = {
-    documentElement: {
-      style: {
-        setProperty: function setProperty(_name, _value) {},
-        getPropertyValue: function getPropertyValue(_name) {
-          return "";
-        },
-        removeProperty: function removeProperty(_name) {
-          return "";
-        }
-      }
-    },
-    body: {
-      appendChild: function appendChild(node) {
-        return node;
-      },
-      removeChild: function removeChild(node) {
-        return node;
-      }
-    },
-    getElementById: function getElementById(_id) {
-      return null;
-    },
-    addEventListener: function addEventListener(_type, _handler) {},
-    removeEventListener: function removeEventListener(_type, _handler) {},
-    baseURI: ""
-  };
-  //#endregion
   //#region ../../../Hayate/host/dist/native.js
   function createHayateNativeHost(raw) {
     var pendingFrame = null;
@@ -1513,7 +1392,9 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
     return {
       raw: raw,
       requestFrame: function requestFrame(cb) {
+        var _raw$request_pump;
         pendingFrame = cb;
+        (_raw$request_pump = raw.request_pump) === null || _raw$request_pump === void 0 || _raw$request_pump.call(raw);
         return handleSeq++;
       },
       cancelFrame: function cancelFrame(_handle) {
@@ -1527,6 +1408,33 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
       stop: function stop() {
         pendingFrame = null;
       }
+    };
+  }
+  //#endregion
+  //#region ../../../Torimi/protocol-handshake/dist/index.js
+  var TORIMI_PROTOCOL_VERSION_GLOBAL = "__torimiProtocolVersion";
+  //#endregion
+  //#region ../../packages/app/dist/index.js
+  function isPromise(value) {
+    return typeof value.then === "function";
+  }
+  function runTsubameApp(host, mount) {
+    var disposed = false;
+    var mountDispose;
+    var onRenderer = function onRenderer(renderer) {
+      if (disposed) return;
+      mountDispose = mount(renderer);
+    };
+    var created = host.createRenderer();
+    if (isPromise(created)) created.then(onRenderer).catch(function (error) {
+      console.error(error);
+    });else onRenderer(created);
+    return function () {
+      var _host$stop;
+      if (disposed) return;
+      disposed = true;
+      if (typeof mountDispose === "function") mountDispose();
+      (_host$stop = host.stop) === null || _host$stop === void 0 || _host$stop.call(host);
     };
   }
   //#endregion
@@ -1553,7 +1461,40 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
     SET_MULTILINE: 18,
     SET_ARIA_LABEL: 19,
     SET_ROLE: 20,
-    SET_FONT_FAMILY: 21
+    SET_FONT_FAMILY: 21,
+    SET_DRAW: 22
+  };
+  var DRAW_OP = {
+    MOVE_TO: 0,
+    LINE_TO: 1,
+    CLOSE: 2,
+    FILL: 3,
+    QUADRATIC_TO: 4,
+    CUBIC_TO: 5,
+    ARC_TO: 6,
+    RECT: 7,
+    RRECT: 8,
+    OVAL: 9,
+    CIRCLE: 10,
+    STROKE: 11,
+    SAVE: 12,
+    RESTORE: 13,
+    TRANSLATE: 14,
+    ROTATE: 15,
+    SCALE: 16,
+    TRANSFORM: 17,
+    CLIP_RECT: 18,
+    CLIP_PATH: 19
+  };
+  var DRAW_PAINT_FIELD = {
+    COLOR: 0,
+    FILL_RULE: 1,
+    STROKE_WIDTH: 2,
+    CAP: 3,
+    JOIN: 4,
+    MITER_LIMIT: 5,
+    DASH: 6,
+    DASH_OFFSET: 7
   };
   var TAG = {
     BACKGROUND_COLOR: 0,
@@ -1641,7 +1582,11 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
     ACTIVE_START: 13,
     POINTER_MOVE: 14,
     FETCH_FONT: 15,
-    SELECTION_CHANGE: 16
+    SELECTION_CHANGE: 16,
+    LAYOUT_RESIZE: 17,
+    POINTER_DOWN: 18,
+    POINTER_DRAG: 19,
+    POINTER_UP: 20
   };
   var ELEMENT_KIND = {
     "view": 0,
@@ -1900,6 +1845,41 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
         return {
           kind: "selection_change",
           value: 16
+        };
+      case 17:
+        return {
+          kind: "layout_resize",
+          value: 17,
+          targetId: ev[1],
+          width: ev[2],
+          height: ev[3]
+        };
+      case 18:
+        return {
+          kind: "pointer_down",
+          value: 18,
+          targetId: ev[1],
+          x: ev[2],
+          y: ev[3],
+          pointerKind: ev[4]
+        };
+      case 19:
+        return {
+          kind: "pointer_drag",
+          value: 19,
+          targetId: ev[1],
+          x: ev[2],
+          y: ev[3],
+          pointerKind: ev[4]
+        };
+      case 20:
+        return {
+          kind: "pointer_up",
+          value: 20,
+          targetId: ev[1],
+          x: ev[2],
+          y: ev[3],
+          pointerKind: ev[4]
         };
       default:
         throw new Error("parseEvent: unknown event kind ".concat(kind));
@@ -2266,17 +2246,17 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
   function encode_fontFamily(out, value) {
     var bytes = new TextEncoder().encode(value);
     out.push(TAG.FONT_FAMILY, bytes.length);
-    var _iterator9 = _createForOfIteratorHelper(bytes),
-      _step9;
+    var _iterator8 = _createForOfIteratorHelper(bytes),
+      _step8;
     try {
-      for (_iterator9.s(); !(_step9 = _iterator9.n()).done;) {
-        var byte = _step9.value;
+      for (_iterator8.s(); !(_step8 = _iterator8.n()).done;) {
+        var byte = _step8.value;
         out.push(byte);
       }
     } catch (err) {
-      _iterator9.e(err);
+      _iterator8.e(err);
     } finally {
-      _iterator9.f();
+      _iterator8.f();
     }
   }
   function encode_flexGrow(out, value) {
@@ -2302,17 +2282,17 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
   function encode_defaultFontFamily(out, value) {
     var bytes = new TextEncoder().encode(value);
     out.push(TAG.DEFAULT_FONT_FAMILY, bytes.length);
-    var _iterator0 = _createForOfIteratorHelper(bytes),
-      _step0;
+    var _iterator9 = _createForOfIteratorHelper(bytes),
+      _step9;
     try {
-      for (_iterator0.s(); !(_step0 = _iterator0.n()).done;) {
-        var byte = _step0.value;
+      for (_iterator9.s(); !(_step9 = _iterator9.n()).done;) {
+        var byte = _step9.value;
         out.push(byte);
       }
     } catch (err) {
-      _iterator0.e(err);
+      _iterator9.e(err);
     } finally {
-      _iterator0.f();
+      _iterator9.f();
     }
   }
   function encode_defaultFontSize(out, value) {
@@ -2324,6 +2304,23 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
   function encode_gridTemplateColumns(out, value) {
     if (!Array.isArray(value)) throw new Error("HayateRenderer: \"gridTemplateColumns\" must be an array of dimensions");
     out.push(TAG.GRID_TEMPLATE_COLUMNS, value.length);
+    var _iterator0 = _createForOfIteratorHelper(value),
+      _step0;
+    try {
+      for (_iterator0.s(); !(_step0 = _iterator0.n()).done;) {
+        var item = _step0.value;
+        var d = parseDimension(item);
+        out.push(d.value, UNIT_CODE[d.unit]);
+      }
+    } catch (err) {
+      _iterator0.e(err);
+    } finally {
+      _iterator0.f();
+    }
+  }
+  function encode_gridTemplateRows(out, value) {
+    if (!Array.isArray(value)) throw new Error("HayateRenderer: \"gridTemplateRows\" must be an array of dimensions");
+    out.push(TAG.GRID_TEMPLATE_ROWS, value.length);
     var _iterator1 = _createForOfIteratorHelper(value),
       _step1;
     try {
@@ -2336,23 +2333,6 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
       _iterator1.e(err);
     } finally {
       _iterator1.f();
-    }
-  }
-  function encode_gridTemplateRows(out, value) {
-    if (!Array.isArray(value)) throw new Error("HayateRenderer: \"gridTemplateRows\" must be an array of dimensions");
-    out.push(TAG.GRID_TEMPLATE_ROWS, value.length);
-    var _iterator10 = _createForOfIteratorHelper(value),
-      _step10;
-    try {
-      for (_iterator10.s(); !(_step10 = _iterator10.n()).done;) {
-        var item = _step10.value;
-        var d = parseDimension(item);
-        out.push(d.value, UNIT_CODE[d.unit]);
-      }
-    } catch (err) {
-      _iterator10.e(err);
-    } finally {
-      _iterator10.f();
     }
   }
   function encode_flexShrink(out, value) {
@@ -2432,18 +2412,18 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
   function encode_boxShadow(out, value) {
     if (!Array.isArray(value)) throw new Error("HayateRenderer: \"boxShadow\" must be an array of shadows");
     out.push(TAG.BOX_SHADOW, value.length);
-    var _iterator11 = _createForOfIteratorHelper(value),
-      _step11;
+    var _iterator10 = _createForOfIteratorHelper(value),
+      _step10;
     try {
-      for (_iterator11.s(); !(_step11 = _iterator11.n()).done;) {
-        var item = _step11.value;
+      for (_iterator10.s(); !(_step10 = _iterator10.n()).done;) {
+        var item = _step10.value;
         var c = parseColor(item.color);
         out.push(finiteNumber("boxShadow.offsetX", item.offsetX), finiteNumber("boxShadow.offsetY", item.offsetY), finiteNumber("boxShadow.blur", item.blur), finiteNumber("boxShadow.spread", item.spread), c.r, c.g, c.b, c.a, item.inset ? 1 : 0);
       }
     } catch (err) {
-      _iterator11.e(err);
+      _iterator10.e(err);
     } finally {
-      _iterator11.f();
+      _iterator10.f();
     }
   }
   function encode_aspectRatio(out, value) {
@@ -2457,6 +2437,23 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
   function encode_gridAutoRows(out, value) {
     if (!Array.isArray(value)) throw new Error("HayateRenderer: \"gridAutoRows\" must be an array of dimensions");
     out.push(TAG.GRID_AUTO_ROWS, value.length);
+    var _iterator11 = _createForOfIteratorHelper(value),
+      _step11;
+    try {
+      for (_iterator11.s(); !(_step11 = _iterator11.n()).done;) {
+        var item = _step11.value;
+        var d = parseDimension(item);
+        out.push(d.value, UNIT_CODE[d.unit]);
+      }
+    } catch (err) {
+      _iterator11.e(err);
+    } finally {
+      _iterator11.f();
+    }
+  }
+  function encode_gridAutoColumns(out, value) {
+    if (!Array.isArray(value)) throw new Error("HayateRenderer: \"gridAutoColumns\" must be an array of dimensions");
+    out.push(TAG.GRID_AUTO_COLUMNS, value.length);
     var _iterator12 = _createForOfIteratorHelper(value),
       _step12;
     try {
@@ -2469,23 +2466,6 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
       _iterator12.e(err);
     } finally {
       _iterator12.f();
-    }
-  }
-  function encode_gridAutoColumns(out, value) {
-    if (!Array.isArray(value)) throw new Error("HayateRenderer: \"gridAutoColumns\" must be an array of dimensions");
-    out.push(TAG.GRID_AUTO_COLUMNS, value.length);
-    var _iterator13 = _createForOfIteratorHelper(value),
-      _step13;
-    try {
-      for (_iterator13.s(); !(_step13 = _iterator13.n()).done;) {
-        var item = _step13.value;
-        var d = parseDimension(item);
-        out.push(d.value, UNIT_CODE[d.unit]);
-      }
-    } catch (err) {
-      _iterator13.e(err);
-    } finally {
-      _iterator13.f();
     }
   }
   function encode_gridAutoFlow(out, value) {
@@ -2695,6 +2675,382 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
     buf.push(id);
     buf.push(multiline);
   }
+  function appendSetDraw(buf, id, drawOffset, drawLen) {
+    buf.push(OP.SET_DRAW);
+    buf.push(id);
+    buf.push(drawOffset);
+    buf.push(drawLen);
+  }
+  function appendDrawMoveTo(draws, x, y) {
+    draws.push(DRAW_OP.MOVE_TO, x, y);
+  }
+  function appendDrawLineTo(draws, x, y) {
+    draws.push(DRAW_OP.LINE_TO, x, y);
+  }
+  function appendDrawClose(draws) {
+    draws.push(DRAW_OP.CLOSE);
+  }
+  function appendDrawFill(draws, paint) {
+    draws.push(DRAW_OP.FILL);
+    var lenIndex = draws.length;
+    draws.push(0);
+    if (paint.color !== void 0) draws.push.apply(draws, [DRAW_PAINT_FIELD.COLOR].concat(_toConsumableArray(paint.color)));
+    if (paint.fillRule !== void 0) draws.push(DRAW_PAINT_FIELD.FILL_RULE, paint.fillRule);
+    if (paint.strokeWidth !== void 0) draws.push(DRAW_PAINT_FIELD.STROKE_WIDTH, paint.strokeWidth);
+    if (paint.cap !== void 0) draws.push(DRAW_PAINT_FIELD.CAP, paint.cap);
+    if (paint.join !== void 0) draws.push(DRAW_PAINT_FIELD.JOIN, paint.join);
+    if (paint.miterLimit !== void 0) draws.push(DRAW_PAINT_FIELD.MITER_LIMIT, paint.miterLimit);
+    if (paint.dash !== void 0) draws.push.apply(draws, [DRAW_PAINT_FIELD.DASH, paint.dash.length].concat(_toConsumableArray(paint.dash)));
+    if (paint.dashOffset !== void 0) draws.push(DRAW_PAINT_FIELD.DASH_OFFSET, paint.dashOffset);
+    draws[lenIndex] = draws.length - lenIndex - 1;
+  }
+  function appendDrawQuadraticTo(draws, cx, cy, x, y) {
+    draws.push(DRAW_OP.QUADRATIC_TO, cx, cy, x, y);
+  }
+  function appendDrawCubicTo(draws, c1x, c1y, c2x, c2y, x, y) {
+    draws.push(DRAW_OP.CUBIC_TO, c1x, c1y, c2x, c2y, x, y);
+  }
+  function appendDrawArcTo(draws, x1, y1, x2, y2, radius) {
+    draws.push(DRAW_OP.ARC_TO, x1, y1, x2, y2, radius);
+  }
+  function appendDrawRect(draws, x, y, width, height) {
+    draws.push(DRAW_OP.RECT, x, y, width, height);
+  }
+  function appendDrawRrect(draws, x, y, width, height, rx, ry) {
+    draws.push(DRAW_OP.RRECT, x, y, width, height, rx, ry);
+  }
+  function appendDrawOval(draws, x, y, width, height) {
+    draws.push(DRAW_OP.OVAL, x, y, width, height);
+  }
+  function appendDrawCircle(draws, cx, cy, radius) {
+    draws.push(DRAW_OP.CIRCLE, cx, cy, radius);
+  }
+  function appendDrawStroke(draws, paint) {
+    draws.push(DRAW_OP.STROKE);
+    var lenIndex = draws.length;
+    draws.push(0);
+    if (paint.color !== void 0) draws.push.apply(draws, [DRAW_PAINT_FIELD.COLOR].concat(_toConsumableArray(paint.color)));
+    if (paint.fillRule !== void 0) draws.push(DRAW_PAINT_FIELD.FILL_RULE, paint.fillRule);
+    if (paint.strokeWidth !== void 0) draws.push(DRAW_PAINT_FIELD.STROKE_WIDTH, paint.strokeWidth);
+    if (paint.cap !== void 0) draws.push(DRAW_PAINT_FIELD.CAP, paint.cap);
+    if (paint.join !== void 0) draws.push(DRAW_PAINT_FIELD.JOIN, paint.join);
+    if (paint.miterLimit !== void 0) draws.push(DRAW_PAINT_FIELD.MITER_LIMIT, paint.miterLimit);
+    if (paint.dash !== void 0) draws.push.apply(draws, [DRAW_PAINT_FIELD.DASH, paint.dash.length].concat(_toConsumableArray(paint.dash)));
+    if (paint.dashOffset !== void 0) draws.push(DRAW_PAINT_FIELD.DASH_OFFSET, paint.dashOffset);
+    draws[lenIndex] = draws.length - lenIndex - 1;
+  }
+  function appendDrawSave(draws) {
+    draws.push(DRAW_OP.SAVE);
+  }
+  function appendDrawRestore(draws) {
+    draws.push(DRAW_OP.RESTORE);
+  }
+  function appendDrawTranslate(draws, dx, dy) {
+    draws.push(DRAW_OP.TRANSLATE, dx, dy);
+  }
+  function appendDrawRotate(draws, radians) {
+    draws.push(DRAW_OP.ROTATE, radians);
+  }
+  function appendDrawScale(draws, sx, sy) {
+    draws.push(DRAW_OP.SCALE, sx, sy);
+  }
+  function appendDrawTransform(draws, a, b, c, d, e, f) {
+    draws.push(DRAW_OP.TRANSFORM, a, b, c, d, e, f);
+  }
+  function appendDrawClipRect(draws, x, y, width, height) {
+    draws.push(DRAW_OP.CLIP_RECT, x, y, width, height);
+  }
+  function appendDrawClipPath(draws) {
+    draws.push(DRAW_OP.CLIP_PATH);
+  }
+  //#endregion
+  //#region ../../proto/generated/recorder.ts
+  /** Flutter PaintingStyle（fill = 塗り、stroke = 輪郭）。 */
+  var PaintingStyle = /* @__PURE__ */function (PaintingStyle) {
+    PaintingStyle[PaintingStyle["fill"] = 0] = "fill";
+    PaintingStyle[PaintingStyle["stroke"] = 1] = "stroke";
+    return PaintingStyle;
+  }({});
+  /** Flutter StrokeCap（Hayate line_cap enum）。 */
+  var StrokeCap = /* @__PURE__ */function (StrokeCap) {
+    StrokeCap[StrokeCap["butt"] = 0] = "butt";
+    StrokeCap[StrokeCap["round"] = 1] = "round";
+    StrokeCap[StrokeCap["square"] = 2] = "square";
+    return StrokeCap;
+  }({});
+  /** Flutter StrokeJoin（Hayate line_join enum）。 */
+  var StrokeJoin = /* @__PURE__ */function (StrokeJoin) {
+    StrokeJoin[StrokeJoin["miter"] = 0] = "miter";
+    StrokeJoin[StrokeJoin["round"] = 1] = "round";
+    StrokeJoin[StrokeJoin["bevel"] = 2] = "bevel";
+    return StrokeJoin;
+  }({});
+  /** Flutter PathFillType（Hayate fill_rule enum）。 */
+  var PathFillType = /* @__PURE__ */function (PathFillType) {
+    PathFillType[PathFillType["nonZero"] = 0] = "nonZero";
+    PathFillType[PathFillType["evenOdd"] = 1] = "evenOdd";
+    return PathFillType;
+  }({});
+  /**
+  * 描画スタイル。fill / stroke を `style` で切り替える。閉じた語彙（Renderer
+  * Protocol）: `toDrawPaint()` は不正な enum 値・範囲外をエラーにする。
+  */
+  var Paint = /*#__PURE__*/function () {
+    function Paint() {
+      _classCallCheck(this, Paint);
+      _defineProperty(this, "color", [0, 0, 0, 1]);
+      _defineProperty(this, "style", 0);
+      _defineProperty(this, "fillType", 0);
+      _defineProperty(this, "strokeWidth", 1);
+      _defineProperty(this, "strokeCap", 0);
+      _defineProperty(this, "strokeJoin", 0);
+      _defineProperty(this, "strokeMiterLimit", 4);
+      _defineProperty(this, "dash", []);
+      _defineProperty(this, "dashOffset", 0);
+    }
+    /** 現在のフィールドを wire の DrawPaint パケットへ解決する（不正値はエラー）。 */
+    return _createClass(Paint, [{
+      key: "toDrawPaint",
+      value: function toDrawPaint() {
+        assertRgba(this.color);
+        assertEnum(PathFillType, this.fillType, "fillType");
+        assertEnum(PaintingStyle, this.style, "style");
+        var paint = {
+          color: this.color
+        };
+        if (this.fillType !== 0) paint.fillRule = this.fillType;
+        if (this.style === 1) {
+          assertFinite(this.strokeWidth, "strokeWidth", 0);
+          assertEnum(StrokeCap, this.strokeCap, "strokeCap");
+          assertEnum(StrokeJoin, this.strokeJoin, "strokeJoin");
+          assertFinite(this.strokeMiterLimit, "strokeMiterLimit", 0);
+          paint.strokeWidth = this.strokeWidth;
+          paint.cap = this.strokeCap;
+          paint.join = this.strokeJoin;
+          paint.miterLimit = this.strokeMiterLimit;
+          if (this.dash.length > 0) {
+            var _iterator13 = _createForOfIteratorHelper(this.dash),
+              _step13;
+            try {
+              for (_iterator13.s(); !(_step13 = _iterator13.n()).done;) {
+                var d = _step13.value;
+                assertFinite(d, "dash", 0);
+              }
+            } catch (err) {
+              _iterator13.e(err);
+            } finally {
+              _iterator13.f();
+            }
+            paint.dash = this.dash;
+            assertFinite(this.dashOffset, "dashOffset");
+            paint.dashOffset = this.dashOffset;
+          }
+        }
+        return paint;
+      }
+    }]);
+  }();
+  /**
+  * 記録済みパス。フレーム間・要素間で再利用できる不変の op 列として保持し、
+  * `canvas.drawPath` / `canvas.clipPath` で何度でも再生できる。メソッドは
+  * draw_ops の path-verb から生成される（op 追加時に手書き修正は不要）。
+  */
+  var Path = /*#__PURE__*/function () {
+    function Path() {
+      _classCallCheck(this, Path);
+      _defineProperty(this, "ops", []);
+    }
+    return _createClass(Path, [{
+      key: "moveTo",
+      value: function moveTo(x, y) {
+        appendDrawMoveTo(this.ops, x, y);
+        return this;
+      }
+    }, {
+      key: "lineTo",
+      value: function lineTo(x, y) {
+        appendDrawLineTo(this.ops, x, y);
+        return this;
+      }
+    }, {
+      key: "close",
+      value: function close() {
+        appendDrawClose(this.ops);
+        return this;
+      }
+    }, {
+      key: "quadraticBezierTo",
+      value: function quadraticBezierTo(cx, cy, x, y) {
+        appendDrawQuadraticTo(this.ops, cx, cy, x, y);
+        return this;
+      }
+    }, {
+      key: "cubicTo",
+      value: function cubicTo(c1x, c1y, c2x, c2y, x, y) {
+        appendDrawCubicTo(this.ops, c1x, c1y, c2x, c2y, x, y);
+        return this;
+      }
+    }, {
+      key: "arcTo",
+      value: function arcTo(x1, y1, x2, y2, radius) {
+        appendDrawArcTo(this.ops, x1, y1, x2, y2, radius);
+        return this;
+      }
+    }, {
+      key: "addRect",
+      value: function addRect(x, y, width, height) {
+        appendDrawRect(this.ops, x, y, width, height);
+        return this;
+      }
+    }, {
+      key: "addRRect",
+      value: function addRRect(x, y, width, height, rx, ry) {
+        appendDrawRrect(this.ops, x, y, width, height, rx, ry);
+        return this;
+      }
+    }, {
+      key: "addOval",
+      value: function addOval(x, y, width, height) {
+        appendDrawOval(this.ops, x, y, width, height);
+        return this;
+      }
+    }, {
+      key: "addCircle",
+      value: function addCircle(cx, cy, radius) {
+        appendDrawCircle(this.ops, cx, cy, radius);
+        return this;
+      }
+      /** 記録済み op 列（再生用の読み取り専用ビュー。Path は不変）。 */
+    }, {
+      key: "record",
+      value: function record() {
+        return this.ops;
+      }
+    }]);
+  }();
+  /**
+  * draws バッファへの記録面。Flutter/Skia 流ステートレス設計: canvas 自体の
+  * 状態は save/restore の変換・クリップスタックのみ。座標操作・クリップ矩形の
+  * メソッドは draw_ops の構造 command から生成される。painter へは Renderer
+  * Protocol の `DrawCanvas`（同じ op 表から生成・#730）として渡り、implements で
+  * 型サーフェスとの drift をコンパイル時に検出する。
+  */
+  var Canvas = /*#__PURE__*/function () {
+    function Canvas() {
+      _classCallCheck(this, Canvas);
+      _defineProperty(this, "buf", []);
+    }
+    /** `path` を `paint` で塗る / 輪郭描画する（paint.style で分岐）。 */
+    return _createClass(Canvas, [{
+      key: "drawPath",
+      value: function drawPath(path, paint) {
+        var _iterator14 = _createForOfIteratorHelper(path.record()),
+          _step14;
+        try {
+          for (_iterator14.s(); !(_step14 = _iterator14.n()).done;) {
+            var v = _step14.value;
+            this.buf.push(v);
+          }
+        } catch (err) {
+          _iterator14.e(err);
+        } finally {
+          _iterator14.f();
+        }
+        if (paint.style === 1) appendDrawStroke(this.buf, paint.toDrawPaint());else appendDrawFill(this.buf, paint.toDrawPaint());
+        return this;
+      }
+      /** 以降の描画を `path` で切り抜く（対応する restore で解除）。 */
+    }, {
+      key: "clipPath",
+      value: function clipPath(path) {
+        var _iterator15 = _createForOfIteratorHelper(path.record()),
+          _step15;
+        try {
+          for (_iterator15.s(); !(_step15 = _iterator15.n()).done;) {
+            var v = _step15.value;
+            this.buf.push(v);
+          }
+        } catch (err) {
+          _iterator15.e(err);
+        } finally {
+          _iterator15.f();
+        }
+        appendDrawClipPath(this.buf);
+        return this;
+      }
+    }, {
+      key: "save",
+      value: function save() {
+        appendDrawSave(this.buf);
+        return this;
+      }
+    }, {
+      key: "restore",
+      value: function restore() {
+        appendDrawRestore(this.buf);
+        return this;
+      }
+    }, {
+      key: "translate",
+      value: function translate(dx, dy) {
+        appendDrawTranslate(this.buf, dx, dy);
+        return this;
+      }
+    }, {
+      key: "rotate",
+      value: function rotate(radians) {
+        appendDrawRotate(this.buf, radians);
+        return this;
+      }
+    }, {
+      key: "scale",
+      value: function scale(sx, sy) {
+        appendDrawScale(this.buf, sx, sy);
+        return this;
+      }
+    }, {
+      key: "transform",
+      value: function transform(a, b, c, d, e, f) {
+        appendDrawTransform(this.buf, a, b, c, d, e, f);
+        return this;
+      }
+    }, {
+      key: "clipRect",
+      value: function clipRect(x, y, width, height) {
+        appendDrawClipRect(this.buf, x, y, width, height);
+        return this;
+      }
+      /** 記録した display list（draws チャネルへ載せる f32 列）。 */
+    }, {
+      key: "finish",
+      value: function finish() {
+        return this.buf;
+      }
+    }]);
+  }();
+  function assertRgba(color) {
+    if (!Array.isArray(color) || color.length !== 4) throw new Error("Paint.color: expected [r, g, b, a], got ".concat(JSON.stringify(color)));
+    var _iterator16 = _createForOfIteratorHelper(color),
+      _step16;
+    try {
+      for (_iterator16.s(); !(_step16 = _iterator16.n()).done;) {
+        var c = _step16.value;
+        assertFinite(c, "color", 0, 1);
+      }
+    } catch (err) {
+      _iterator16.e(err);
+    } finally {
+      _iterator16.f();
+    }
+  }
+  function assertFinite(value, name, min, max) {
+    if (typeof value !== "number" || !Number.isFinite(value)) throw new Error("Paint.".concat(name, ": expected a finite number, got ").concat(value));
+    if (min !== void 0 && value < min) throw new Error("Paint.".concat(name, ": ").concat(value, " < ").concat(min));
+    if (max !== void 0 && value > max) throw new Error("Paint.".concat(name, ": ").concat(value, " > ").concat(max));
+  }
+  function assertEnum(e, value, name) {
+    if (!(value in e) || typeof e[value] !== "string") throw new Error("Paint.".concat(name, ": unknown value ").concat(value));
+  }
   //#endregion
   //#region ../../proto/generated/delivery.ts
   /** Hayate の `register_listener` で登録可能な EventKind（adapterTier: forward）。 */
@@ -2705,10 +3061,13 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
     "input": EVENT_KIND.TEXT_INPUT,
     "hover-enter": EVENT_KIND.HOVER_ENTER,
     "hover-leave": EVENT_KIND.HOVER_LEAVE,
-    "keydown": EVENT_KIND.KEY_DOWN
+    "keydown": EVENT_KIND.KEY_DOWN,
+    "pointerdown": EVENT_KIND.POINTER_DOWN,
+    "pointermove": EVENT_KIND.POINTER_DRAG,
+    "pointerup": EVENT_KIND.POINTER_UP
   };
   EVENT_KIND.COMPOSITION_START, EVENT_KIND.COMPOSITION_UPDATE, EVENT_KIND.COMPOSITION_END, EVENT_KIND.SCROLL;
-  var IGNORED_KINDS = new Set(["composition_start", "composition_update", "composition_end", "scroll", "resize", "active_end", "active_start", "pointer_move", "fetch_font", "selection_change"]);
+  var IGNORED_KINDS = new Set(["composition_start", "composition_update", "composition_end", "scroll", "resize", "active_end", "active_start", "pointer_move", "fetch_font", "selection_change", "layout_resize"]);
   /** Hayate の `poll_events()` の配信行 `[listener_id, kind, ...fields]` を1件デコードする。 */
   function parseDelivery(row) {
     return {
@@ -2757,6 +3116,30 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
           target: asElementId(ev.targetId),
           key: ev.key
         };
+      case "pointer_down":
+        return {
+          kind: "pointerdown",
+          target: asElementId(ev.targetId),
+          x: ev.x,
+          y: ev.y,
+          pointerKind: ev.pointerKind
+        };
+      case "pointer_drag":
+        return {
+          kind: "pointermove",
+          target: asElementId(ev.targetId),
+          x: ev.x,
+          y: ev.y,
+          pointerKind: ev.pointerKind
+        };
+      case "pointer_up":
+        return {
+          kind: "pointerup",
+          target: asElementId(ev.targetId),
+          x: ev.x,
+          y: ev.y,
+          pointerKind: ev.pointerKind
+        };
       default:
         return null;
     }
@@ -2779,11 +3162,12 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
     var ops = [];
     var styles = [];
     var texts = [];
-    var _iterator14 = _createForOfIteratorHelper(mutations),
-      _step14;
+    var draws = [];
+    var _iterator17 = _createForOfIteratorHelper(mutations),
+      _step17;
     try {
-      for (_iterator14.s(); !(_step14 = _iterator14.n()).done;) {
-        var mutation = _step14.value;
+      for (_iterator17.s(); !(_step17 = _iterator17.n()).done;) {
+        var mutation = _step17.value;
         switch (mutation.kind) {
           case "createElement":
             appendCreate(ops, mutation.id, ELEMENT_KIND[mutation.elementKind]);
@@ -2806,18 +3190,25 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
               encodeStylePatch(mutation.style, styles);
               var len = styles.length - offset;
               if (len > 0) appendSetStyle(ops, mutation.id, offset, len);
-              var _iterator15 = _createForOfIteratorHelper(unsetKindsOf(mutation.style)),
-                _step15;
+              var _iterator18 = _createForOfIteratorHelper(unsetKindsOf(mutation.style)),
+                _step18;
               try {
-                for (_iterator15.s(); !(_step15 = _iterator15.n()).done;) {
-                  var unsetKind = _step15.value;
+                for (_iterator18.s(); !(_step18 = _iterator18.n()).done;) {
+                  var unsetKind = _step18.value;
                   appendUnsetStyle(ops, mutation.id, unsetKind);
                 }
               } catch (err) {
-                _iterator15.e(err);
+                _iterator18.e(err);
               } finally {
-                _iterator15.f();
+                _iterator18.f();
               }
+              break;
+            }
+          case "setDraw":
+            {
+              var _offset = draws.length;
+              draws.push.apply(draws, _toConsumableArray(mutation.list));
+              appendSetDraw(ops, mutation.id, _offset, mutation.list.length);
               break;
             }
           case "setText":
@@ -2852,187 +3243,43 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
             }
           case "setPseudoStyle":
             {
-              var _offset = styles.length;
+              var _offset2 = styles.length;
               encodeStylePatch(mutation.style, styles);
-              var _len3 = styles.length - _offset;
-              if (_len3 > 0) appendSetPseudoStyle(ops, mutation.id, PSEUDO_STATE_CODE[mutation.pseudo], _offset, _len3);
+              var _len2 = styles.length - _offset2;
+              if (_len2 > 0) appendSetPseudoStyle(ops, mutation.id, PSEUDO_STATE_CODE[mutation.pseudo], _offset2, _len2);
               break;
             }
           case "setStyleVariant":
-            var _iterator16 = _createForOfIteratorHelper(splitStyleVariant(mutation.style)),
-              _step16;
+            var _iterator19 = _createForOfIteratorHelper(splitStyleVariant(mutation.style)),
+              _step19;
             try {
-              for (_iterator16.s(); !(_step16 = _iterator16.n()).done;) {
-                var single = _step16.value;
-                var _offset2 = styles.length;
+              for (_iterator19.s(); !(_step19 = _iterator19.n()).done;) {
+                var single = _step19.value;
+                var _offset3 = styles.length;
                 encodeStylePatch(single, styles);
-                var _len4 = styles.length - _offset2;
-                if (_len4 > 0) appendSetStyleVariant(ops, mutation.id, viewportAxis(mutation.condition.minWidth), viewportAxis(mutation.condition.maxWidth), viewportAxis(mutation.condition.minHeight), viewportAxis(mutation.condition.maxHeight), _offset2, _len4);
+                var _len3 = styles.length - _offset3;
+                if (_len3 > 0) appendSetStyleVariant(ops, mutation.id, viewportAxis(mutation.condition.minWidth), viewportAxis(mutation.condition.maxWidth), viewportAxis(mutation.condition.minHeight), viewportAxis(mutation.condition.maxHeight), _offset3, _len3);
               }
             } catch (err) {
-              _iterator16.e(err);
+              _iterator19.e(err);
             } finally {
-              _iterator16.f();
+              _iterator19.f();
             }
             break;
         }
       }
     } catch (err) {
-      _iterator14.e(err);
+      _iterator17.e(err);
     } finally {
-      _iterator14.f();
+      _iterator17.f();
     }
     return {
       ops: new Float64Array(ops),
       styles: new Float32Array(styles),
-      texts: texts
+      texts: texts,
+      draws: new Float32Array(draws)
     };
   }
-  var HayateMutationPacket = /*#__PURE__*/function () {
-    function HayateMutationPacket() {
-      _classCallCheck(this, HayateMutationPacket);
-      _defineProperty(this, "mutations", []);
-    }
-    return _createClass(HayateMutationPacket, [{
-      key: "enqueueCreateElement",
-      value: function enqueueCreateElement(id, kind) {
-        this.mutations.push({
-          kind: "createElement",
-          id: id,
-          elementKind: kind
-        });
-      }
-    }, {
-      key: "enqueueSetRoot",
-      value: function enqueueSetRoot(id) {
-        this.mutations.push({
-          kind: "setRoot",
-          id: id
-        });
-      }
-    }, {
-      key: "enqueueAppendChild",
-      value: function enqueueAppendChild(parent, child) {
-        this.mutations.push({
-          kind: "appendChild",
-          parent: parent,
-          child: child
-        });
-      }
-    }, {
-      key: "enqueueInsertBefore",
-      value: function enqueueInsertBefore(parent, child, before) {
-        this.mutations.push({
-          kind: "insertBefore",
-          parent: parent,
-          child: child,
-          before: before
-        });
-      }
-    }, {
-      key: "enqueueRemove",
-      value: function enqueueRemove(id) {
-        this.mutations.push({
-          kind: "remove",
-          id: id
-        });
-      }
-    }, {
-      key: "enqueueSetStyle",
-      value: function enqueueSetStyle(id, style) {
-        this.mutations.push({
-          kind: "setStyle",
-          id: id,
-          style: _objectSpread({}, style)
-        });
-      }
-    }, {
-      key: "enqueueSetText",
-      value: function enqueueSetText(id, text) {
-        this.mutations.push({
-          kind: "setText",
-          id: id,
-          text: text
-        });
-      }
-    }, {
-      key: "enqueueSetTextContent",
-      value: function enqueueSetTextContent(id, text) {
-        this.mutations.push({
-          kind: "setTextContent",
-          id: id,
-          text: text
-        });
-      }
-    }, {
-      key: "enqueueSetDisabled",
-      value: function enqueueSetDisabled(id, disabled) {
-        this.mutations.push({
-          kind: "setDisabled",
-          id: id,
-          disabled: disabled
-        });
-      }
-    }, {
-      key: "enqueueSetUserSelect",
-      value: function enqueueSetUserSelect(id, value) {
-        this.mutations.push({
-          kind: "setUserSelect",
-          id: id,
-          value: value
-        });
-      }
-    }, {
-      key: "enqueueSetMultiline",
-      value: function enqueueSetMultiline(id, multiline) {
-        this.mutations.push({
-          kind: "setMultiline",
-          id: id,
-          multiline: multiline
-        });
-      }
-    }, {
-      key: "enqueueSetSrc",
-      value: function enqueueSetSrc(id, url) {
-        this.mutations.push({
-          kind: "setSrc",
-          id: id,
-          url: url
-        });
-      }
-    }, {
-      key: "enqueueSetPseudoStyle",
-      value: function enqueueSetPseudoStyle(id, pseudo, style) {
-        this.mutations.push({
-          kind: "setPseudoStyle",
-          id: id,
-          pseudo: pseudo,
-          style: _objectSpread({}, style)
-        });
-      }
-    }, {
-      key: "enqueueSetStyleVariant",
-      value: function enqueueSetStyleVariant(id, condition, style) {
-        this.mutations.push({
-          kind: "setStyleVariant",
-          id: id,
-          condition: condition,
-          style: _objectSpread({}, style)
-        });
-      }
-    }, {
-      key: "flush",
-      value: function flush(raw) {
-        if (this.mutations.length === 0) return;
-        var _encodeMutations = encodeMutations(this.mutations),
-          ops = _encodeMutations.ops,
-          styles = _encodeMutations.styles,
-          texts = _encodeMutations.texts;
-        if (ops.length > 0) raw.apply_mutations(ops, styles, texts);
-        this.mutations.length = 0;
-      }
-    }]);
-  }();
   var HayateRenderer = /*#__PURE__*/function () {
     function HayateRenderer(options) {
       var _this2 = this;
@@ -3040,8 +3287,18 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
       _defineProperty(this, "raw", void 0);
       _defineProperty(this, /** Hayate が発行したリスナ id → ホストのハンドラ（ADR-0053）。 */
       "listeners", /* @__PURE__ */new Map());
+      _defineProperty(this, /** draw property を持つ要素の状態（#730）。 */
+      "drawStates", /* @__PURE__ */new Map());
+      _defineProperty(this, /** 内部購読した layout size イベント（#725）のリスナ id → 要素 id。 */
+      "drawListeners", /* @__PURE__ */new Map());
       _defineProperty(this, "nextId", 1);
-      _defineProperty(this, "packet", new HayateMutationPacket());
+      _defineProperty(this,
+      /**
+      * フレーム transaction に属する順序付き semantic mutation queue。enqueue 時点で
+      * caller 可変値を snapshot し、flush 成功時だけ clear する。wire 形式の生成は
+      * pure な `encodeMutations` に委譲する（ADR-0052）。
+      */
+      "mutations", []);
       _defineProperty(this, "requestFrame", void 0);
       _defineProperty(this, "cancelFrame", void 0);
       _defineProperty(this, "frameHandle", null);
@@ -3049,9 +3306,23 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
       "started", false);
       _defineProperty(this, "frame", function (timestampMs) {
         _this2.frameHandle = null;
-        _this2.flush();
-        _this2.raw.render(timestampMs);
-        _this2.dispatchDeliveries(_this2.raw.poll_events());
+        var _this2$raw$prepare_fr = _this2.raw.prepare_frame(timestampMs),
+          _this2$raw$prepare_fr2 = _toArray(_this2$raw$prepare_fr),
+          rawFrameId = _this2$raw$prepare_fr2[0],
+          deliveries = _arrayLikeToArray(_this2$raw$prepare_fr2).slice(1);
+        if (typeof rawFrameId !== "number" || !Number.isSafeInteger(rawFrameId)) {
+          _this2.mutations.length = 0;
+          throw new TypeError("Hayate prepare_frame returned an invalid frame id");
+        }
+        try {
+          _this2.dispatchDeliveries(deliveries);
+          _this2.flush();
+        } catch (error) {
+          _this2.mutations.length = 0;
+          _this2.raw.abort_frame(rawFrameId);
+          throw error;
+        }
+        _this2.raw.commit_frame(rawFrameId);
         if (_this2.raw.has_pending_visual_work()) _this2.scheduleFrame();
       });
       this.raw = options.raw;
@@ -3095,56 +3366,140 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
       key: "createElement",
       value: function createElement(kind) {
         var id = asElementId(this.nextId++);
-        this.packet.enqueueCreateElement(id, kind);
+        this.mutations.push({
+          kind: "createElement",
+          id: id,
+          elementKind: kind
+        });
         this.scheduleFrame();
         return id;
       }
     }, {
       key: "setRoot",
       value: function setRoot(id) {
-        this.packet.enqueueSetRoot(id);
+        this.mutations.push({
+          kind: "setRoot",
+          id: id
+        });
         this.scheduleFrame();
       }
     }, {
       key: "appendChild",
       value: function appendChild(parent, child) {
-        this.packet.enqueueAppendChild(parent, child);
+        this.mutations.push({
+          kind: "appendChild",
+          parent: parent,
+          child: child
+        });
         this.scheduleFrame();
       }
     }, {
       key: "insertBefore",
       value: function insertBefore(parent, child, before) {
-        this.packet.enqueueInsertBefore(parent, child, before);
+        this.mutations.push({
+          kind: "insertBefore",
+          parent: parent,
+          child: child,
+          before: before
+        });
         this.scheduleFrame();
       }
     }, {
       key: "removeChild",
       value: function removeChild(_parent, child) {
-        this.packet.enqueueRemove(child);
+        this.mutations.push({
+          kind: "remove",
+          id: child
+        });
         this.scheduleFrame();
       }
     }, {
       key: "setStyle",
       value: function setStyle(id, style) {
-        this.packet.enqueueSetStyle(id, style);
+        this.mutations.push({
+          kind: "setStyle",
+          id: id,
+          style: _objectSpread({}, style)
+        });
         this.scheduleFrame();
       }
     }, {
       key: "setPseudoStyle",
       value: function setPseudoStyle(id, pseudo, style) {
-        this.packet.enqueueSetPseudoStyle(id, pseudo, style);
+        this.mutations.push({
+          kind: "setPseudoStyle",
+          id: id,
+          pseudo: pseudo,
+          style: _objectSpread({}, style)
+        });
         this.scheduleFrame();
       }
     }, {
       key: "setStyleVariant",
       value: function setStyleVariant(id, condition, style) {
-        this.packet.enqueueSetStyleVariant(id, condition, style);
+        this.mutations.push({
+          kind: "setStyleVariant",
+          id: id,
+          condition: condition,
+          style: _objectSpread({}, style)
+        });
         this.scheduleFrame();
       }
     }, {
       key: "setText",
       value: function setText(id, text) {
-        this.packet.enqueueSetText(id, text);
+        this.mutations.push({
+          kind: "setText",
+          id: id,
+          text: text
+        });
+        this.scheduleFrame();
+      }
+      /**
+      * `view` の draw property（painter・#730 / ADR-0141）。wire 経路はレイアウト確定
+      * サイズを同期では知れないため、per-element layout size イベント（#725）を内部購読し、
+      * 受信時（初回確定・サイズ変化）に painter を実サイズで呼んで display list を記録、
+      * 次フレームの mutation で `draws` チャネルに載せる（1 フレーム遅延は仕様・ADR-0143）。
+      */
+    }, {
+      key: "setDraw",
+      value: function setDraw(id, value) {
+        var state = this.drawStates.get(id);
+        if (value === null) {
+          if (state === void 0) return;
+          this.drawStates.delete(id);
+          this.mutations.push({
+            kind: "setDraw",
+            id: id,
+            list: []
+          });
+          this.scheduleFrame();
+          return;
+        }
+        if (state === void 0) {
+          var listenerId = this.raw.register_listener(id, EVENT_KIND.LAYOUT_RESIZE);
+          this.drawListeners.set(listenerId, id);
+          this.drawStates.set(id, {
+            value: value,
+            size: null
+          });
+          return;
+        }
+        var repaint = drawNeedsRepaint(value, state.value);
+        state.value = value;
+        if (repaint && state.size !== null) this.recordDraw(id, state);
+      }
+      /** painter を現サイズで走らせ、記録した display list を次フレームの mutation に積む。 */
+    }, {
+      key: "recordDraw",
+      value: function recordDraw(id, state) {
+        var canvas = new Canvas();
+        invokePainter(state.value, canvas, state.size);
+        this.mutations.push({
+          kind: "setDraw",
+          id: id,
+          list: _toConsumableArray(canvas.finish())
+        });
         this.scheduleFrame();
       }
     }, {
@@ -3155,27 +3510,51 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
         dispatchElementPropertyOp(coerceElementProperty(name, value), {
           "text-content": function textContent(_ref2) {
             var text = _ref2.text;
-            return _this4.packet.enqueueSetTextContent(id, text);
+            return _this4.mutations.push({
+              kind: "setTextContent",
+              id: id,
+              text: text
+            });
           },
           placeholder: function placeholder(_ref3) {
             var text = _ref3.text;
-            return _this4.packet.enqueueSetText(id, text);
+            return _this4.mutations.push({
+              kind: "setText",
+              id: id,
+              text: text
+            });
           },
           src: function src(_ref4) {
             var text = _ref4.text;
-            return _this4.packet.enqueueSetSrc(id, text);
+            return _this4.mutations.push({
+              kind: "setSrc",
+              id: id,
+              url: text
+            });
           },
           disabled: function disabled(_ref5) {
             var _disabled = _ref5.disabled;
-            return _this4.packet.enqueueSetDisabled(id, _disabled);
+            return _this4.mutations.push({
+              kind: "setDisabled",
+              id: id,
+              disabled: _disabled
+            });
           },
           "user-select": function userSelect(_ref6) {
             var value2 = _ref6.value;
-            return _this4.packet.enqueueSetUserSelect(id, value2);
+            return _this4.mutations.push({
+              kind: "setUserSelect",
+              id: id,
+              value: value2
+            });
           },
           multiline: function multiline(_ref7) {
             var _multiline = _ref7.multiline;
-            return _this4.packet.enqueueSetMultiline(id, _multiline);
+            return _this4.mutations.push({
+              kind: "setMultiline",
+              id: id,
+              multiline: _multiline
+            });
           }
         });
         this.scheduleFrame();
@@ -3199,54 +3578,252 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
     }, {
       key: "flush",
       value: function flush() {
-        this.packet.flush(this.raw);
+        if (this.mutations.length === 0) return;
+        var _encodeMutations = encodeMutations(this.mutations),
+          ops = _encodeMutations.ops,
+          styles = _encodeMutations.styles,
+          texts = _encodeMutations.texts,
+          draws = _encodeMutations.draws;
+        if (ops.length > 0) this.raw.apply_mutations(ops, styles, texts, draws);
+        this.mutations.length = 0;
       }
     }, {
       key: "dispatchDeliveries",
       value: function dispatchDeliveries(rows) {
-        var _iterator17 = _createForOfIteratorHelper(rows),
-          _step17;
+        var _iterator20 = _createForOfIteratorHelper(rows),
+          _step20;
         try {
-          for (_iterator17.s(); !(_step17 = _iterator17.n()).done;) {
-            var row = _step17.value;
+          for (_iterator20.s(); !(_step20 = _iterator20.n()).done;) {
+            var row = _step20.value;
             var _parseDelivery = parseDelivery(row),
               listenerId = _parseDelivery.listenerId,
               event = _parseDelivery.event;
+            if (event.kind === "layout_resize") {
+              this.onLayoutResize(listenerId, event.width, event.height);
+              continue;
+            }
             var entry = this.listeners.get(listenerId);
             if (entry === void 0) continue;
             var interaction = toInteractionEvent(event);
             if (interaction !== null) entry.handler(interaction);
           }
         } catch (err) {
-          _iterator17.e(err);
+          _iterator20.e(err);
         } finally {
-          _iterator17.f();
+          _iterator20.f();
         }
+      }
+      /** レイアウト確定・サイズ変化の通知で painter を実サイズで走らせる（#730）。 */
+    }, {
+      key: "onLayoutResize",
+      value: function onLayoutResize(listenerId, width, height) {
+        var id = this.drawListeners.get(listenerId);
+        if (id === void 0) return;
+        var state = this.drawStates.get(id);
+        if (state === void 0) return;
+        if (state.size !== null && state.size.width === width && state.size.height === height) return;
+        state.size = {
+          width: width,
+          height: height
+        };
+        this.recordDraw(id, state);
       }
     }]);
   }();
   //#endregion
-  //#region ../../packages/app/dist/index.js
-  function isPromise(value) {
-    return typeof value.then === "function";
-  }
-  function runTsubameApp(host, mount) {
-    var disposed = false;
-    var mountDispose;
-    var onRenderer = function onRenderer(renderer) {
-      if (disposed) return;
-      mountDispose = mount(renderer);
+  //#region ../../../Torimi/bundle/dist/index.js
+  var g = globalThis;
+  var nativeLog = g["__hayateLog"];
+  if (g["console"] === void 0) {
+    var make = function make(level) {
+      return function () {
+        for (var _len4 = arguments.length, args = new Array(_len4), _key2 = 0; _key2 < _len4; _key2++) {
+          args[_key2] = arguments[_key2];
+        }
+        nativeLog === null || nativeLog === void 0 || nativeLog(level, args.map(function (a) {
+          return String(a);
+        }).join(" "));
+      };
     };
-    var created = host.createRenderer();
-    if (isPromise(created)) created.then(onRenderer).catch(function (error) {
-      console.error(error);
-    });else onRenderer(created);
-    return function () {
-      var _host$stop;
-      if (disposed) return;
-      disposed = true;
-      if (typeof mountDispose === "function") mountDispose();
-      (_host$stop = host.stop) === null || _host$stop === void 0 || _host$stop.call(host);
+    g["console"] = {
+      log: make("log"),
+      info: make("info"),
+      warn: make("warn"),
+      error: make("error"),
+      debug: make("debug")
+    };
+  }
+  if (typeof g["queueMicrotask"] !== "function") g["queueMicrotask"] = function (cb) {
+    Promise.resolve().then(cb);
+  };
+  if (typeof g["setTimeout"] !== "function") {
+    var nextTimerHandle = 1;
+    var cancelled = /* @__PURE__ */new Set();
+    g["setTimeout"] = function (cb, _delayMs) {
+      var handle = nextTimerHandle++;
+      Promise.resolve().then(function () {
+        if (cancelled.delete(handle)) return;
+        cb();
+      });
+      return handle;
+    };
+    g["clearTimeout"] = function (handle) {
+      cancelled.add(handle);
+    };
+  }
+  if (typeof g["requestAnimationFrame"] !== "function") g["requestAnimationFrame"] = function (_cb) {
+    return 0;
+  };
+  if (typeof g["cancelAnimationFrame"] !== "function") g["cancelAnimationFrame"] = function (_handle) {};
+  if (typeof g["fetch"] !== "function") g["fetch"] = function () {
+    return Promise.reject(/* @__PURE__ */new Error("fetch is unavailable on the native host (ADR-0112)"));
+  };
+  function createMemoryStorage() {
+    var map = /* @__PURE__ */new Map();
+    return {
+      get length() {
+        return map.size;
+      },
+      clear: function clear() {
+        return map.clear();
+      },
+      getItem: function getItem(key) {
+        var _map$get;
+        return (_map$get = map.get(key)) !== null && _map$get !== void 0 ? _map$get : null;
+      },
+      key: function key(index) {
+        var _index;
+        return (_index = _toConsumableArray(map.keys())[index]) !== null && _index !== void 0 ? _index : null;
+      },
+      removeItem: function removeItem(key) {
+        map.delete(key);
+      },
+      setItem: function setItem(key, value) {
+        map.set(key, String(value));
+      }
+    };
+  }
+  if (typeof g["URLSearchParams"] !== "function") {
+    var MinimalURLSearchParams = /*#__PURE__*/function () {
+      function MinimalURLSearchParams(init) {
+        _classCallCheck(this, MinimalURLSearchParams);
+        _defineProperty(this, "map", /* @__PURE__ */new Map());
+        if (typeof init === "string") {
+          var _iterator21 = _createForOfIteratorHelper(init.replace(/^\?/, "").split("&")),
+            _step21;
+          try {
+            for (_iterator21.s(); !(_step21 = _iterator21.n()).done;) {
+              var pair = _step21.value;
+              if (pair === "") continue;
+              var eq = pair.indexOf("=");
+              var k = eq < 0 ? pair : pair.slice(0, eq);
+              var v = eq < 0 ? "" : pair.slice(eq + 1);
+              try {
+                this.map.set(decodeURIComponent(k), decodeURIComponent(v));
+              } catch (_unused) {
+                this.map.set(k, v);
+              }
+            }
+          } catch (err) {
+            _iterator21.e(err);
+          } finally {
+            _iterator21.f();
+          }
+        }
+      }
+      return _createClass(MinimalURLSearchParams, [{
+        key: "get",
+        value: function get(key) {
+          return this.map.has(key) ? this.map.get(key) : null;
+        }
+      }, {
+        key: "has",
+        value: function has(key) {
+          return this.map.has(key);
+        }
+      }, {
+        key: "getAll",
+        value: function getAll(key) {
+          return this.map.has(key) ? [this.map.get(key)] : [];
+        }
+      }]);
+    }();
+    g["URLSearchParams"] = MinimalURLSearchParams;
+  }
+  if (g["window"] === void 0) g["window"] = {
+    addEventListener: function addEventListener(_type, _handler) {},
+    removeEventListener: function removeEventListener(_type, _handler) {},
+    innerWidth: 0,
+    innerHeight: 0,
+    location: {
+      search: "",
+      href: "",
+      pathname: "/"
+    },
+    localStorage: createMemoryStorage()
+  };
+  if (g["document"] === void 0) g["document"] = {
+    documentElement: {
+      style: {
+        setProperty: function setProperty(_name, _value) {},
+        getPropertyValue: function getPropertyValue(_name) {
+          return "";
+        },
+        removeProperty: function removeProperty(_name) {
+          return "";
+        }
+      }
+    },
+    body: {
+      appendChild: function appendChild(node) {
+        return node;
+      },
+      removeChild: function removeChild(node) {
+        return node;
+      }
+    },
+    getElementById: function getElementById(_id) {
+      return null;
+    },
+    addEventListener: function addEventListener(_type, _handler) {},
+    removeEventListener: function removeEventListener(_type, _handler) {},
+    baseURI: ""
+  };
+  var TORIMI_MOUNT_GLOBAL = "__torimiMount";
+  function mountWithBootstrap(bootstrap, mount) {
+    var renderer;
+    return runTsubameApp({
+      createRenderer: function createRenderer() {
+        renderer = new HayateRenderer({
+          raw: bootstrap.raw,
+          requestFrame: bootstrap.requestFrame,
+          cancelFrame: bootstrap.cancelFrame
+        });
+        renderer.start();
+        return renderer;
+      },
+      stop: function stop() {
+        var _renderer;
+        return (_renderer = renderer) === null || _renderer === void 0 ? void 0 : _renderer.stop();
+      }
+    }, mount);
+  }
+  function registerTorimiApp(mount) {
+    var g2 = globalThis;
+    g2[TORIMI_PROTOCOL_VERSION_GLOBAL] = 2;
+    var injectedRaw = g2.__hayateHost;
+    if (injectedRaw !== void 0) {
+      var nativeHost = createHayateNativeHost(injectedRaw);
+      g2.__tsubame = {
+        pumpFrame: function pumpFrame(timestampMs) {
+          return nativeHost.pumpFrame(timestampMs);
+        },
+        stop: mountWithBootstrap(nativeHost, mount)
+      };
+      return;
+    }
+    g2[TORIMI_MOUNT_GLOBAL] = function (webHost) {
+      mountWithBootstrap(webHost, mount);
     };
   }
   //#endregion
@@ -6031,6 +6608,313 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
     }();
   }
   //#endregion
+  //#region src/ui/styles.ts
+  /**
+  * 共通イージング（ADR-0067 / Transition）。全インタラクティブ要素に同じ
+  * 補間を載せ、hover / active / focus の状態切替を一瞬ではなく滑らかにする。
+  * 補間対象は連続値（color / border / box-shadow / opacity / radius）のみ。
+  */
+  var EASE = {
+    transitionDuration: 160,
+    transitionTiming: "ease-out"
+  };
+  /** アクセント色のグロー影。主要 CTA を POP に浮かせる（ADR-0095）。 */
+  var glow = function glow(color) {
+    var strong = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : false;
+    return [{
+      offsetX: 0,
+      offsetY: strong ? 8 : 5,
+      blur: strong ? 22 : 16,
+      spread: -4,
+      color: color,
+      inset: false
+    }];
+  };
+  /** 優先度→色。danger(高) / accent2(中) / blue(低) に対応する。 */
+  function priorityTone(p, prio) {
+    if (prio === 3) return p.danger;
+    if (prio === 2) return p.accent2;
+    return p.blue;
+  }
+  /** はみ出したタイトルの末尾表現。clip（ばっさり）ではなく ellipsis（…）。 */
+  var TITLE_TEXT_OVERFLOW = "ellipsis";
+  /** クランプを成立させるはみ出し制御。visible だと溢れて行を押し広げる。 */
+  var TITLE_OVERFLOW = "hidden";
+  /** タイトルボタンの基本スタイル（はみ出し方針込み）。 */
+  function titleStyle(p, done) {
+    return _objectSpread(_objectSpread({
+      display: "flex",
+      alignItems: "center",
+      backgroundColor: "transparent",
+      defaultColor: done ? p.quiet : p.ink,
+      defaultFontSize: 15,
+      borderWidth: 0,
+      borderStyle: "solid",
+      maxLines: 1,
+      textOverflow: TITLE_TEXT_OVERFLOW,
+      overflow: TITLE_OVERFLOW
+    }, EASE), {}, {
+      ":hover": {
+        defaultColor: p.accent
+      }
+    });
+  }
+  //#endregion
+  //#region src/components/AppBar.tsx
+  /** 水平スペーサ（幅 w の不可視 view）。AppBar の左右インセット調整に使う。 */
+  var SpX = function SpX(w) {
+    return function () {
+      var _el$ = createElement("view");
+      setProp(_el$, "style", {
+        width: w,
+        height: 1
+      });
+      return _el$;
+    }();
+  };
+  function AppBar(props) {
+    var tab = function tab(active) {
+      return _objectSpread(_objectSpread({
+        height: 34,
+        paddingLeft: 16,
+        paddingRight: 16,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: active ? props.colors.accent : props.colors.panel,
+        defaultColor: active ? props.colors.black : props.colors.text,
+        borderRadius: 10,
+        borderWidth: 1,
+        borderStyle: "solid",
+        borderColor: active ? props.colors.accent : props.colors.line,
+        defaultFontSize: 13,
+        boxShadow: active ? glow("".concat(props.colors.accent, "44")) : []
+      }, EASE), {}, {
+        ":hover": {
+          backgroundColor: active ? props.colors.accent : props.colors.panel3,
+          borderColor: active ? props.colors.accent : props.colors.line
+        }
+      });
+    };
+    var swatch = function swatch(key) {
+      var selected = props.accent === key;
+      return _objectSpread(_objectSpread({
+        width: 22,
+        height: 22,
+        backgroundColor: accentColor(props.theme, key),
+        borderRadius: 999,
+        borderWidth: selected ? 3 : 1,
+        borderStyle: "solid",
+        borderColor: selected ? props.colors.ink : props.colors.line,
+        boxShadow: selected ? glow("".concat(accentColor(props.theme, key), "66")) : []
+      }, EASE), {}, {
+        ":hover": {
+          borderColor: props.colors.ink
+        }
+      });
+    };
+    return function () {
+      var _el$2 = createElement("view"),
+        _el$3 = createElement("view"),
+        _el$4 = createElement("view"),
+        _el$5 = createElement("text"),
+        _el$7 = createElement("view"),
+        _el$8 = createElement("text"),
+        _el$0 = createElement("text"),
+        _el$10 = createElement("view"),
+        _el$11 = createElement("button"),
+        _el$13 = createElement("button"),
+        _el$15 = createElement("view"),
+        _el$16 = createElement("view"),
+        _el$17 = createElement("button");
+      insertNode(_el$2, _el$3);
+      insertNode(_el$2, _el$10);
+      setProp(_el$2, "styleVariants", [{
+        condition: {
+          maxWidth: 719
+        },
+        style: {
+          flexDirection: "column",
+          flexWrap: "nowrap",
+          alignItems: "flex-start"
+        }
+      }]);
+      insertNode(_el$3, _el$4);
+      insertNode(_el$3, _el$7);
+      setProp(_el$3, "style", {
+        display: "flex",
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 12
+      });
+      insert(_el$3, function () {
+        return SpX(24);
+      }, _el$4);
+      insertNode(_el$4, _el$5);
+      insertNode(_el$5, createTextNode("TS"));
+      insertNode(_el$7, _el$8);
+      insertNode(_el$7, _el$0);
+      setProp(_el$7, "style", {
+        display: "flex",
+        flexDirection: "column",
+        gap: 2
+      });
+      insertNode(_el$8, createTextNode("Tsubame Task Studio"));
+      setProp(_el$8, "styleVariants", [{
+        condition: {
+          maxWidth: 719
+        },
+        style: {
+          fontSize: 17
+        }
+      }]);
+      insertNode(_el$0, createTextNode("POP TODO + Hayate CSS gallery"));
+      setProp(_el$0, "styleVariants", [{
+        condition: {
+          maxWidth: 719
+        },
+        style: {
+          display: "none"
+        }
+      }]);
+      insertNode(_el$10, _el$11);
+      insertNode(_el$10, _el$13);
+      insertNode(_el$10, _el$15);
+      insertNode(_el$10, _el$16);
+      insertNode(_el$10, _el$17);
+      setProp(_el$10, "style", {
+        display: "flex",
+        flexDirection: "row",
+        alignItems: "center",
+        flexWrap: "wrap",
+        gap: 10
+      });
+      insertNode(_el$11, createTextNode("Tasks"));
+      setProp(_el$11, "onClick", function () {
+        return props.setPage("tasks");
+      });
+      insertNode(_el$13, createTextNode("CSS Gallery"));
+      setProp(_el$13, "onClick", function () {
+        return props.setPage("gallery");
+      });
+      setProp(_el$16, "style", {
+        display: "flex",
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 6
+      });
+      insert(_el$16, function () {
+        return ACCENT_KEYS.map(function (key) {
+          return function () {
+            var _el$18 = createElement("button");
+            insertNode(_el$18, createTextNode(" "));
+            setProp(_el$18, "onClick", function () {
+              return props.onAccent(key);
+            });
+            effect(function (_$p) {
+              return setProp(_el$18, "style", swatch(key), _$p);
+            });
+            return _el$18;
+          }();
+        });
+      });
+      insert(_el$17, function () {
+        return props.theme === "dark" ? "☀" : "🌙";
+      });
+      insert(_el$10, function () {
+        return SpX(100);
+      }, null);
+      effect(function (_p$) {
+        var _v$ = {
+            minHeight: 64,
+            display: "flex",
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            flexWrap: "wrap",
+            gap: 12,
+            paddingTop: 8,
+            paddingBottom: 8,
+            backgroundColor: props.colors.rail,
+            borderWidth: 1,
+            borderStyle: "solid",
+            borderColor: props.colors.line
+          },
+          _v$2 = {
+            width: 38,
+            height: 38,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: props.colors.accent,
+            borderRadius: 12
+          },
+          _v$3 = {
+            fontSize: 18,
+            color: props.colors.black
+          },
+          _v$4 = {
+            fontSize: 20,
+            color: props.colors.ink
+          },
+          _v$5 = {
+            fontSize: 12,
+            color: props.colors.muted
+          },
+          _v$6 = tab(props.page === "tasks"),
+          _v$7 = tab(props.page === "gallery"),
+          _v$8 = {
+            width: 1,
+            height: 22,
+            backgroundColor: props.colors.line
+          },
+          _v$9 = _objectSpread(_objectSpread({
+            width: 34,
+            height: 34,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: props.colors.panel,
+            defaultColor: props.colors.text,
+            borderRadius: 10,
+            borderWidth: 1,
+            borderStyle: "solid",
+            borderColor: props.colors.line,
+            defaultFontSize: 15
+          }, EASE), {}, {
+            ":hover": {
+              backgroundColor: props.colors.panel3,
+              borderColor: props.colors.line
+            }
+          }),
+          _v$0 = props.onToggleTheme;
+        _v$ !== _p$.e && (_p$.e = setProp(_el$2, "style", _v$, _p$.e));
+        _v$2 !== _p$.t && (_p$.t = setProp(_el$4, "style", _v$2, _p$.t));
+        _v$3 !== _p$.a && (_p$.a = setProp(_el$5, "style", _v$3, _p$.a));
+        _v$4 !== _p$.o && (_p$.o = setProp(_el$8, "style", _v$4, _p$.o));
+        _v$5 !== _p$.i && (_p$.i = setProp(_el$0, "style", _v$5, _p$.i));
+        _v$6 !== _p$.n && (_p$.n = setProp(_el$11, "style", _v$6, _p$.n));
+        _v$7 !== _p$.s && (_p$.s = setProp(_el$13, "style", _v$7, _p$.s));
+        _v$8 !== _p$.h && (_p$.h = setProp(_el$15, "style", _v$8, _p$.h));
+        _v$9 !== _p$.r && (_p$.r = setProp(_el$17, "style", _v$9, _p$.r));
+        _v$0 !== _p$.d && (_p$.d = setProp(_el$17, "onClick", _v$0, _p$.d));
+        return _p$;
+      }, {
+        e: void 0,
+        t: void 0,
+        a: void 0,
+        o: void 0,
+        i: void 0,
+        n: void 0,
+        s: void 0,
+        h: void 0,
+        r: void 0,
+        d: void 0
+      });
+      return _el$2;
+    }();
+  }
+  //#endregion
   //#region src/todo-model.ts
   /** 表示フィルタの正本。UI のチップ順もこの順に従う。 */
   var FILTER_VALUES = ["all", "active", "done"];
@@ -6099,13 +6983,6 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
     return swap(todos, todos.findIndex(function (todo) {
       return todo.id === id;
     }));
-  }
-  /**
-  * 手動並べ替え（moveUp/moveDown）が意味を持つ並び順かを返す。
-  * name/prio は表示順が導出されるため、上/下ボタンは manual のときだけ有効。
-  */
-  function canReorder(sort) {
-    return sort === "manual";
   }
   /** 表示フィルタを適用する（all / active=未完了 / done=完了）。 */
   function filterTodos(todos, filter) {
@@ -6213,58 +7090,6 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
     if (key === "Enter") return "commit";
     if (key === "Escape") return "cancel";
     return "none";
-  }
-  //#endregion
-  //#region src/ui/styles.ts
-  /**
-  * 共通イージング（ADR-0067 / Transition）。全インタラクティブ要素に同じ
-  * 補間を載せ、hover / active / focus の状態切替を一瞬ではなく滑らかにする。
-  * 補間対象は連続値（color / border / box-shadow / opacity / radius）のみ。
-  */
-  var EASE = {
-    transitionDuration: 160,
-    transitionTiming: "ease-out"
-  };
-  /** アクセント色のグロー影。主要 CTA を POP に浮かせる（ADR-0095）。 */
-  var glow = function glow(color) {
-    var strong = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : false;
-    return [{
-      offsetX: 0,
-      offsetY: strong ? 8 : 5,
-      blur: strong ? 22 : 16,
-      spread: -4,
-      color: color,
-      inset: false
-    }];
-  };
-  /** 優先度→色。danger(高) / accent2(中) / blue(低) に対応する。 */
-  function priorityTone(p, prio) {
-    if (prio === 3) return p.danger;
-    if (prio === 2) return p.accent2;
-    return p.blue;
-  }
-  /** はみ出したタイトルの末尾表現。clip（ばっさり）ではなく ellipsis（…）。 */
-  var TITLE_TEXT_OVERFLOW = "ellipsis";
-  /** クランプを成立させるはみ出し制御。visible だと溢れて行を押し広げる。 */
-  var TITLE_OVERFLOW = "hidden";
-  /** タイトルボタンの基本スタイル（はみ出し方針込み）。 */
-  function titleStyle(p, done) {
-    return _objectSpread(_objectSpread({
-      display: "flex",
-      alignItems: "center",
-      backgroundColor: "transparent",
-      defaultColor: done ? p.quiet : p.ink,
-      defaultFontSize: 15,
-      borderWidth: 0,
-      borderStyle: "solid",
-      maxLines: 1,
-      textOverflow: TITLE_TEXT_OVERFLOW,
-      overflow: TITLE_OVERFLOW
-    }, EASE), {}, {
-      ":hover": {
-        defaultColor: p.accent
-      }
-    });
   }
   //#endregion
   //#region src/components/AddForm.tsx
@@ -6385,539 +7210,7 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
     }();
   }
   //#endregion
-  //#region src/components/AppBar.tsx
-  /** 水平スペーサ（幅 w の不可視 view）。AppBar の左右インセット調整に使う。 */
-  var SpX = function SpX(w) {
-    return function () {
-      var _el$ = createElement("view");
-      setProp(_el$, "style", {
-        width: w,
-        height: 1
-      });
-      return _el$;
-    }();
-  };
-  /** 検出済みレンダラの表示名（DOM ならそのまま、Canvas はバックエンド名）。 */
-  function rendererBadge(detected) {
-    var _detected$backend;
-    if (detected.mode === "DOM") return "DOM";
-    return (_detected$backend = detected.backend) !== null && _detected$backend !== void 0 ? _detected$backend : "Canvas";
-  }
-  function AppBar(props) {
-    var tab = function tab(active) {
-      return _objectSpread(_objectSpread({
-        height: 34,
-        paddingLeft: 16,
-        paddingRight: 16,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        backgroundColor: active ? props.colors.accent : props.colors.panel,
-        defaultColor: active ? props.colors.black : props.colors.text,
-        borderRadius: 10,
-        borderWidth: 1,
-        borderStyle: "solid",
-        borderColor: active ? props.colors.accent : props.colors.line,
-        defaultFontSize: 13,
-        boxShadow: active ? glow("".concat(props.colors.accent, "44")) : []
-      }, EASE), {}, {
-        ":hover": {
-          backgroundColor: active ? props.colors.accent : props.colors.panel3,
-          borderColor: active ? props.colors.accent : props.colors.line
-        }
-      });
-    };
-    var swatch = function swatch(key) {
-      var selected = props.accent === key;
-      return _objectSpread(_objectSpread({
-        width: 22,
-        height: 22,
-        backgroundColor: accentColor(props.theme, key),
-        borderRadius: 999,
-        borderWidth: selected ? 3 : 1,
-        borderStyle: "solid",
-        borderColor: selected ? props.colors.ink : props.colors.line,
-        boxShadow: selected ? glow("".concat(accentColor(props.theme, key), "66")) : []
-      }, EASE), {}, {
-        ":hover": {
-          borderColor: props.colors.ink
-        }
-      });
-    };
-    return function () {
-      var _el$2 = createElement("view"),
-        _el$3 = createElement("view"),
-        _el$4 = createElement("view"),
-        _el$5 = createElement("text"),
-        _el$7 = createElement("view"),
-        _el$8 = createElement("text"),
-        _el$0 = createElement("text"),
-        _el$10 = createElement("view"),
-        _el$11 = createElement("button"),
-        _el$13 = createElement("button"),
-        _el$15 = createElement("view"),
-        _el$16 = createElement("view"),
-        _el$17 = createElement("button"),
-        _el$18 = createElement("view"),
-        _el$19 = createElement("text"),
-        _el$21 = createElement("view"),
-        _el$22 = createElement("text"),
-        _el$23 = createElement("view"),
-        _el$24 = createElement("text");
-      insertNode(_el$2, _el$3);
-      insertNode(_el$2, _el$10);
-      setProp(_el$2, "styleVariants", [{
-        condition: {
-          maxWidth: 719
-        },
-        style: {
-          flexDirection: "column",
-          flexWrap: "nowrap",
-          alignItems: "flex-start"
-        }
-      }]);
-      insertNode(_el$3, _el$4);
-      insertNode(_el$3, _el$7);
-      setProp(_el$3, "style", {
-        display: "flex",
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 12
-      });
-      insert(_el$3, function () {
-        return SpX(24);
-      }, _el$4);
-      insertNode(_el$4, _el$5);
-      insertNode(_el$5, createTextNode("TS"));
-      insertNode(_el$7, _el$8);
-      insertNode(_el$7, _el$0);
-      setProp(_el$7, "style", {
-        display: "flex",
-        flexDirection: "column",
-        gap: 2
-      });
-      insertNode(_el$8, createTextNode("Tsubame Task Studio"));
-      setProp(_el$8, "styleVariants", [{
-        condition: {
-          maxWidth: 719
-        },
-        style: {
-          fontSize: 17
-        }
-      }]);
-      insertNode(_el$0, createTextNode("POP TODO + Hayate CSS gallery"));
-      setProp(_el$0, "styleVariants", [{
-        condition: {
-          maxWidth: 719
-        },
-        style: {
-          display: "none"
-        }
-      }]);
-      insertNode(_el$10, _el$11);
-      insertNode(_el$10, _el$13);
-      insertNode(_el$10, _el$15);
-      insertNode(_el$10, _el$16);
-      insertNode(_el$10, _el$17);
-      insertNode(_el$10, _el$18);
-      setProp(_el$10, "style", {
-        display: "flex",
-        flexDirection: "row",
-        alignItems: "center",
-        flexWrap: "wrap",
-        gap: 10
-      });
-      insertNode(_el$11, createTextNode("Tasks"));
-      setProp(_el$11, "onClick", function () {
-        return props.setPage("tasks");
-      });
-      insertNode(_el$13, createTextNode("CSS Gallery"));
-      setProp(_el$13, "onClick", function () {
-        return props.setPage("gallery");
-      });
-      setProp(_el$16, "style", {
-        display: "flex",
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 6
-      });
-      insert(_el$16, function () {
-        return ACCENT_KEYS.map(function (key) {
-          return function () {
-            var _el$25 = createElement("button");
-            insertNode(_el$25, createTextNode(" "));
-            setProp(_el$25, "onClick", function () {
-              return props.onAccent(key);
-            });
-            effect(function (_$p) {
-              return setProp(_el$25, "style", swatch(key), _$p);
-            });
-            return _el$25;
-          }();
-        });
-      });
-      insert(_el$17, function () {
-        return props.theme === "dark" ? "☀" : "🌙";
-      });
-      insertNode(_el$18, _el$19);
-      insertNode(_el$18, _el$21);
-      setProp(_el$18, "style", {
-        display: "flex",
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 8
-      });
-      setProp(_el$18, "styleVariants", [{
-        condition: {
-          maxWidth: 719
-        },
-        style: {
-          display: "none"
-        }
-      }]);
-      insertNode(_el$19, createTextNode("renderer"));
-      insertNode(_el$21, _el$22);
-      insertNode(_el$21, _el$23);
-      insertNode(_el$21, _el$24);
-      insert(_el$21, function () {
-        return SpX(12);
-      }, _el$22);
-      insert(_el$22, function () {
-        return rendererBadge(props.detected);
-      });
-      insert(_el$21, function () {
-        return SpX(10);
-      }, _el$23);
-      insert(_el$21, function () {
-        return SpX(10);
-      }, _el$24);
-      insert(_el$24, function () {
-        var _c$ = memo(function () {
-          return props.detected.source === "query";
-        });
-        return function () {
-          return _c$() ? props.detected.renderer : "auto";
-        };
-      }());
-      insert(_el$21, function () {
-        return SpX(12);
-      }, null);
-      insert(_el$10, function () {
-        return SpX(100);
-      }, null);
-      effect(function (_p$) {
-        var _v$ = {
-            minHeight: 64,
-            display: "flex",
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "space-between",
-            flexWrap: "wrap",
-            gap: 12,
-            paddingTop: 8,
-            paddingBottom: 8,
-            backgroundColor: props.colors.rail,
-            borderWidth: 1,
-            borderStyle: "solid",
-            borderColor: props.colors.line
-          },
-          _v$2 = {
-            width: 38,
-            height: 38,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: props.colors.accent,
-            borderRadius: 12
-          },
-          _v$3 = {
-            fontSize: 18,
-            color: props.colors.black
-          },
-          _v$4 = {
-            fontSize: 20,
-            color: props.colors.ink
-          },
-          _v$5 = {
-            fontSize: 12,
-            color: props.colors.muted
-          },
-          _v$6 = tab(props.page === "tasks"),
-          _v$7 = tab(props.page === "gallery"),
-          _v$8 = {
-            width: 1,
-            height: 22,
-            backgroundColor: props.colors.line
-          },
-          _v$9 = _objectSpread(_objectSpread({
-            width: 34,
-            height: 34,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: props.colors.panel,
-            defaultColor: props.colors.text,
-            borderRadius: 10,
-            borderWidth: 1,
-            borderStyle: "solid",
-            borderColor: props.colors.line,
-            defaultFontSize: 15
-          }, EASE), {}, {
-            ":hover": {
-              backgroundColor: props.colors.panel3,
-              borderColor: props.colors.line
-            }
-          }),
-          _v$0 = props.onToggleTheme,
-          _v$1 = {
-            color: props.colors.quiet,
-            fontSize: 11
-          },
-          _v$10 = {
-            height: 28,
-            display: "flex",
-            flexDirection: "row",
-            alignItems: "center",
-            backgroundColor: props.colors.panel,
-            borderRadius: 10,
-            borderWidth: 1,
-            borderStyle: "solid",
-            borderColor: props.colors.line
-          },
-          _v$11 = {
-            color: props.colors.accent,
-            fontSize: 13
-          },
-          _v$12 = {
-            width: 1,
-            height: 16,
-            backgroundColor: props.colors.line
-          },
-          _v$13 = {
-            color: props.colors.muted,
-            fontSize: 12
-          };
-        _v$ !== _p$.e && (_p$.e = setProp(_el$2, "style", _v$, _p$.e));
-        _v$2 !== _p$.t && (_p$.t = setProp(_el$4, "style", _v$2, _p$.t));
-        _v$3 !== _p$.a && (_p$.a = setProp(_el$5, "style", _v$3, _p$.a));
-        _v$4 !== _p$.o && (_p$.o = setProp(_el$8, "style", _v$4, _p$.o));
-        _v$5 !== _p$.i && (_p$.i = setProp(_el$0, "style", _v$5, _p$.i));
-        _v$6 !== _p$.n && (_p$.n = setProp(_el$11, "style", _v$6, _p$.n));
-        _v$7 !== _p$.s && (_p$.s = setProp(_el$13, "style", _v$7, _p$.s));
-        _v$8 !== _p$.h && (_p$.h = setProp(_el$15, "style", _v$8, _p$.h));
-        _v$9 !== _p$.r && (_p$.r = setProp(_el$17, "style", _v$9, _p$.r));
-        _v$0 !== _p$.d && (_p$.d = setProp(_el$17, "onClick", _v$0, _p$.d));
-        _v$1 !== _p$.l && (_p$.l = setProp(_el$19, "style", _v$1, _p$.l));
-        _v$10 !== _p$.u && (_p$.u = setProp(_el$21, "style", _v$10, _p$.u));
-        _v$11 !== _p$.c && (_p$.c = setProp(_el$22, "style", _v$11, _p$.c));
-        _v$12 !== _p$.w && (_p$.w = setProp(_el$23, "style", _v$12, _p$.w));
-        _v$13 !== _p$.m && (_p$.m = setProp(_el$24, "style", _v$13, _p$.m));
-        return _p$;
-      }, {
-        e: void 0,
-        t: void 0,
-        a: void 0,
-        o: void 0,
-        i: void 0,
-        n: void 0,
-        s: void 0,
-        h: void 0,
-        r: void 0,
-        d: void 0,
-        l: void 0,
-        u: void 0,
-        c: void 0,
-        w: void 0,
-        m: void 0
-      });
-      return _el$2;
-    }();
-  }
-  //#endregion
   //#region src/components/TaskCard.tsx
-  /**
-  * タスクカードを構成する小さなプレゼンテーション部品群。いずれもタスク画面専用で
-  * `Palette` のみに依存し、他画面では再利用しないため、1ファイルにまとめる。
-  */
-  function Header(props) {
-    return function () {
-      var _el$ = createElement("view"),
-        _el$2 = createElement("view"),
-        _el$3 = createElement("text"),
-        _el$5 = createElement("text");
-      insertNode(_el$, _el$2);
-      setProp(_el$, "style", {
-        display: "flex",
-        flexDirection: "column",
-        gap: 12
-      });
-      insertNode(_el$2, _el$3);
-      insertNode(_el$2, _el$5);
-      setProp(_el$2, "style", {
-        display: "flex",
-        flexDirection: "row",
-        alignItems: "center",
-        justifyContent: "space-between"
-      });
-      insertNode(_el$3, createTextNode("\u304D\u3087\u3046\u306E\u30BF\u30B9\u30AF"));
-      insert(_el$5, function () {
-        return "\u6B8B\u308A ".concat(props.remaining, " \u4EF6 / \u5168 ").concat(props.total, " \u4EF6");
-      });
-      insert(_el$, createComponent(ProgressBar, {
-        get colors() {
-          return props.colors;
-        },
-        get percent() {
-          return props.percent;
-        }
-      }), null);
-      effect(function (_p$) {
-        var _v$ = {
-            color: props.colors.ink,
-            fontSize: 24
-          },
-          _v$2 = {
-            color: props.colors.muted,
-            fontSize: 13
-          };
-        _v$ !== _p$.e && (_p$.e = setProp(_el$3, "style", _v$, _p$.e));
-        _v$2 !== _p$.t && (_p$.t = setProp(_el$5, "style", _v$2, _p$.t));
-        return _p$;
-      }, {
-        e: void 0,
-        t: void 0
-      });
-      return _el$;
-    }();
-  }
-  function ProgressBar(props) {
-    return function () {
-      var _el$6 = createElement("view"),
-        _el$7 = createElement("view");
-      insertNode(_el$6, _el$7);
-      effect(function (_p$) {
-        var _v$3 = {
-            width: "100%",
-            height: 12,
-            display: "flex",
-            flexDirection: "row",
-            alignItems: "center",
-            backgroundColor: props.colors.black,
-            borderRadius: 8,
-            borderWidth: 1,
-            borderStyle: "solid",
-            borderColor: props.colors.line
-          },
-          _v$4 = {
-            width: "".concat(props.percent, "%"),
-            height: 8,
-            marginLeft: 2,
-            backgroundColor: props.colors.success,
-            borderRadius: 6
-          };
-        _v$3 !== _p$.e && (_p$.e = setProp(_el$6, "style", _v$3, _p$.e));
-        _v$4 !== _p$.t && (_p$.t = setProp(_el$7, "style", _v$4, _p$.t));
-        return _p$;
-      }, {
-        e: void 0,
-        t: void 0
-      });
-      return _el$6;
-    }();
-  }
-  /**
-  * 読み取り専用テキストの選択ジェスチャデモ（ADR-0108、ADR-0097 を supersede /
-  * issue #266・#267・#268・#269）。
-  *
-  * CSS `user-select` と同型で、view / text は**宣言なしで既定選択可**（opt-out）。
-  * 明示 `user-select: none` を置いた subtree だけが選択から除外される。DOM Mode
-  * ではブラウザのネイティブ選択に委ね、ドラッグに加えダブルクリックで単語・
-  * トリプルクリックで段落、Shift+クリック / Shift+矢印で範囲拡張、Cmd/Ctrl+A で
-  * 全選択ができる。Cmd/Ctrl+C で選択テキストが Platform Adapter 経由でクリップ
-  * ボードへコピーされる。
-  *
-  * 末尾のキャプションは `user-select: none` を持つ view に包まれており、本文を
-  * 全選択しても選択対象に入らない（opt-out の確認）。
-  */
-  function SelectableNote(props) {
-    var para = {
-      color: props.colors.muted,
-      fontSize: 13
-    };
-    return function () {
-      var _el$8 = createElement("view"),
-        _el$9 = createElement("text"),
-        _el$1 = createElement("text"),
-        _el$11 = createElement("view"),
-        _el$12 = createElement("text");
-      insertNode(_el$8, _el$9);
-      insertNode(_el$8, _el$1);
-      insertNode(_el$8, _el$11);
-      insertNode(_el$9, createTextNode("\u3053\u306E\u6BB5\u843D\u306F\u5BA3\u8A00\u306A\u3057\u3067\u9078\u629E\u3067\u304D\u307E\u3059\u3002\u30C0\u30D6\u30EB\u30AF\u30EA\u30C3\u30AF\u3067\u5358\u8A9E\u3001\u30C8\u30EA\u30D7\u30EB\u30AF\u30EA\u30C3\u30AF\u3067\u6BB5\u843D\u3092\u9078\u3073\u3001Shift+\u30AF\u30EA\u30C3\u30AF\u3084 Shift+\u77E2\u5370\u3067\u7BC4\u56F2\u3092\u4F38\u7E2E\u3001Cmd/Ctrl+A \u3067\u5168\u9078\u629E\u3067\u304D\u307E\u3059\u3002\u9078\u629E\u3057\u3066 Cmd/Ctrl+C \u3092\u62BC\u3059\u3068\u30AF\u30EA\u30C3\u30D7\u30DC\u30FC\u30C9\u3078\u30B3\u30D4\u30FC\u3055\u308C\u3001\u5225\u30A2\u30D7\u30EA\u3078\u8CBC\u308A\u4ED8\u3051\u3089\u308C\u307E\u3059\u3002"));
-      setProp(_el$9, "style", para);
-      insertNode(_el$1, createTextNode("\u3053\u308C\u306F\u4E8C\u3064\u76EE\u306E\u6BB5\u843D\u3067\u3059\u3002view / text \u306F CSS `user-select` \u3068\u540C\u578B\u3067\u65E2\u5B9A\u9078\u629E\u53EF\u306A\u306E\u3067\u3001`selectable` \u3092\u5BA3\u8A00\u3057\u306A\u304F\u3066\u3082\u9078\u629E\u3067\u304D\u307E\u3059\u3002"));
-      setProp(_el$1, "style", para);
-      insertNode(_el$11, _el$12);
-      setProp(_el$11, "user-select", "none");
-      insertNode(_el$12, createTextNode("\u3053\u306E\u30AD\u30E3\u30D7\u30B7\u30E7\u30F3\u306F user-select: none \u306E view \u306B\u5305\u307E\u308C\u3066\u3044\u308B\u306E\u3067\u3001\u672C\u6587\u3092\u5168\u9078\u629E\u3057\u3066\u3082\u9078\u629E\u5BFE\u8C61\u306B\u5165\u308A\u307E\u305B\u3093\u3002"));
-      effect(function (_p$) {
-        var _v$5 = {
-            display: "flex",
-            flexDirection: "column",
-            gap: 8,
-            padding: 12,
-            backgroundColor: props.colors.panel2,
-            borderRadius: 12,
-            borderWidth: 1,
-            borderStyle: "solid",
-            borderColor: props.colors.line
-          },
-          _v$6 = {
-            color: props.colors.muted,
-            fontSize: 11
-          };
-        _v$5 !== _p$.e && (_p$.e = setProp(_el$8, "style", _v$5, _p$.e));
-        _v$6 !== _p$.t && (_p$.t = setProp(_el$12, "style", _v$6, _p$.t));
-        return _p$;
-      }, {
-        e: void 0,
-        t: void 0
-      });
-      return _el$8;
-    }();
-  }
-  function EmptyState(props) {
-    return function () {
-      var _el$14 = createElement("view"),
-        _el$15 = createElement("text");
-      insertNode(_el$14, _el$15);
-      insertNode(_el$15, createTextNode("\u8868\u793A\u3059\u308B\u30BF\u30B9\u30AF\u304C\u3042\u308A\u307E\u305B\u3093"));
-      effect(function (_p$) {
-        var _v$7 = {
-            height: 96,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: props.colors.panel2,
-            borderRadius: 12,
-            borderWidth: 1,
-            borderStyle: "solid",
-            borderColor: props.colors.line
-          },
-          _v$8 = {
-            color: props.colors.muted,
-            fontSize: 14
-          };
-        _v$7 !== _p$.e && (_p$.e = setProp(_el$14, "style", _v$7, _p$.e));
-        _v$8 !== _p$.t && (_p$.t = setProp(_el$15, "style", _v$8, _p$.t));
-        return _p$;
-      }, {
-        e: void 0,
-        t: void 0
-      });
-      return _el$14;
-    }();
-  }
   function Footer(props) {
     return function () {
       var _el$17 = createElement("view"),
@@ -7340,55 +7633,920 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
     }();
   }
   //#endregion
+  //#region src/prototype/skia-painters.ts
+  function rgba(hex) {
+    var alpha = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : 1;
+    var raw = hex.replace("#", "").slice(0, 6);
+    return [Number.parseInt(raw.slice(0, 2), 16) / 255, Number.parseInt(raw.slice(2, 4), 16) / 255, Number.parseInt(raw.slice(4, 6), 16) / 255, alpha];
+  }
+  function fill(color) {
+    var alpha = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : 1;
+    var paint = new Paint();
+    paint.color = rgba(color, alpha);
+    return paint;
+  }
+  function stroke(color, width) {
+    var alpha = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : 1;
+    var paint = fill(color, alpha);
+    paint.style = PaintingStyle.stroke;
+    paint.strokeWidth = width;
+    paint.strokeCap = StrokeCap.round;
+    paint.strokeJoin = StrokeJoin.round;
+    return paint;
+  }
+  function circle(canvas, x, y, radius, paint) {
+    var path = new Path();
+    path.addCircle(x, y, radius);
+    canvas.drawPath(path, paint);
+  }
+  /** A — 時間軸ではなく、流れそのものをUIにするための軌道面。 */
+  function orbitPainter(colors, completed, total) {
+    return function (canvas, size) {
+      var w = size.width;
+      var h = size.height;
+      var wash = new Path();
+      wash.addRRect(0, 0, w, h, 28, 28);
+      canvas.drawPath(wash, fill(colors.panel));
+      for (var i = 0; i < 5; i++) {
+        var ring = new Path();
+        ring.addOval(w * .52 - 150 - i * 26, h * .43 - 70 - i * 15, 300 + i * 52, 140 + i * 30);
+        canvas.drawPath(ring, stroke(colors.accent, i === 0 ? 2.5 : 1, .11 + i * .025));
+      }
+      var orbit = new Path();
+      orbit.moveTo(-20, h * .76);
+      orbit.cubicTo(w * .17, h * .72, w * .12, h * .23, w * .39, h * .34);
+      orbit.cubicTo(w * .67, h * .45, w * .67, h * .08, w + 30, h * .22);
+      canvas.drawPath(orbit, stroke(colors.accent, 5, .95));
+      canvas.drawPath(orbit, stroke(colors.ink, 13, .055));
+      var count = Math.max(total, 4);
+      for (var _i0 = 0; _i0 < count; _i0++) {
+        var t = _i0 / Math.max(1, count - 1);
+        var x = 44 + t * (w - 88);
+        var y = h * (.65 - .34 * Math.sin(t * Math.PI));
+        circle(canvas, x, y, _i0 < completed ? 10 : 7, fill(_i0 < completed ? colors.success : colors.panel3));
+        circle(canvas, x, y, _i0 < completed ? 16 : 12, stroke(_i0 < completed ? colors.success : colors.accent, 2, .42));
+      }
+      var comet = new Path();
+      comet.moveTo(w * .78, h * .13);
+      comet.cubicTo(w * .88, h * .16, w * .91, h * .28, w * 1.04, h * .29);
+      canvas.drawPath(comet, stroke(colors.accent2, 3, .75));
+      circle(canvas, w * .78, h * .13, 6, fill(colors.accent2));
+    };
+  }
+  /** B — 完了率を数値でなく、呼吸するようなセグメントの密度で見せる。 */
+  function focusOrbPainter(colors, percent) {
+    return function (canvas, size) {
+      var cx = size.width / 2;
+      var cy = size.height / 2;
+      var radius = Math.min(size.width, size.height) * .34;
+      circle(canvas, cx, cy, radius * 1.34, fill(colors.accent, .045));
+      circle(canvas, cx, cy, radius * 1.12, stroke(colors.accent, 1, .2));
+      circle(canvas, cx, cy, radius * .82, fill(colors.panel2, .72));
+      var segments = 40;
+      var active = Math.round(segments * percent / 100);
+      for (var i = 0; i < segments; i++) {
+        var angle = -Math.PI / 2 + i / segments * Math.PI * 2;
+        var x = cx + Math.cos(angle) * radius;
+        var y = cy + Math.sin(angle) * radius;
+        var on = i < active;
+        circle(canvas, x, y, on ? 4.8 : 2.6, fill(on ? colors.accent : colors.line, on ? 1 : .65));
+      }
+      for (var _i1 = 0; _i1 < 12; _i1++) {
+        var _angle = _i1 * 2.399;
+        var r = radius * (1.25 + _i1 % 3 * .12);
+        circle(canvas, cx + Math.cos(_angle) * r, cy + Math.sin(_angle) * r, _i1 % 4 === 0 ? 3 : 1.5, fill(colors.accent2, .45));
+      }
+    };
+  }
+  var CONSTELLATION_POINTS = [{
+    x: 15,
+    y: 26
+  }, {
+    x: 40,
+    y: 16
+  }, {
+    x: 69,
+    y: 27
+  }, {
+    x: 82,
+    y: 57
+  }, {
+    x: 57,
+    y: 72
+  }, {
+    x: 28,
+    y: 67
+  }];
+  function priorityColor(colors, priority) {
+    if (priority === 1) return colors.danger;
+    if (priority === 2) return colors.accent2;
+    return colors.blue;
+  }
+  /** C — タスク同士を孤立した行ではなく、関連する星群として扱う背景。 */
+  function constellationPainter(colors, priorities, done) {
+    return function (canvas, size) {
+      var bg = new Path();
+      bg.addRRect(0, 0, size.width, size.height, 28, 28);
+      canvas.drawPath(bg, fill(colors.black));
+      for (var i = 0; i < 34; i++) circle(canvas, i * 73 % 101 / 100 * size.width, (i * 47 + 13) % 97 / 96 * size.height, i % 7 === 0 ? 1.8 : .8, fill(colors.ink, i % 7 === 0 ? .48 : .2));
+      var count = Math.min(priorities.length, CONSTELLATION_POINTS.length);
+      if (count > 1) {
+        var path = new Path();
+        for (var _i10 = 0; _i10 < count; _i10++) {
+          var point = CONSTELLATION_POINTS[_i10];
+          var x = point.x / 100 * size.width;
+          var y = point.y / 100 * size.height;
+          if (_i10 === 0) path.moveTo(x, y);else path.lineTo(x, y);
+        }
+        canvas.drawPath(path, stroke(colors.violet, 2, .42));
+      }
+      for (var _i11 = 0; _i11 < count; _i11++) {
+        var _point = CONSTELLATION_POINTS[_i11];
+        var _x = _point.x / 100 * size.width;
+        var _y = _point.y / 100 * size.height;
+        var tone = done[_i11] ? colors.success : priorityColor(colors, priorities[_i11]);
+        circle(canvas, _x, _y, done[_i11] ? 8 : 11, fill(tone, .98));
+        circle(canvas, _x, _y, done[_i11] ? 18 : 25, fill(tone, .08));
+        circle(canvas, _x, _y, done[_i11] ? 13 : 18, stroke(tone, 1.5, .5));
+      }
+    };
+  }
+  //#endregion
+  //#region src/prototype/FreeDrawPrototype.tsx
+  var INVERSE_INK = "#f5f7ff";
+  function initialVariant() {
+    var value = new URLSearchParams(window.location.search).get("variant");
+    return value === "B" || value === "C" ? value : "A";
+  }
+  function SharedControls(props) {
+    return function () {
+      var _el$ = createElement("view");
+      setProp(_el$, "style", {
+        display: "flex",
+        flexDirection: "column",
+        gap: 4
+      });
+      insert(_el$, createComponent(AddForm, {
+        get colors() {
+          return props.colors;
+        },
+        get draft() {
+          return props.draft;
+        },
+        get prio() {
+          return props.draftPrio;
+        },
+        get onInput() {
+          return props.onDraft;
+        },
+        get onPrio() {
+          return props.onDraftPrio;
+        },
+        get onAdd() {
+          return props.onAdd;
+        }
+      }), null);
+      insert(_el$, createComponent(Toolbar, {
+        get colors() {
+          return props.colors;
+        },
+        get filter() {
+          return props.filter;
+        },
+        get sort() {
+          return props.sort;
+        },
+        get onFilter() {
+          return props.onFilter;
+        },
+        get onSort() {
+          return props.onSort;
+        }
+      }), null);
+      return _el$;
+    }();
+  }
+  function Rows(props) {
+    return function () {
+      var _el$2 = createElement("view");
+      setProp(_el$2, "style", {
+        display: "flex",
+        flexDirection: "column",
+        gap: 8
+      });
+      insert(_el$2, function () {
+        return props.todos.map(function (todo) {
+          return createComponent(TodoRow, {
+            get colors() {
+              return props.colors;
+            },
+            todo: todo,
+            get reorderable() {
+              return props.sort === "manual";
+            },
+            get editing() {
+              return props.editingId === todo.id;
+            },
+            get editDraft() {
+              return props.editDraft;
+            },
+            onToggle: function onToggle() {
+              return props.onToggle(todo.id);
+            },
+            onRemove: function onRemove() {
+              return props.onRemove(todo.id);
+            },
+            onBeginEdit: function onBeginEdit() {
+              return props.onBeginEdit(todo);
+            },
+            get onEditInput() {
+              return props.onEditInput;
+            },
+            get onCommitEdit() {
+              return props.onCommitEdit;
+            },
+            get onCancelEdit() {
+              return props.onCancelEdit;
+            },
+            onMoveUp: function onMoveUp() {
+              return props.onMoveUp(todo.id);
+            },
+            onMoveDown: function onMoveDown() {
+              return props.onMoveDown(todo.id);
+            }
+          });
+        });
+      });
+      return _el$2;
+    }();
+  }
+  function VariantA(props) {
+    var completed = props.summary.total - props.summary.remaining;
+    return function () {
+      var _el$3 = createElement("view"),
+        _el$4 = createElement("view"),
+        _el$5 = createElement("view"),
+        _el$6 = createElement("view"),
+        _el$7 = createElement("text"),
+        _el$9 = createElement("text"),
+        _el$1 = createElement("text"),
+        _el$10 = createElement("view"),
+        _el$11 = createElement("text"),
+        _el$13 = createElement("text"),
+        _el$14 = createElement("text"),
+        _el$16 = createElement("view");
+      insertNode(_el$3, _el$4);
+      insertNode(_el$3, _el$16);
+      setProp(_el$3, "style", {
+        width: 720,
+        maxWidth: "100%",
+        display: "flex",
+        flexDirection: "column",
+        gap: 16
+      });
+      insertNode(_el$4, _el$5);
+      insertNode(_el$4, _el$6);
+      insertNode(_el$4, _el$10);
+      setProp(_el$4, "style", {
+        height: 310,
+        position: "relative",
+        overflow: "hidden",
+        borderRadius: 28
+      });
+      setProp(_el$5, "style", {
+        position: "absolute",
+        width: "100%",
+        height: "100%"
+      });
+      insertNode(_el$6, _el$7);
+      insertNode(_el$6, _el$9);
+      insertNode(_el$6, _el$1);
+      setProp(_el$6, "style", {
+        position: "absolute",
+        left: 30,
+        top: 28,
+        display: "flex",
+        flexDirection: "column",
+        gap: 6
+      });
+      insertNode(_el$7, createTextNode("TODAY / FLIGHT PATH"));
+      insertNode(_el$9, createTextNode("\u6D41\u308C\u3092\u3064\u304F\u308B\u3002"));
+      insert(_el$1, function () {
+        return "".concat(completed, "\u500B\u306E\u901A\u904E\u70B9 \xB7 \u3042\u3068").concat(props.summary.remaining, "\u500B");
+      });
+      insertNode(_el$10, _el$11);
+      insertNode(_el$10, _el$13);
+      insertNode(_el$10, _el$14);
+      insertNode(_el$11, createTextNode("MOMENTUM"));
+      setProp(_el$13, "style", {
+        color: "#f5f7ff",
+        fontSize: 30,
+        fontWeight: 700
+      });
+      insert(_el$13, function () {
+        return "".concat(props.summary.percent, "%");
+      });
+      insertNode(_el$14, createTextNode("\u8ECC\u9053\u306F\u5B8C\u4E86\u3068\u3068\u3082\u306B\u5149\u308B"));
+      setProp(_el$14, "style", {
+        color: "#9aa6bc",
+        fontSize: 11
+      });
+      insert(_el$16, createComponent(SharedControls, props), null);
+      insert(_el$16, createComponent(Rows, props), null);
+      insert(_el$16, createComponent(Footer, {
+        get colors() {
+          return props.colors;
+        },
+        get percent() {
+          return props.summary.percent;
+        },
+        get onClearDone() {
+          return props.onClearDone;
+        }
+      }), null);
+      effect(function (_p$) {
+        var _v$ = orbitPainter(props.colors, completed, props.summary.total),
+          _v$2 = {
+            color: props.colors.muted,
+            fontSize: 12
+          },
+          _v$3 = {
+            color: props.colors.ink,
+            fontSize: 34,
+            fontWeight: 700
+          },
+          _v$4 = {
+            color: props.colors.muted,
+            fontSize: 14
+          },
+          _v$5 = {
+            position: "absolute",
+            right: 26,
+            bottom: 24,
+            width: 174,
+            padding: 16,
+            backgroundColor: props.colors.black,
+            borderRadius: 18
+          },
+          _v$6 = {
+            color: props.colors.accent,
+            fontSize: 11
+          },
+          _v$7 = {
+            padding: 18,
+            display: "flex",
+            flexDirection: "column",
+            gap: 12,
+            backgroundColor: props.colors.panel,
+            borderRadius: 22
+          };
+        _v$ !== _p$.e && (_p$.e = setProp(_el$5, "draw", _v$, _p$.e));
+        _v$2 !== _p$.t && (_p$.t = setProp(_el$7, "style", _v$2, _p$.t));
+        _v$3 !== _p$.a && (_p$.a = setProp(_el$9, "style", _v$3, _p$.a));
+        _v$4 !== _p$.o && (_p$.o = setProp(_el$1, "style", _v$4, _p$.o));
+        _v$5 !== _p$.i && (_p$.i = setProp(_el$10, "style", _v$5, _p$.i));
+        _v$6 !== _p$.n && (_p$.n = setProp(_el$11, "style", _v$6, _p$.n));
+        _v$7 !== _p$.s && (_p$.s = setProp(_el$16, "style", _v$7, _p$.s));
+        return _p$;
+      }, {
+        e: void 0,
+        t: void 0,
+        a: void 0,
+        o: void 0,
+        i: void 0,
+        n: void 0,
+        s: void 0
+      });
+      return _el$3;
+    }();
+  }
+  function VariantB(props) {
+    var _props$todos$find;
+    var next = (_props$todos$find = props.todos.find(function (todo) {
+      return !todo.done;
+    })) !== null && _props$todos$find !== void 0 ? _props$todos$find : props.todos[0];
+    var rest = props.todos.filter(function (todo) {
+      return todo.id !== (next === null || next === void 0 ? void 0 : next.id);
+    });
+    return function () {
+      var _el$17 = createElement("view"),
+        _el$18 = createElement("view"),
+        _el$19 = createElement("view"),
+        _el$20 = createElement("view"),
+        _el$21 = createElement("view"),
+        _el$22 = createElement("text"),
+        _el$24 = createElement("text"),
+        _el$25 = createElement("text"),
+        _el$27 = createElement("view"),
+        _el$28 = createElement("view"),
+        _el$29 = createElement("text"),
+        _el$31 = createElement("text"),
+        _el$32 = createElement("text"),
+        _el$34 = createElement("view"),
+        _el$35 = createElement("text"),
+        _el$36 = createTextNode("UP NEXT \xB7 "),
+        _el$37 = createElement("view");
+      insertNode(_el$17, _el$18);
+      insertNode(_el$17, _el$34);
+      setProp(_el$17, "style", {
+        width: 820,
+        maxWidth: "100%",
+        display: "flex",
+        flexDirection: "column",
+        gap: 18
+      });
+      insertNode(_el$18, _el$19);
+      insertNode(_el$18, _el$27);
+      setProp(_el$18, "style", {
+        display: "flex",
+        flexDirection: "row",
+        flexWrap: "wrap",
+        gap: 18
+      });
+      insertNode(_el$19, _el$20);
+      insertNode(_el$19, _el$21);
+      setProp(_el$20, "style", {
+        position: "absolute",
+        width: "100%",
+        height: "100%"
+      });
+      insertNode(_el$21, _el$22);
+      insertNode(_el$21, _el$24);
+      insertNode(_el$21, _el$25);
+      setProp(_el$21, "style", {
+        position: "absolute",
+        left: 90,
+        top: 118,
+        width: 180,
+        alignItems: "center",
+        display: "flex",
+        flexDirection: "column",
+        gap: 4
+      });
+      insertNode(_el$22, createTextNode("TODAY'S SIGNAL"));
+      insert(_el$24, function () {
+        return "".concat(props.summary.percent);
+      });
+      insertNode(_el$25, createTextNode("PERCENT ALIGNED"));
+      insertNode(_el$27, _el$28);
+      insertNode(_el$28, _el$29);
+      insertNode(_el$28, _el$31);
+      insertNode(_el$28, _el$32);
+      setProp(_el$28, "style", {
+        display: "flex",
+        flexDirection: "column",
+        gap: 7
+      });
+      insertNode(_el$29, createTextNode("NEXT / ONE THING"));
+      setProp(_el$31, "style", {
+        color: "#f5f7ff",
+        fontSize: 28,
+        fontWeight: 700
+      });
+      insert(_el$31, function () {
+        var _next$text;
+        return (_next$text = next === null || next === void 0 ? void 0 : next.text) !== null && _next$text !== void 0 ? _next$text : "すべて完了";
+      });
+      insertNode(_el$32, createTextNode("\u4E00\u89A7\u3092\u7BA1\u7406\u3059\u308B\u524D\u306B\u3001\u6B21\u306E\u4E00\u6B69\u3060\u3051\u3092\u898B\u308B\u3002"));
+      setProp(_el$32, "style", {
+        color: "#9aa6bc",
+        fontSize: 13
+      });
+      insert(_el$27, next ? function () {
+        var _el$38 = createElement("button");
+        insertNode(_el$38, createTextNode("\u5B8C\u4E86\u3057\u3066\u8ECC\u9053\u3078\u9001\u308B \u2192"));
+        setProp(_el$38, "onClick", function () {
+          return props.onToggle(next.id);
+        });
+        effect(function (_$p) {
+          return setProp(_el$38, "style", {
+            height: 54,
+            backgroundColor: props.colors.accent,
+            defaultColor: props.colors.black,
+            borderRadius: 18,
+            fontSize: 15,
+            fontWeight: 700
+          }, _$p);
+        });
+        return _el$38;
+      }() : null, null);
+      insertNode(_el$34, _el$35);
+      insertNode(_el$34, _el$37);
+      insert(_el$34, createComponent(SharedControls, props), _el$35);
+      insertNode(_el$35, _el$36);
+      insert(_el$35, function () {
+        return rest.length;
+      }, null);
+      setProp(_el$37, "style", {
+        display: "flex",
+        flexDirection: "row",
+        flexWrap: "wrap",
+        gap: 10
+      });
+      insert(_el$37, function () {
+        return rest.map(function (todo) {
+          return function () {
+            var _el$40 = createElement("button"),
+              _el$41 = createElement("view"),
+              _el$42 = createElement("text"),
+              _el$43 = createElement("text");
+            insertNode(_el$40, _el$41);
+            insertNode(_el$40, _el$42);
+            insertNode(_el$40, _el$43);
+            setProp(_el$40, "onClick", function () {
+              return props.onToggle(todo.id);
+            });
+            insert(_el$42, function () {
+              return todo.text;
+            });
+            insert(_el$43, function () {
+              return todo.done ? "ARCHIVED IN ORBIT" : "TAP TO COMPLETE";
+            });
+            effect(function (_p$) {
+              var _v$15 = {
+                  minWidth: 180,
+                  flexGrow: 1,
+                  padding: 16,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "flex-start",
+                  gap: 7,
+                  backgroundColor: props.colors.panel2,
+                  defaultColor: props.colors.text,
+                  borderRadius: 18
+                },
+                _v$16 = {
+                  width: 8,
+                  height: 8,
+                  borderRadius: 99,
+                  backgroundColor: priorityTone(props.colors, todo.prio)
+                },
+                _v$17 = {
+                  color: todo.done ? props.colors.quiet : props.colors.ink,
+                  fontSize: 14
+                },
+                _v$18 = {
+                  color: props.colors.quiet,
+                  fontSize: 10
+                };
+              _v$15 !== _p$.e && (_p$.e = setProp(_el$40, "style", _v$15, _p$.e));
+              _v$16 !== _p$.t && (_p$.t = setProp(_el$41, "style", _v$16, _p$.t));
+              _v$17 !== _p$.a && (_p$.a = setProp(_el$42, "style", _v$17, _p$.a));
+              _v$18 !== _p$.o && (_p$.o = setProp(_el$43, "style", _v$18, _p$.o));
+              return _p$;
+            }, {
+              e: void 0,
+              t: void 0,
+              a: void 0,
+              o: void 0
+            });
+            return _el$40;
+          }();
+        });
+      });
+      effect(function (_p$) {
+        var _v$8 = {
+            width: 360,
+            height: 360,
+            position: "relative",
+            backgroundColor: props.colors.panel,
+            borderRadius: 32
+          },
+          _v$9 = focusOrbPainter(props.colors, props.summary.percent),
+          _v$0 = {
+            color: props.colors.muted,
+            fontSize: 11
+          },
+          _v$1 = {
+            color: props.colors.ink,
+            fontSize: 48,
+            fontWeight: 700
+          },
+          _v$10 = {
+            color: props.colors.accent,
+            fontSize: 12
+          },
+          _v$11 = {
+            flexGrow: 1,
+            minWidth: 280,
+            padding: 24,
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "space-between",
+            gap: 18,
+            backgroundColor: props.colors.black,
+            borderRadius: 32
+          },
+          _v$12 = {
+            color: props.colors.accent,
+            fontSize: 11
+          },
+          _v$13 = {
+            padding: 20,
+            display: "flex",
+            flexDirection: "column",
+            gap: 14,
+            backgroundColor: props.colors.panel,
+            borderRadius: 24
+          },
+          _v$14 = {
+            color: props.colors.muted,
+            fontSize: 11
+          };
+        _v$8 !== _p$.e && (_p$.e = setProp(_el$19, "style", _v$8, _p$.e));
+        _v$9 !== _p$.t && (_p$.t = setProp(_el$20, "draw", _v$9, _p$.t));
+        _v$0 !== _p$.a && (_p$.a = setProp(_el$22, "style", _v$0, _p$.a));
+        _v$1 !== _p$.o && (_p$.o = setProp(_el$24, "style", _v$1, _p$.o));
+        _v$10 !== _p$.i && (_p$.i = setProp(_el$25, "style", _v$10, _p$.i));
+        _v$11 !== _p$.n && (_p$.n = setProp(_el$27, "style", _v$11, _p$.n));
+        _v$12 !== _p$.s && (_p$.s = setProp(_el$29, "style", _v$12, _p$.s));
+        _v$13 !== _p$.h && (_p$.h = setProp(_el$34, "style", _v$13, _p$.h));
+        _v$14 !== _p$.r && (_p$.r = setProp(_el$35, "style", _v$14, _p$.r));
+        return _p$;
+      }, {
+        e: void 0,
+        t: void 0,
+        a: void 0,
+        o: void 0,
+        i: void 0,
+        n: void 0,
+        s: void 0,
+        h: void 0,
+        r: void 0
+      });
+      return _el$17;
+    }();
+  }
+  function VariantC(props) {
+    var nodes = props.todos.slice(0, CONSTELLATION_POINTS.length);
+    return function () {
+      var _el$44 = createElement("view"),
+        _el$45 = createElement("view"),
+        _el$46 = createElement("view"),
+        _el$47 = createElement("view"),
+        _el$48 = createElement("text"),
+        _el$50 = createElement("text"),
+        _el$52 = createElement("text"),
+        _el$54 = createElement("view"),
+        _el$55 = createElement("text"),
+        _el$56 = createElement("view"),
+        _el$57 = createElement("text");
+      insertNode(_el$44, _el$45);
+      insertNode(_el$44, _el$56);
+      setProp(_el$44, "style", {
+        width: 860,
+        maxWidth: "100%",
+        display: "flex",
+        flexDirection: "column",
+        gap: 16
+      });
+      insertNode(_el$45, _el$46);
+      insertNode(_el$45, _el$47);
+      insertNode(_el$45, _el$54);
+      setProp(_el$45, "style", {
+        height: 520,
+        position: "relative",
+        overflow: "hidden",
+        borderRadius: 28
+      });
+      setProp(_el$46, "style", {
+        position: "absolute",
+        width: "100%",
+        height: "100%"
+      });
+      insertNode(_el$47, _el$48);
+      insertNode(_el$47, _el$50);
+      insertNode(_el$47, _el$52);
+      setProp(_el$47, "style", {
+        position: "absolute",
+        left: 28,
+        top: 24,
+        display: "flex",
+        flexDirection: "column",
+        gap: 4
+      });
+      insertNode(_el$48, createTextNode("TASK CONSTELLATION / LIVE"));
+      insertNode(_el$50, createTextNode("\u4ECA\u65E5\u3068\u3044\u3046\u661F\u56F3"));
+      setProp(_el$50, "style", {
+        color: "#f5f7ff",
+        fontSize: 30,
+        fontWeight: 700
+      });
+      insertNode(_el$52, createTextNode("\u8272\u306F\u91CD\u529B\uFF08\u512A\u5148\u5EA6\uFF09\u3001\u5149\u306F\u5B8C\u4E86\u3092\u8868\u3059"));
+      setProp(_el$52, "style", {
+        color: "#9aa6bc",
+        fontSize: 12
+      });
+      insert(_el$45, function () {
+        return nodes.map(function (todo, index) {
+          var point = CONSTELLATION_POINTS[index];
+          return function () {
+            var _el$59 = createElement("button");
+            setProp(_el$59, "onClick", function () {
+              return props.onToggle(todo.id);
+            });
+            insert(_el$59, function () {
+              return todo.text;
+            });
+            effect(function (_$p) {
+              return setProp(_el$59, "style", {
+                position: "absolute",
+                left: "".concat(Math.max(3, point.x - 8), "%"),
+                top: "".concat(Math.max(12, point.y - 2), "%"),
+                maxWidth: 190,
+                paddingTop: 6,
+                paddingBottom: 6,
+                paddingLeft: 10,
+                paddingRight: 10,
+                backgroundColor: props.colors.black,
+                defaultColor: todo.done ? props.colors.success : INVERSE_INK,
+                borderRadius: 10,
+                borderWidth: 1,
+                borderStyle: "solid",
+                borderColor: todo.done ? props.colors.success : priorityTone(props.colors, todo.prio),
+                fontSize: 11
+              }, _$p);
+            });
+            return _el$59;
+          }();
+        });
+      }, _el$54);
+      insertNode(_el$54, _el$55);
+      insert(_el$55, function () {
+        return "".concat(props.summary.remaining, " UNRESOLVED SIGNALS");
+      });
+      insertNode(_el$56, _el$57);
+      insert(_el$56, createComponent(SharedControls, props), _el$57);
+      insertNode(_el$57, createTextNode("\u661F\u3092\u30BF\u30C3\u30D7\u3057\u3066\u5B8C\u4E86 \xB7 7\u4EF6\u76EE\u4EE5\u964D\u306F\u30D5\u30A3\u30EB\u30BF\u30FC\u306B\u6B8B\u308B"));
+      effect(function (_p$) {
+        var _v$19 = constellationPainter(props.colors, nodes.map(function (todo) {
+            return todo.prio;
+          }), nodes.map(function (todo) {
+            return todo.done;
+          })),
+          _v$20 = {
+            color: props.colors.accent,
+            fontSize: 11
+          },
+          _v$21 = {
+            position: "absolute",
+            right: 22,
+            bottom: 18,
+            padding: 12,
+            backgroundColor: props.colors.panel,
+            borderRadius: 14
+          },
+          _v$22 = {
+            color: props.colors.ink,
+            fontSize: 12
+          },
+          _v$23 = {
+            padding: 18,
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+            backgroundColor: props.colors.panel,
+            borderRadius: 22
+          },
+          _v$24 = {
+            color: props.colors.muted,
+            fontSize: 11
+          };
+        _v$19 !== _p$.e && (_p$.e = setProp(_el$46, "draw", _v$19, _p$.e));
+        _v$20 !== _p$.t && (_p$.t = setProp(_el$48, "style", _v$20, _p$.t));
+        _v$21 !== _p$.a && (_p$.a = setProp(_el$54, "style", _v$21, _p$.a));
+        _v$22 !== _p$.o && (_p$.o = setProp(_el$55, "style", _v$22, _p$.o));
+        _v$23 !== _p$.i && (_p$.i = setProp(_el$56, "style", _v$23, _p$.i));
+        _v$24 !== _p$.n && (_p$.n = setProp(_el$57, "style", _v$24, _p$.n));
+        return _p$;
+      }, {
+        e: void 0,
+        t: void 0,
+        a: void 0,
+        o: void 0,
+        i: void 0,
+        n: void 0
+      });
+      return _el$44;
+    }();
+  }
+  function FreeDrawPrototype(props) {
+    var _createSignal5 = createSignal(initialVariant()),
+      _createSignal6 = _slicedToArray(_createSignal5, 2),
+      variant = _createSignal6[0],
+      setVariant = _createSignal6[1];
+    createEffect(function () {});
+    return function () {
+      var _el$66 = createElement("view"),
+        _el$67 = createElement("scroll-view");
+      insertNode(_el$66, _el$67);
+      insert(_el$67, function () {
+        var _c$ = memo(function () {
+          return variant() === "A";
+        });
+        return function () {
+          return _c$() ? createComponent(VariantA, props) : null;
+        };
+      }(), null);
+      insert(_el$67, function () {
+        var _c$2 = memo(function () {
+          return variant() === "B";
+        });
+        return function () {
+          return _c$2() ? createComponent(VariantB, props) : null;
+        };
+      }(), null);
+      insert(_el$67, function () {
+        var _c$3 = memo(function () {
+          return variant() === "C";
+        });
+        return function () {
+          return _c$3() ? createComponent(VariantC, props) : null;
+        };
+      }(), null);
+      insert(_el$66, null, null);
+      effect(function (_p$) {
+        var _v$28 = {
+            flexGrow: 1,
+            width: "100%",
+            height: 0,
+            minHeight: 0,
+            position: "relative",
+            overflow: "hidden",
+            backgroundColor: props.colors.bg
+          },
+          _v$29 = {
+            width: "100%",
+            height: "100%",
+            paddingTop: 22,
+            paddingBottom: 22,
+            paddingLeft: 16,
+            paddingRight: 16,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            backgroundColor: props.colors.bg
+          };
+        _v$28 !== _p$.e && (_p$.e = setProp(_el$66, "style", _v$28, _p$.e));
+        _v$29 !== _p$.t && (_p$.t = setProp(_el$67, "style", _v$29, _p$.t));
+        return _p$;
+      }, {
+        e: void 0,
+        t: void 0
+      });
+      return _el$66;
+    }();
+  }
+  //#endregion
   //#region src/App.tsx
   function seedTodos() {
     return SEED.map(function (todo) {
       return _objectSpread({}, todo);
     });
   }
-  function TodoApp(props) {
-    var _createSignal5 = createSignal(new URLSearchParams(window.location.search).get("page") === "gallery" ? "gallery" : "tasks"),
-      _createSignal6 = _slicedToArray(_createSignal5, 2),
-      page = _createSignal6[0],
-      setPage = _createSignal6[1];
-    var _createSignal7 = createSignal(seedTodos()),
+  function TodoApp() {
+    var _createSignal7 = createSignal(new URLSearchParams(window.location.search).get("page") === "gallery" ? "gallery" : "tasks"),
       _createSignal8 = _slicedToArray(_createSignal7, 2),
-      todos = _createSignal8[0],
-      setTodos = _createSignal8[1];
-    var _createSignal9 = createSignal("all"),
+      page = _createSignal8[0],
+      setPage = _createSignal8[1];
+    var _createSignal9 = createSignal(seedTodos()),
       _createSignal0 = _slicedToArray(_createSignal9, 2),
-      filter = _createSignal0[0],
-      setFilter = _createSignal0[1];
-    var _createSignal1 = createSignal("manual"),
+      todos = _createSignal0[0],
+      setTodos = _createSignal0[1];
+    var _createSignal1 = createSignal("all"),
       _createSignal10 = _slicedToArray(_createSignal1, 2),
-      sort = _createSignal10[0],
-      setSort = _createSignal10[1];
-    var _createSignal11 = createSignal(2),
+      filter = _createSignal10[0],
+      setFilter = _createSignal10[1];
+    var _createSignal11 = createSignal("manual"),
       _createSignal12 = _slicedToArray(_createSignal11, 2),
-      draftPrio = _createSignal12[0],
-      setDraftPrio = _createSignal12[1];
-    var _createSignal13 = createSignal(""),
+      sort = _createSignal12[0],
+      setSort = _createSignal12[1];
+    var _createSignal13 = createSignal(2),
       _createSignal14 = _slicedToArray(_createSignal13, 2),
-      draft = _createSignal14[0],
-      setDraft = _createSignal14[1];
-    var _createSignal15 = createSignal(null),
+      draftPrio = _createSignal14[0],
+      setDraftPrio = _createSignal14[1];
+    var _createSignal15 = createSignal(""),
       _createSignal16 = _slicedToArray(_createSignal15, 2),
-      editingId = _createSignal16[0],
-      setEditingId = _createSignal16[1];
-    var _createSignal17 = createSignal(""),
+      draft = _createSignal16[0],
+      setDraft = _createSignal16[1];
+    var _createSignal17 = createSignal(null),
       _createSignal18 = _slicedToArray(_createSignal17, 2),
-      editDraft = _createSignal18[0],
-      setEditDraft = _createSignal18[1];
+      editingId = _createSignal18[0],
+      setEditingId = _createSignal18[1];
+    var _createSignal19 = createSignal(""),
+      _createSignal20 = _slicedToArray(_createSignal19, 2),
+      editDraft = _createSignal20[0],
+      setEditDraft = _createSignal20[1];
     var nextId = 1e3;
     var initialPrefs = loadTheme(window.localStorage);
-    var _createSignal19 = createSignal(initialPrefs.theme),
-      _createSignal20 = _slicedToArray(_createSignal19, 2),
-      theme = _createSignal20[0],
-      setTheme = _createSignal20[1];
-    var _createSignal21 = createSignal(initialPrefs.accent),
+    var _createSignal21 = createSignal(initialPrefs.theme),
       _createSignal22 = _slicedToArray(_createSignal21, 2),
-      accent = _createSignal22[0],
-      setAccent = _createSignal22[1];
+      theme = _createSignal22[0],
+      setTheme = _createSignal22[1];
+    var _createSignal23 = createSignal(initialPrefs.accent),
+      _createSignal24 = _slicedToArray(_createSignal23, 2),
+      accent = _createSignal24[0],
+      setAccent = _createSignal24[1];
     var colors = createMemo(function () {
       return palette(theme(), accent());
     });
@@ -7465,9 +8623,6 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
           return page();
         },
         setPage: setPage,
-        get detected() {
-          return props.detected;
-        },
         get colors() {
           return colors();
         },
@@ -7489,191 +8644,49 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
             get colors() {
               return colors();
             }
-          }) : function () {
-            var _el$2 = createElement("scroll-view"),
-              _el$3 = createElement("view"),
-              _el$4 = createElement("view"),
-              _el$5 = createElement("view");
-            insertNode(_el$2, _el$3);
-            setProp(_el$2, "styleVariants", [{
-              condition: {
-                maxWidth: 719
-              },
-              style: {
-                paddingTop: 16,
-                paddingBottom: 16,
-                paddingLeft: 12,
-                paddingRight: 12
-              }
-            }]);
-            insertNode(_el$3, _el$4);
-            insertNode(_el$3, _el$5);
-            setProp(_el$3, "styleVariants", [{
-              condition: {
-                maxWidth: 719
-              },
-              style: {
-                padding: 14,
-                gap: 12,
-                borderRadius: 12
-              }
-            }]);
-            insert(_el$3, createComponent(Header, {
-              get colors() {
-                return colors();
-              },
-              get remaining() {
-                return summary().remaining;
-              },
-              get total() {
-                return summary().total;
-              },
-              get percent() {
-                return summary().percent;
-              }
-            }), _el$4);
-            insert(_el$3, createComponent(SelectableNote, {
-              get colors() {
-                return colors();
-              }
-            }), _el$4);
-            insert(_el$3, createComponent(AddForm, {
-              get colors() {
-                return colors();
-              },
-              get draft() {
-                return draft();
-              },
-              get prio() {
-                return draftPrio();
-              },
-              onInput: setDraft,
-              onPrio: setDraftPrio,
-              onAdd: addTask
-            }), _el$4);
-            insert(_el$3, createComponent(Toolbar, {
-              get colors() {
-                return colors();
-              },
-              get filter() {
-                return filter();
-              },
-              get sort() {
-                return sort();
-              },
-              onFilter: setFilter,
-              onSort: setSort
-            }), _el$4);
-            setProp(_el$4, "style", {
-              display: "flex",
-              flexDirection: "column",
-              gap: 8
-            });
-            insert(_el$4, function () {
-              var _c$2 = memo(function () {
-                return visible().length === 0;
-              });
-              return function () {
-                return _c$2() ? createComponent(EmptyState, {
-                  get colors() {
-                    return colors();
-                  }
-                }) : visible().map(function (todo) {
-                  return createComponent(TodoRow, {
-                    get colors() {
-                      return colors();
-                    },
-                    todo: todo,
-                    get reorderable() {
-                      return canReorder(sort());
-                    },
-                    get editing() {
-                      return editingId() === todo.id;
-                    },
-                    get editDraft() {
-                      return editDraft();
-                    },
-                    onToggle: function onToggle() {
-                      return toggle(todo.id);
-                    },
-                    onRemove: function onRemove() {
-                      return removeTask(todo.id);
-                    },
-                    onBeginEdit: function onBeginEdit() {
-                      return beginEdit(todo);
-                    },
-                    onEditInput: setEditDraft,
-                    onCommitEdit: commitEdit,
-                    onCancelEdit: cancelEdit,
-                    onMoveUp: function onMoveUp() {
-                      return moveTaskUp(todo.id);
-                    },
-                    onMoveDown: function onMoveDown() {
-                      return moveTaskDown(todo.id);
-                    }
-                  });
-                });
-              };
-            }());
-            insert(_el$3, createComponent(Footer, {
-              get colors() {
-                return colors();
-              },
-              get percent() {
-                return summary().percent;
-              },
-              onClearDone: clearCompleted
-            }), null);
-            effect(function (_p$) {
-              var _v$ = {
-                  flexGrow: 1,
-                  width: "100%",
-                  height: "100%",
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  paddingTop: 28,
-                  paddingBottom: 28,
-                  paddingLeft: 16,
-                  paddingRight: 16,
-                  backgroundColor: colors().bg
-                },
-                _v$2 = {
-                  width: 620,
-                  maxWidth: "100%",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 16,
-                  padding: 22,
-                  backgroundColor: colors().panel,
-                  borderRadius: 18,
-                  borderWidth: 1,
-                  borderStyle: "solid",
-                  borderColor: colors().line,
-                  boxShadow: [{
-                    offsetX: 0,
-                    offsetY: 18,
-                    blur: 40,
-                    spread: -8,
-                    color: colors().shadow,
-                    inset: false
-                  }]
-                },
-                _v$3 = {
-                  height: 1,
-                  backgroundColor: colors().line
-                };
-              _v$ !== _p$.e && (_p$.e = setProp(_el$2, "style", _v$, _p$.e));
-              _v$2 !== _p$.t && (_p$.t = setProp(_el$3, "style", _v$2, _p$.t));
-              _v$3 !== _p$.a && (_p$.a = setProp(_el$5, "style", _v$3, _p$.a));
-              return _p$;
-            }, {
-              e: void 0,
-              t: void 0,
-              a: void 0
-            });
-            return _el$2;
-          }();
+          }) : createComponent(FreeDrawPrototype, {
+            get colors() {
+              return colors();
+            },
+            get todos() {
+              return visible();
+            },
+            get filter() {
+              return filter();
+            },
+            get sort() {
+              return sort();
+            },
+            get draft() {
+              return draft();
+            },
+            get draftPrio() {
+              return draftPrio();
+            },
+            get editingId() {
+              return editingId();
+            },
+            get editDraft() {
+              return editDraft();
+            },
+            get summary() {
+              return summary();
+            },
+            onDraft: setDraft,
+            onDraftPrio: setDraftPrio,
+            onAdd: addTask,
+            onFilter: setFilter,
+            onSort: setSort,
+            onToggle: toggle,
+            onRemove: removeTask,
+            onBeginEdit: beginEdit,
+            onEditInput: setEditDraft,
+            onCommitEdit: commitEdit,
+            onCancelEdit: cancelEdit,
+            onMoveUp: moveTaskUp,
+            onMoveDown: moveTaskDown,
+            onClearDone: clearCompleted
+          });
         };
       }(), null);
       effect(function (_$p) {
@@ -7692,44 +8705,22 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
     }();
   }
   //#endregion
-  //#region src/main.android.tsx
-  globalThis.__torimiProtocolVersion = 1;
-  var raw = globalThis.__hayateHost;
-  if (raw === void 0) throw new Error("Android: globalThis.__hayateHost (native RawHayate) が注入されていません");
-  var detected = {
-    mode: "Canvas",
-    backend: "vello",
-    source: "query",
-    renderer: "vello"
-  };
-  var nativeHost = createHayateNativeHost(raw);
-  var hayateRenderer;
-  var dispose = runTsubameApp({
-    createRenderer: function createRenderer() {
-      hayateRenderer = new HayateRenderer({
-        raw: nativeHost.raw,
-        requestFrame: nativeHost.requestFrame,
-        cancelFrame: nativeHost.cancelFrame
-      });
-      hayateRenderer.start();
-      return hayateRenderer;
-    },
-    stop: function stop() {
-      var _hayateRenderer;
-      return (_hayateRenderer = hayateRenderer) === null || _hayateRenderer === void 0 ? void 0 : _hayateRenderer.stop();
-    }
-  }, function (renderer) {
+  //#region src/main.bundle.tsx
+  /**
+  * Torimi App Bundle の**全ターゲット共通**エントリ（#767 / ADR-0008 §4）。旧
+  * `main.torimi.tsx`（Web Host 用）と旧 `main.android.tsx`（Native Host 用）の二重エントリを
+  * 置き換えた 1 ファイル。
+  *
+  * protocol version の焼き込み・mount seam（`__torimiMount` / `__tsubame`）の登録・native
+  * prelude といった wire 契約の配線は `@torimi/bundle` が隠し、ターゲット差（Native / Web）は
+  * `__hayateHost` の有無でランタイム内部分岐する。ここに残る FW 知識は mount の 1 行だけ
+  * （ADR-0012 の唯一の FW 固有 seam）。native / web のバンドル差はビルド後の Hermes 降格だけ
+  * （`torimi:native:build`）。
+  */
+  registerTorimiApp(function (renderer) {
     return renderTsubame(function () {
-      return createComponent(TodoApp, {
-        detected: detected
-      });
+      return createComponent(TodoApp, {});
     }, renderer);
   });
-  globalThis.__tsubame = {
-    pumpFrame: function pumpFrame(timestampMs) {
-      return nativeHost.pumpFrame(timestampMs);
-    },
-    stop: dispose
-  };
   //#endregion
 })();
