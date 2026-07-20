@@ -6,9 +6,9 @@ use wgpu::util::TextureBlitter;
 
 use hayate_core::{ElementId, LayerRasterBounds, SceneGraph};
 use hayate_layer_compositor::{
-    collect_layer_placements, extract_layer_scene, extract_root_scene, extract_scroll_chrome_scene,
-    extract_scroll_layer_scene, layer_scene::compose, tunables, CompositeQuad, GpuBudget,
-    LayerCompositor, LayerPlacement, LayerRasterizer, PresentPlanner, ScrollLayerGeometry,
+    tunables, CompositeQuad, GpuBudget, LayerCompositor, LayerPresentation,
+    LayerPresentationAdapter, LayerPresentationFrame, LayerRasterizer, PlacementPlan, RasterJob,
+    RasterJobKind, ScrollLayerGeometry,
 };
 use hayate_scene_renderer_vello::layer_compositor::{
     CompositeTarget, LayerTexture, VelloLayerRasterizer, WgpuQuadCompositor,
@@ -25,11 +25,9 @@ use super::{js_to_anyhow, CanvasBackend, ClearColor, SceneRendererKind};
 /// が `set_layer_present_enabled(true)` の初回呼び出しでのみ construct・warmup する
 /// （ADR-0140・#718 の遅延初期化）。
 struct LayerPresentState {
-    planner: PresentPlanner,
+    presentation: LayerPresentation,
     rasterizer: VelloLayerRasterizer,
     compositor: WgpuQuadCompositor,
-    /// 前フレームのレイヤ集合。消えたレイヤ（transition 終了等）のキャッシュ面と台帳を掃除する。
-    prev_layers: HashSet<ElementId>,
 }
 
 impl LayerPresentState {
@@ -48,10 +46,9 @@ impl LayerPresentState {
         // スパイクを消す（ADR-0130a）。
         compositor.warmup();
         Ok(Self {
-            planner: PresentPlanner::new(),
+            presentation: LayerPresentation::new(),
             rasterizer,
             compositor,
-            prev_layers: HashSet::new(),
         })
     }
 }
@@ -293,23 +290,71 @@ impl VelloSurfaceHost {
     }
 }
 
-/// The compositing transform for one layer `placement` (ADR-0127・#707). For a banded scroll
-/// layer (present in both `planner`'s cache and `scroll_geometry`, this frame), this composes
-/// `placement.transform` with this frame's profile-resolved scroll affine. The cached texture's
-/// logical origin is applied by `WgpuQuadCompositor`, so the band origin is not repeated here.
-/// The cached texture omits the live scroll Group, so this per-frame affine keeps ordinary
-/// scrolling, iOS rubber translation, and Android stretch moving without a re-raster.
-fn quad_transform(
-    placement: &LayerPlacement,
-    planner: &PresentPlanner,
-    scroll_geometry: &HashMap<ElementId, ScrollLayerGeometry>,
-) -> [f64; 6] {
-    match (
-        planner.cached_scroll_band(placement.layer),
-        scroll_geometry.get(&placement.layer),
-    ) {
-        (Some(_), Some(geometry)) => compose(placement.transform, geometry.scroll_affine),
-        _ => placement.transform,
+/// Web Vello's resource adapter for the shared layer-presentation transaction. The transaction
+/// owns frame validation, planning, stale detection, cache ledger and LRU; this adapter owns only
+/// the WGPU/Vello resources and the surface-present step.
+struct VelloLayerPresentationAdapter<'a> {
+    rasterizer: &'a mut VelloLayerRasterizer,
+    compositor: &'a mut WgpuQuadCompositor,
+    surface_host: &'a mut VelloSurfaceHost,
+    clear: ClearColor,
+}
+
+impl LayerPresentationAdapter for VelloLayerPresentationAdapter<'_> {
+    type Error = String;
+
+    fn rasterize(&mut self, job: &RasterJob<'_>) -> Result<u64, Self::Error> {
+        match job.kind {
+            RasterJobKind::Content => match job.bounds {
+                Some(bounds) => self
+                    .rasterizer
+                    .rasterize_in_bounds(job.layer, job.scene, bounds, job.band)?,
+                None => self.rasterizer.rasterize(job.layer, job.scene, job.band)?,
+            },
+            RasterJobKind::ScrollChrome => match job.bounds {
+                Some(bounds) => {
+                    self.rasterizer.update_scroll_chrome_in_bounds(
+                        job.layer,
+                        job.scene,
+                        bounds,
+                        job.repaint,
+                    )?;
+                }
+                None => {
+                    self.rasterizer
+                        .update_scroll_chrome(job.layer, job.scene, job.repaint)?;
+                }
+            },
+        }
+        Ok(self.rasterizer.cache_bytes(job.layer))
+    }
+
+    fn composite(&mut self, plan: &PlacementPlan) -> Result<(), Self::Error> {
+        let mut quads = Vec::with_capacity(plan.planes.len());
+        for plane in &plan.planes {
+            let texture = match plane.kind {
+                RasterJobKind::Content => self.rasterizer.texture(plane.layer),
+                RasterJobKind::ScrollChrome => self.rasterizer.scroll_chrome_texture(plane.layer),
+            };
+            if let Some(texture) = texture {
+                quads.push(CompositeQuad {
+                    layer: plane.layer,
+                    transform: plane.transform,
+                    opacity: 1.0,
+                    clip: plane.clip,
+                    texture,
+                });
+            }
+        }
+        self.surface_host
+            .present_composite(self.compositor, &quads, self.clear)
+            .map_err(|error| error.as_string().unwrap_or_else(|| format!("{error:?}")))
+    }
+
+    fn discard(&mut self, layers: &[ElementId]) {
+        for &layer in layers {
+            self.rasterizer.discard(layer);
+        }
     }
 }
 
@@ -366,196 +411,41 @@ impl CanvasBackend for SelectedBackend {
         clear_color: ClearColor,
     ) -> Result<(), anyhow::Error> {
         self.ensure_layer_present_resources();
-        let Some(state) = self.layer_present.as_mut() else {
+        if self.layer_present.is_none() {
             // construct が失敗した直後（ensure_layer_present_resources が layer_present_enabled
             // を false に落とした）。このフレームは全面 raster にフォールバックする。
             return self.render_scene(scene, clear_color);
+        }
+        let (surface_host, layer_present) = (&mut self.surface_host, &mut self.layer_present);
+        let state = layer_present
+            .as_mut()
+            .expect("layer-present resources were checked above");
+        let mut adapter = VelloLayerPresentationAdapter {
+            rasterizer: &mut state.rasterizer,
+            compositor: &mut state.compositor,
+            surface_host,
+            clear: clear_color,
         };
-        let Some(&root) = layers.first() else {
-            return Ok(());
-        };
-        let boundaries: HashSet<ElementId> = layers.iter().copied().collect();
-        let raster_bounds: HashMap<ElementId, LayerRasterBounds> = layer_raster_bounds
-            .iter()
-            .copied()
-            .map(|bounds| (bounds.layer, bounds))
-            .collect();
-
-        for stale in state
-            .prev_layers
-            .difference(&boundaries)
-            .copied()
-            .collect::<Vec<_>>()
-        {
-            state.rasterizer.discard(stale);
-            state.planner.evict(stale);
-        }
-        state.prev_layers = boundaries.clone();
-
-        let extract = |layer: ElementId| -> Option<SceneGraph> {
-            if layer == root {
-                Some(extract_root_scene(scene, root, &boundaries))
-            } else {
-                extract_layer_scene(scene, layer, &boundaries)
-            }
-        };
-
-        // 非 scroll レイヤは従来どおり: dirty / 未キャッシュのものだけ一括判定で raster する。
-        // scroll レイヤ（`scroll_geometry` にあるもの）はここから除外し、下の専用ループで扱う。
-        let non_scroll_layers: Vec<ElementId> = layers
-            .iter()
-            .copied()
-            .filter(|layer| !scroll_geometry.contains_key(layer))
-            .collect();
-        let plan = state.planner.plan_layers(&non_scroll_layers, layer_dirty);
-        for &layer in &plan.raster {
-            let Some(extracted) = extract(layer) else {
-                continue; // 未 lowering（次フレームで raster される）
-            };
-            if layer == root {
-                state
-                    .rasterizer
-                    .rasterize(layer, &extracted, None)
-                    .map_err(|e| anyhow::anyhow!(e))?;
-            } else if let Some(&bounds) = raster_bounds.get(&layer) {
-                state
-                    .rasterizer
-                    .rasterize_in_bounds(layer, &extracted, bounds, None)
-                    .map_err(|e| anyhow::anyhow!(e))?;
-            } else {
-                state
-                    .rasterizer
-                    .rasterize(layer, &extracted, None)
-                    .map_err(|e| anyhow::anyhow!(e))?;
-            }
-            state.planner.note_layer_rasterized(
-                layer,
-                state
-                    .rasterizer
-                    .texture_bytes(layer)
-                    .unwrap_or_else(|| state.rasterizer.texture_bytes_per_layer()),
-            );
-        }
-
-        // scroll 内容レイヤ（ADR-0127・#707）: キャッシュ済み帯が現在の可視域を覆っていれば
-        // composite-only（raster しない）。覆っていなければ新しい帯を差分 raster する
-        // （`compositor/tests/scroll_composite_only.rs` の `pump_scroll` と同じ判定順）。
-        // `geometry.content_dirty`（`frame_layer_dirty()` のみ）を使う——呼び出し側が渡す
-        // `layer_dirty` は非 scroll 経路のために scroll chrome dirty（スクロールバー fade 等）も
-        // 混ぜているため、それをここで使うとスクロールバーが動くたびに composite-only が崩れる。
-        for &layer in layers {
-            let Some(geometry) = scroll_geometry.get(&layer) else {
-                continue; // 非 scroll レイヤは上のループで処理済み
-            };
-            let needs_content_raster = geometry.content_dirty
-                || state.planner.scroll_layer_needs_raster(
-                    layer,
-                    geometry.visible_top,
-                    geometry.viewport_height,
-                );
-            if needs_content_raster {
-                let Some(extracted) = (if layer == root {
-                    Some(extract_root_scene(scene, root, &boundaries))
-                } else {
-                    extract_scroll_layer_scene(scene, layer, &boundaries, geometry.scroll_affine)
-                }) else {
-                    continue;
-                };
-                if layer == root {
-                    state
-                        .rasterizer
-                        .rasterize(layer, &extracted, Some(geometry.raster_band()))
-                        .map_err(|e| anyhow::anyhow!(e))?;
-                } else if let Some(&bounds) = raster_bounds.get(&layer) {
-                    state
-                        .rasterizer
-                        .rasterize_in_bounds(
-                            layer,
-                            &extracted,
-                            bounds,
-                            Some(geometry.raster_band()),
-                        )
-                        .map_err(|e| anyhow::anyhow!(e))?;
-                } else {
-                    state
-                        .rasterizer
-                        .rasterize(layer, &extracted, Some(geometry.raster_band()))
-                        .map_err(|e| anyhow::anyhow!(e))?;
-                }
-            }
-
-            // Scrollbar は viewport 固定 chrome であり、content band と同じ compensating
-            // translate を掛けず別 texture として重ねる。CommittedFrame の chrome dirty または
-            // cache miss/resize のときだけ更新し、stable frame では Vello raster を起動しない。
-            if layer != root {
-                if let Some(chrome) = extract_scroll_chrome_scene(scene, layer, &boundaries) {
-                    if let Some(&bounds) = raster_bounds.get(&layer) {
-                        state
-                            .rasterizer
-                            .update_scroll_chrome_in_bounds(
-                                layer,
-                                &chrome,
-                                bounds,
-                                chrome_dirty.contains(&layer),
-                            )
-                            .map_err(|e| anyhow::anyhow!(e))?;
-                    } else {
-                        state
-                            .rasterizer
-                            .update_scroll_chrome(layer, &chrome, chrome_dirty.contains(&layer))
-                            .map_err(|e| anyhow::anyhow!(e))?;
-                    }
-                }
-            }
-            if needs_content_raster {
-                let bytes = state.rasterizer.cache_bytes(layer);
-                state
-                    .planner
-                    .note_scroll_rasterized(layer, geometry.band, bytes);
-            }
-        }
-
-        let placements = collect_layer_placements(scene, root, &boundaries);
-        let mut quads: Vec<CompositeQuad<'_, LayerTexture>> = Vec::new();
-        for placement in &placements {
-            if let Some(texture) = state.rasterizer.texture(placement.layer) {
-                quads.push(CompositeQuad {
-                    layer: placement.layer,
-                    transform: quad_transform(placement, &state.planner, scroll_geometry),
-                    opacity: 1.0,
-                    clip: placement.clip,
-                    texture,
-                });
-            }
-            if scroll_geometry.contains_key(&placement.layer) {
-                if let Some(texture) = state.rasterizer.scroll_chrome_texture(placement.layer) {
-                    quads.push(CompositeQuad {
-                        layer: placement.layer,
-                        transform: placement.transform,
-                        opacity: 1.0,
-                        clip: placement.clip,
-                        texture,
-                    });
-                }
-            }
-        }
-        self.surface_host
-            .present_composite(&mut state.compositor, &quads, clear_color)
-            .map_err(js_to_anyhow)?;
-        for quad in &quads {
-            state.planner.note_composited(quad.layer);
-        }
-
-        // GPU 予算超過なら最も長く composite に使われていないレイヤ texture から LRU 退避する
-        // （ADR-0127）。Web はデスクトップ既定値をそのまま使う（このスライスでチューニングしない）。
+        state
+            .presentation
+            .present(
+                LayerPresentationFrame {
+                    scene,
+                    layers,
+                    layer_raster_bounds,
+                    layer_dirty,
+                    chrome_dirty,
+                    scroll_geometry,
+                },
+                &mut adapter,
+            )
+            .map_err(|error| anyhow::anyhow!("layer presentation: {error:?}"))?;
         let budget = GpuBudget::from_viewports(
-            self.surface_host.width,
-            self.surface_host.height,
+            adapter.surface_host.width,
+            adapter.surface_host.height,
             tunables::GPU_BUDGET_VIEWPORTS_DESKTOP,
         );
-        for evicted in state.planner.enforce_budget(budget) {
-            state.rasterizer.discard(evicted);
-        }
+        state.presentation.enforce_budget(budget, &mut adapter);
         Ok(())
     }
 
@@ -571,7 +461,7 @@ impl CanvasBackend for SelectedBackend {
                 self.content_scale,
             );
             state.compositor.set_content_scale(self.content_scale);
-            state.planner.invalidate();
+            state.presentation.invalidate();
         }
     }
 }

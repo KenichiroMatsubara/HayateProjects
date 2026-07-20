@@ -325,13 +325,21 @@ impl LayerPresentationAdapter for TinySkiaLayerPresentationAdapter<'_> {
             RasterJobKind::Content => &mut *self.rasterizer,
             RasterJobKind::ScrollChrome => &mut *self.chrome_rasterizer,
         };
+        if job.kind == RasterJobKind::ScrollChrome
+            && !job.repaint
+            && rasterizer.texture(job.layer).is_some()
+        {
+            return Ok(self.rasterizer.texture_bytes(job.layer)
+                + self.chrome_rasterizer.texture_bytes(job.layer));
+        }
         match job.bounds {
             Some(bounds) => {
                 rasterizer.rasterize_with_bounds(job.layer, job.scene, bounds, job.band)?
             }
             None => rasterizer.rasterize(job.layer, job.scene, job.band)?,
         }
-        Ok(rasterizer.texture_bytes(job.layer))
+        Ok(self.rasterizer.texture_bytes(job.layer)
+            + self.chrome_rasterizer.texture_bytes(job.layer))
     }
 
     fn composite(&mut self, plan: &PlacementPlan) -> Result<(), Self::Error> {

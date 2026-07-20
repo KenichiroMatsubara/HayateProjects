@@ -43,6 +43,10 @@ pub struct RasterJob<'a> {
     pub bounds: Option<LayerRasterBounds>,
     pub band: Option<RasterBand>,
     pub scroll_band: Option<ScrollLayerExtent>,
+    /// Whether the existing cache plane's pixels are known stale. Adapters still receive
+    /// chrome jobs when this is false so a backend-local cache miss (resize/eviction) can be
+    /// repaired without duplicating transaction planning.
+    pub repaint: bool,
 }
 
 struct PreparedJob {
@@ -52,6 +56,7 @@ struct PreparedJob {
     bounds: Option<LayerRasterBounds>,
     band: Option<RasterBand>,
     scroll_band: Option<ScrollLayerExtent>,
+    repaint: bool,
 }
 
 /// A single backend-agnostic composite plane.
@@ -181,6 +186,7 @@ impl LayerPresentation {
                 bounds: bounds.get(&layer).copied(),
                 band: None,
                 scroll_band: None,
+                repaint: true,
             });
         }
         for (&layer, geometry) in frame.scroll_geometry {
@@ -205,9 +211,10 @@ impl LayerPresentation {
                     bounds: bounds.get(&layer).copied(),
                     band: Some(geometry.raster_band()),
                     scroll_band: Some(geometry.band),
+                    repaint: true,
                 });
             }
-            if frame.chrome_dirty.contains(&layer) {
+            if layer != root {
                 if let Some(scene) = extract_scroll_chrome_scene(frame.scene, layer, &boundaries) {
                     let mut chrome_bounds = *bounds.get(&layer).expect("validated bounds");
                     chrome_bounds.origin_y = geometry.absolute_top;
@@ -219,6 +226,7 @@ impl LayerPresentation {
                         bounds: Some(chrome_bounds),
                         band: None,
                         scroll_band: None,
+                        repaint: frame.chrome_dirty.contains(&layer),
                     });
                 }
             }
@@ -233,6 +241,7 @@ impl LayerPresentation {
                 bounds: job.bounds,
                 band: job.band,
                 scroll_band: job.scroll_band,
+                repaint: job.repaint,
             };
             let bytes = adapter
                 .rasterize(&job)
@@ -254,19 +263,40 @@ impl LayerPresentation {
                 transform,
                 clip: placement.clip,
             });
+            // Scroll chrome is cached independently from the scrolling content. It keeps the
+            // layer's ordinary placement while the content plane receives the live scroll
+            // affine above, so adapters never reconstruct this pairing themselves.
+            if frame.scroll_geometry.contains_key(&placement.layer) {
+                placement_plan.planes.push(Placement {
+                    layer: placement.layer,
+                    kind: RasterJobKind::ScrollChrome,
+                    transform: placement.transform,
+                    clip: placement.clip,
+                });
+            }
         }
         adapter
             .composite(&placement_plan)
             .map_err(|error| LayerPresentationError::Adapter(error.to_string()))?;
 
         // Commit only after the adapter has successfully rastered, composited and blitted.
+        let mut committed = HashMap::new();
         for (layer, kind, band, bytes) in staged {
-            match (kind, band) {
-                (RasterJobKind::Content, Some(band)) => {
-                    self.planner.note_scroll_rasterized(layer, band, bytes)
+            let entry = committed.entry(layer).or_insert((None, bytes));
+            if kind == RasterJobKind::Content {
+                entry.0 = band;
+            }
+            // Adapters return their total content + chrome bytes for this layer. Chrome jobs
+            // run after content jobs, so the last value includes a freshly updated chrome plane.
+            entry.1 = bytes;
+        }
+        for (layer, (new_scroll_band, bytes)) in committed {
+            match new_scroll_band {
+                Some(band) => self.planner.note_scroll_rasterized(layer, band, bytes),
+                None if self.planner.cached_scroll_band(layer).is_some() => {
+                    self.planner.update_cached_bytes(layer, bytes)
                 }
-                (RasterJobKind::Content, None) => self.planner.note_layer_rasterized(layer, bytes),
-                (RasterJobKind::ScrollChrome, _) => {}
+                None => self.planner.note_layer_rasterized(layer, bytes),
             }
         }
         for plane in &placement_plan.planes {
