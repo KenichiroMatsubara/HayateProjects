@@ -689,17 +689,13 @@ impl ElementTree {
     /// フォーカス後の最初のフレームで実線を描く。focus 切替の原始操作（イベントは
     /// 出さない）で、`Interaction` の同名 seam 操作へ委譲する（ADR-0122）。
     pub fn element_focus(&mut self, id: ElementId) {
-        let mut interaction = std::mem::take(&mut self.interaction);
-        interaction.element_focus(self, id);
-        self.interaction = interaction;
+        crate::element::interaction::InteractionSession::new(self).element_focus(id);
     }
 
     /// `id` のフォーカスを外す（`id` が現在フォーカスされていなければ no-op）。
     /// イベントを出さない原始操作で、`Interaction` の seam 操作へ委譲する。
     pub fn element_blur(&mut self, id: ElementId) {
-        let mut interaction = std::mem::take(&mut self.interaction);
-        interaction.element_blur(self, id);
-        self.interaction = interaction;
+        crate::element::interaction::InteractionSession::new(self).element_blur(id);
     }
 
     /// 現在フォーカスされている要素（あれば）。
