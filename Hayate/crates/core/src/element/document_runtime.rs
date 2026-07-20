@@ -139,7 +139,10 @@ pub(crate) fn event_target(event: &Event) -> Option<ElementId> {
         | Event::ActiveStart { target_id }
         | Event::ActiveEnd { target_id }
         | Event::KeyDown { target_id, .. }
-        | Event::LayoutResize { target_id, .. } => Some(*target_id),
+        | Event::LayoutResize { target_id, .. }
+        | Event::PointerDown { target_id, .. }
+        | Event::PointerDrag { target_id, .. }
+        | Event::PointerUp { target_id, .. } => Some(*target_id),
         Event::Resize { .. }
         | Event::PointerMove { .. }
         | Event::FetchFont { .. }

@@ -27,4 +27,4 @@ blob-report/
 
 # Dev-only live taste-constant override (#353). The .example template is
 # committed; the live file is a local scratchpad and never shipped.
-Tsubame/examples/todo/public/tuning.jsonc
+Tsubame/examples/solid-demo/public/tuning.jsonc

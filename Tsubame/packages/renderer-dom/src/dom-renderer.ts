@@ -94,6 +94,11 @@ function eventPayload(id: ElementId, eventKind: EventKind, event: Event): Intera
   if (event instanceof KeyboardEvent) {
     payload.key = event.key;
   }
+  if (typeof PointerEvent !== 'undefined' && event instanceof PointerEvent) {
+    payload.x = event.clientX;
+    payload.y = event.clientY;
+    payload.pointerKind = event.pointerType === 'touch' ? 1 : event.pointerType === 'pen' ? 2 : 0;
+  }
 
   return payload;
 }
@@ -417,6 +422,14 @@ export class DomRenderer implements IRenderer {
     const target = this.node(id);
     const domEvent = DOM_EVENT_NAME[event];
     const listener = (nativeEvent: Event): void => {
+      if (
+        event === 'pointerdown'
+        && typeof PointerEvent !== 'undefined'
+        && nativeEvent instanceof PointerEvent
+        && 'setPointerCapture' in target
+      ) {
+        target.setPointerCapture(nativeEvent.pointerId);
+      }
       handler(eventPayload(id, event, nativeEvent));
     };
     target.addEventListener(domEvent, listener);

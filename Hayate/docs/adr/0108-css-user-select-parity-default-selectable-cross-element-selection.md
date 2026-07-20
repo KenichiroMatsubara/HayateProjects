@@ -87,7 +87,7 @@ element-kind ごとの UA 既定を core が供給すれば（ADR-0105 のカー
 - `platform/web/src/user_select.rs` と `renderer-dom/src/user-select.ts` を新解決順に。
   `fixtures/user_select_parity.json` の期待値を反転（view/text 既定 `none`→`text`、button は
   `none` 維持）。
-- 既存の `selectable` 利用（`examples/todo`・CSS gallery・各テスト）を `user-select` に移行。
+- 既存の `selectable` 利用（`examples/solid-demo`・CSS gallery・各テスト）を `user-select` に移行。
 - ADR-0097 が defer した cross-element / cross-IFC 選択の成長点を本 ADR が埋める。a11y inbound
   `SetTextSelection`（ADR-0098 defer）や `selection-change` イベントは引き続き範囲外。
 
@@ -121,7 +121,7 @@ element-kind ごとの UA 既定を core が供給すれば（ADR-0105 のカー
 回帰固定: `crates/core/tests/plain_text_selection.rs`（新規）が plain text の I-beam / 選択 /
 コピー / 非 text-bearing view の矢印 / `user-select: none` 除外を、`text_selection.rs` と
 `selection_api.rs` が旧 ADR-0097 前提（領域無し=非選択）から新挙動へ更新済み。実ブラウザは
-`Tsubame/examples/todo/e2e/canvas-text-cursor.spec.ts` が Canvas のカーソル結線を確認。
+`Tsubame/examples/solid-demo/e2e/canvas-text-cursor.spec.ts` が Canvas のカーソル結線を確認。
 
 ## 関係
 

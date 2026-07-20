@@ -94,5 +94,23 @@
     "kind": "fetch_font",
     "fields": { "family": "Inter" },
     "wire": [15, "Inter"]
+  },
+  {
+    "name": "pointer_down",
+    "kind": "pointer_down",
+    "fields": { "target_id": 4, "x": 10, "y": 20, "pointer_kind": 1 },
+    "wire": [18, 4, 10, 20, 1]
+  },
+  {
+    "name": "pointer_drag",
+    "kind": "pointer_drag",
+    "fields": { "target_id": 4, "x": 30, "y": 40, "pointer_kind": 1 },
+    "wire": [19, 4, 30, 40, 1]
+  },
+  {
+    "name": "pointer_up",
+    "kind": "pointer_up",
+    "fields": { "target_id": 4, "x": 50, "y": 60, "pointer_kind": 1 },
+    "wire": [20, 4, 50, 60, 1]
   }
 ]

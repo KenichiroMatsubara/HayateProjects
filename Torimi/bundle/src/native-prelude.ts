@@ -1,7 +1,7 @@
 /**
  * Hermes（埋め込み JS エンジン, ADR-0112）向けの最小グローバル shim。
  *
- * 旧 `examples/{todo,react-todo}/src/android-prelude.ts`（solid 版・react 版）の合併を `@torimi/bundle` に
+ * 旧 `examples/{todo,react-demo}/src/android-prelude.ts`（solid 版・react 版）の合併を `@torimi/bundle` に
  * 畳んだもの（issue #767 / ADR-0008 §4）。全ターゲット共通の単一エントリにするため、
  * **常に import・条件適用**で成立させる：すべての shim は「無ければ埋める」ガード付きなので、
  * グローバルが揃ったブラウザ実行では全行が no-op になり、素の Hermes でだけ効く。

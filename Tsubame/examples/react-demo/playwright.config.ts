@@ -8,9 +8,9 @@ const PREINSTALLED_CHROMIUM = '/opt/pw-browsers/chromium';
 const executablePath = existsSync(PREINSTALLED_CHROMIUM) ? PREINSTALLED_CHROMIUM : undefined;
 
 /**
- * Playwright — react-todo の Torimi e2e（#531：FW 非依存の実証）。
+ * Playwright — react-demo の Torimi e2e（#531：FW 非依存の実証）。
  *
- * solid の `examples/todo` と**同じ FW 非依存ホスト**（host.html / @torimi/host-web）に、
+ * solid の `examples/solid-demo` と**同じ FW 非依存ホスト**（host.html / @torimi/host-web）に、
  * react App Bundle を流し込んで描画されることを本物の Chromium で検証する。vite dev が
  * host.html を配信し、Torimi 最小 dev server が react バンドルを HTTP 配信する。
  *

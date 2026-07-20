@@ -5,16 +5,16 @@
       "name": "Todo (Solid)",
       "bundleUrl": "/solid/bundle.js",
       "source": {
-        "workspacePackage": "@tsubame/example-todo",
-        "artifactPath": "Tsubame/examples/todo/dist-torimi/bundle.hermes.js"
+        "workspacePackage": "@tsubame/example-solid-demo",
+        "artifactPath": "Tsubame/examples/solid-demo/dist-torimi/bundle.hermes.js"
       }
     },
     {
       "name": "Todo (React)",
       "bundleUrl": "/react/bundle.js",
       "source": {
-        "workspacePackage": "@tsubame/example-react-todo",
-        "artifactPath": "Tsubame/examples/react-todo/dist-torimi/bundle.hermes.js"
+        "workspacePackage": "@tsubame/example-react-demo",
+        "artifactPath": "Tsubame/examples/react-demo/dist-torimi/bundle.hermes.js"
       }
     }
   ]

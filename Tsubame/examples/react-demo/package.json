@@ -1,5 +1,5 @@
 {
-  "name": "@tsubame/example-todo",
+  "name": "@tsubame/example-react-demo",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -11,12 +11,10 @@
     "torimi:native:dev": "torimi dev native",
     "torimi:web:dev": "torimi dev web",
     "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui",
-    "test:e2e:report": "playwright show-report",
-    "test:e2e:layer-present": "node ../../../Hayate/scripts/build-wasm.mjs pkg && playwright test --config playwright.config.layer-present.ts"
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@torimi/hayate-host": "workspace:*",
@@ -24,18 +22,19 @@
     "@torimi/host-web": "workspace:*",
     "@torimi/tsubame-app": "workspace:*",
     "@torimi/tsubame-protocol-generated": "workspace:*",
+    "@torimi/tsubame-react": "workspace:*",
     "@torimi/tsubame-renderer-dom": "workspace:*",
     "@torimi/tsubame-renderer-hayate": "workspace:*",
     "@torimi/tsubame-renderer-protocol": "workspace:*",
-    "@torimi/tsubame-solid": "workspace:*",
-    "solid-js": "^1.9.13"
+    "react": "^19.1.0",
+    "react-reconciler": "^0.32.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.0",
-    "@torimi/tsubame-hayate-css-catalog": "workspace:*",
+    "@types/react": "^19.1.0",
+    "@types/react-reconciler": "^0.32.0",
     "@torimi/cli": "workspace:*",
     "vite": "^8.0.14",
-    "vite-plugin-solid": "^2.11.12",
     "vitest": "^3.2.0"
   }
 }

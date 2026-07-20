@@ -2,7 +2,7 @@
 // Source: proto/spec/*.json
 
 // Protocol version (wire decoder version, source of truth for host handshakes)
-pub const PROTOCOL_VERSION: u32 = 1;
+pub const PROTOCOL_VERSION: u32 = 2;
 
 // Opcode constants
 pub const OP_APPEND_CHILD: u32 = 0;
@@ -144,6 +144,9 @@ pub const EVENT_KIND_POINTER_MOVE: f64 = 14.0;
 pub const EVENT_KIND_FETCH_FONT: f64 = 15.0;
 pub const EVENT_KIND_SELECTION_CHANGE: f64 = 16.0;
 pub const EVENT_KIND_LAYOUT_RESIZE: f64 = 17.0;
+pub const EVENT_KIND_POINTER_DOWN: f64 = 18.0;
+pub const EVENT_KIND_POINTER_DRAG: f64 = 19.0;
+pub const EVENT_KIND_POINTER_UP: f64 = 20.0;
 
 // Event wire metadata (from event_kinds.json)
 pub const EVENT_WIRE_ROLE_CLICK: &str = "interaction";
@@ -182,6 +185,12 @@ pub const EVENT_WIRE_ROLE_SELECTION_CHANGE: &str = "interaction";
 pub const EVENT_ADAPTER_TIER_SELECTION_CHANGE: &str = "none";
 pub const EVENT_WIRE_ROLE_LAYOUT_RESIZE: &str = "hayate-internal";
 pub const EVENT_ADAPTER_TIER_LAYOUT_RESIZE: &str = "none";
+pub const EVENT_WIRE_ROLE_POINTER_DOWN: &str = "interaction";
+pub const EVENT_ADAPTER_TIER_POINTER_DOWN: &str = "forward";
+pub const EVENT_WIRE_ROLE_POINTER_DRAG: &str = "interaction";
+pub const EVENT_ADAPTER_TIER_POINTER_DRAG: &str = "forward";
+pub const EVENT_WIRE_ROLE_POINTER_UP: &str = "interaction";
+pub const EVENT_ADAPTER_TIER_POINTER_UP: &str = "forward";
 
 // Element kind constants
 pub const ELEMENT_KIND_VIEW: u32 = 0;
@@ -1914,6 +1923,33 @@ pub fn encode_event_wire(ev: &hayate_core::Event) -> Vec<EventWireValue> {
             out.push(EventWireValue::Number(target_id.to_u64() as f64));
             out.push(EventWireValue::Number(*width as f64));
             out.push(EventWireValue::Number(*height as f64));
+            out
+        }
+        hayate_core::Event::PointerDown { target_id, x, y, pointer_kind } => {
+            let mut out = Vec::new();
+            out.push(EventWireValue::Number(18.0));
+            out.push(EventWireValue::Number(target_id.to_u64() as f64));
+            out.push(EventWireValue::Number(*x as f64));
+            out.push(EventWireValue::Number(*y as f64));
+            out.push(EventWireValue::Number(pointer_kind.to_u32() as f64));
+            out
+        }
+        hayate_core::Event::PointerDrag { target_id, x, y, pointer_kind } => {
+            let mut out = Vec::new();
+            out.push(EventWireValue::Number(19.0));
+            out.push(EventWireValue::Number(target_id.to_u64() as f64));
+            out.push(EventWireValue::Number(*x as f64));
+            out.push(EventWireValue::Number(*y as f64));
+            out.push(EventWireValue::Number(pointer_kind.to_u32() as f64));
+            out
+        }
+        hayate_core::Event::PointerUp { target_id, x, y, pointer_kind } => {
+            let mut out = Vec::new();
+            out.push(EventWireValue::Number(20.0));
+            out.push(EventWireValue::Number(target_id.to_u64() as f64));
+            out.push(EventWireValue::Number(*x as f64));
+            out.push(EventWireValue::Number(*y as f64));
+            out.push(EventWireValue::Number(pointer_kind.to_u32() as f64));
             out
         }
     }

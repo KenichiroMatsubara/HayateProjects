@@ -90,7 +90,7 @@ fn text_to_text_font_size_inherits_in_ifc() {
 #[test]
 fn own_default_color_applies_to_self_text() {
     // ADR-0065（解釈A）: 要素自身の `default-*` は self-inclusive。祖先が別の ambient 既定を
-    // 供給していても、text 自身の `default-color` がその text 自身の glyph に効く。react-todo の
+    // 供給していても、text 自身の `default-color` がその text 自身の glyph に効く。react-demo の
     // 完了ラベル相当で、DOM Renderer の挙動とも一致する。
     let mut tree = ElementTree::new();
     let view = tree.element_create(10, ElementKind::View);

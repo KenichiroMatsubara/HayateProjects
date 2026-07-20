@@ -1,6 +1,6 @@
 # UI 比較: DOM モード vs tiny-skia (Canvas) モード
 
-Todo デモ (`Tsubame/examples/todo`) の **Tasks 画面**を、両レンダラーで
+Todo デモ (`Tsubame/examples/solid-demo`) の **Tasks 画面**を、両レンダラーで
 描画したときの差分から現行 UI の問題点を洗い出す。
 
 - **DOM Renderer**: Hayate スタイルを実 CSS にマップし、ブラウザがレイアウト・描画する。

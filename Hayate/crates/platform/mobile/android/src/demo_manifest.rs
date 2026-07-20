@@ -260,7 +260,7 @@ mod tests {
             "$comment": "single source of truth",
             "demos": [
                 { "name": "Todo (Solid)", "bundleUrl": "/solid/bundle.js",
-                  "source": { "workspacePackage": "@tsubame/example-todo" } }
+                  "source": { "workspacePackage": "@tsubame/example-solid-demo" } }
             ]
         }"#;
         let manifest = parse(with_extras).unwrap();

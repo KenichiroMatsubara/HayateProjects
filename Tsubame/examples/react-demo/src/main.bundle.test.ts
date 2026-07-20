@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 /**
  * #767：react の全ターゲット共通単一エントリ（`main.bundle.tsx`）が Torimi の受け渡し契約を
  * 満たすことのガード。旧 `main.torimi.tsx`（Web, #531）と旧 `main.android.tsx`（native, #739)
- * の二重エントリを置き換えた。solid 版（`examples/todo/src/main.bundle.test.ts`）と対称 —
+ * の二重エントリを置き換えた。solid 版（`examples/solid-demo/src/main.bundle.test.ts`）と対称 —
  * FW を差し替えても露出する wire シームは同一なので、同じホストが両方を描画できる
  * （ADR-0001 / CONTEXT.md「Host」）。
  */

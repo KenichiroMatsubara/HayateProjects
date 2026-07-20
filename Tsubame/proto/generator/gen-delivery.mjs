@@ -10,6 +10,9 @@ function interactionEventFields(ev) {
   const paramNames = new Set((ev.params ?? []).map((p) => p.name));
   if (paramNames.has('text')) fields.push('value: ev.text');
   if (paramNames.has('key')) fields.push('key: ev.key');
+  if (paramNames.has('pointer_kind')) {
+    fields.push('x: ev.x', 'y: ev.y', 'pointerKind: ev.pointerKind');
+  }
   return fields;
 }
 

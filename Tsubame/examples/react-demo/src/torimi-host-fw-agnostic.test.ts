@@ -14,7 +14,7 @@ import { describe, expect, it } from 'vitest';
  */
 
 const reactHostBoot = fileURLToPath(new URL('./host-boot.ts', import.meta.url));
-const solidHostBoot = fileURLToPath(new URL('../../todo/src/host-boot.ts', import.meta.url));
+const solidHostBoot = fileURLToPath(new URL('../../solid-demo/src/host-boot.ts', import.meta.url));
 const reactHostHtml = fileURLToPath(new URL('../host.html', import.meta.url));
 
 /** ホストが import したら FW / renderer がホストに焼き込まれた証拠になるパッケージ群。 */
@@ -42,7 +42,7 @@ function importSpecifiers(source: string): string[] {
 
 describe('Torimi host shell is framework-agnostic (#531)', () => {
   it('drives the react bundle with the byte-identical host boot used for the solid bundle', () => {
-    // 文字通り「同じホスト」: react-todo と todo（solid）の host-boot は 1 文字も違わない。
+    // 文字通り「同じホスト」: react-demo と solid-demo の host-boot は 1 文字も違わない。
     expect(readFileSync(reactHostBoot, 'utf8')).toBe(readFileSync(solidHostBoot, 'utf8'));
   });
 

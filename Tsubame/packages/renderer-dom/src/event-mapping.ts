@@ -14,4 +14,7 @@ export const DOM_EVENT_NAME: Record<EventKind, string> = {
   'hover-leave': 'mouseleave',
   focus: 'focus',
   blur: 'blur',
+  pointerdown: 'pointerdown',
+  pointermove: 'pointermove',
+  pointerup: 'pointerup',
 };

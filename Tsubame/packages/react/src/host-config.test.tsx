@@ -428,6 +428,9 @@ describe('@torimi/tsubame-react event handling (IRenderer boundary, ADR-0008)', 
         onKeyDown={() => {}}
         onFocus={() => {}}
         onBlur={() => {}}
+        onPointerDown={() => {}}
+        onPointerMove={() => {}}
+        onPointerUp={() => {}}
       />,
     );
     const kinds = kindById(calls);
@@ -439,7 +442,7 @@ describe('@torimi/tsubame-react event handling (IRenderer boundary, ADR-0008)', 
     for (const s of subs) expect(s.id).toBe(targetId);
 
     expect(subs.map((s) => s.event).sort()).toEqual(
-      ['blur', 'click', 'focus', 'input', 'keydown'].sort(),
+      ['blur', 'click', 'focus', 'input', 'keydown', 'pointerdown', 'pointermove', 'pointerup'].sort(),
     );
   });
 

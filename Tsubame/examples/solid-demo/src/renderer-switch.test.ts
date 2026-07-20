@@ -5,7 +5,7 @@ const readUtf8 = async (url: URL): Promise<string> => String(await readFile(url)
 
 const html = await readUtf8(new URL('../index.html', import.meta.url));
 const otherWebDemos = await Promise.all([
-  readUtf8(new URL('../../react-todo/index.html', import.meta.url)),
+  readUtf8(new URL('../../react-demo/index.html', import.meta.url)),
   readUtf8(new URL('../../draw-gallery/index.html', import.meta.url)),
 ]);
 

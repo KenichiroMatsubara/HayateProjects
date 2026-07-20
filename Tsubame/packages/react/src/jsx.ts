@@ -28,6 +28,9 @@ export interface TsubameProps {
   onKeyDown?: EventHandler;
   onFocus?: EventHandler;
   onBlur?: EventHandler;
+  onPointerDown?: EventHandler;
+  onPointerMove?: EventHandler;
+  onPointerUp?: EventHandler;
   children?: ReactNode;
   key?: Key;
 }

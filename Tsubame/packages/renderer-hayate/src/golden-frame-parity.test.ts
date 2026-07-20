@@ -14,7 +14,7 @@ describe('golden frame semantic parity (ADR-0079, #151)', () => {
   });
 
   it('a text element’s OWN defaultColor applies to itself (self-inclusive, ADR-0065)', async () => {
-    // react-todo の完了ラベル相当: 祖先 view が ambient ink を供給し、葉の text が自身に
+    // react-demo の完了ラベル相当: 祖先 view が ambient ink を供給し、葉の text が自身に
     // defaultColor(muted) を載せて完了色を表す。ambient Default Text Style は自身にも効く
     // （解釈A）。DOM Renderer は defaultColor→CSS color で元から自己適用しており、本テストで
     // Hayate も一致することを固定する。

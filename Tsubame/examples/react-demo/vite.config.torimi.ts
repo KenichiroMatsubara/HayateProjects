@@ -7,7 +7,7 @@ import { tsubameReact } from '@torimi/tsubame-react/vite';
 //   - FW 変換: `@torimi/tsubame-react/vite`（automatic JSX → @torimi/tsubame-react, NODE_ENV=production）
 //   - App Bundle 形状: `@torimi/bundle/vite`（単一 IIFE・es2020・非圧縮・DOM/HTML なし）
 //
-// solid 版（`examples/todo/vite.config.torimi.ts`）と対称：FW 固有の変換はバンドル側に閉じ、
+// solid 版（`examples/solid-demo/vite.config.torimi.ts`）と対称：FW 固有の変換はバンドル側に閉じ、
 // 出力する wire シームは同一なので同じホストが描画できる（ADR-0001）。出力は target 非依存の
 // 1 本（dist-torimi/bundle.js）で、native の Hermes 降格は torimi CLI（#770）の責務。
 export default mergeConfig(

@@ -14,6 +14,9 @@ export const HAYATE_LISTENER_KIND: Partial<Record<EventKind, number>> = {
   'hover-enter': EVENT_KIND.HOVER_ENTER,
   'hover-leave': EVENT_KIND.HOVER_LEAVE,
   'keydown': EVENT_KIND.KEY_DOWN,
+  'pointerdown': EVENT_KIND.POINTER_DOWN,
+  'pointermove': EVENT_KIND.POINTER_DRAG,
+  'pointerup': EVENT_KIND.POINTER_UP,
 };
 
 /** adapterTier が deferred の Hayate ワイヤー種別（scroll, composition_*, …）。 */
@@ -69,6 +72,12 @@ export function toInteractionEvent(ev: EventPayload): InteractionEvent | null {
       return { kind: 'hover-leave', target: asElementId(ev.targetId) };
     case 'key_down':
       return { kind: 'keydown', target: asElementId(ev.targetId), key: ev.key };
+    case 'pointer_down':
+      return { kind: 'pointerdown', target: asElementId(ev.targetId), x: ev.x, y: ev.y, pointerKind: ev.pointerKind };
+    case 'pointer_drag':
+      return { kind: 'pointermove', target: asElementId(ev.targetId), x: ev.x, y: ev.y, pointerKind: ev.pointerKind };
+    case 'pointer_up':
+      return { kind: 'pointerup', target: asElementId(ev.targetId), x: ev.x, y: ev.y, pointerKind: ev.pointerKind };
     default:
       return null;
   }

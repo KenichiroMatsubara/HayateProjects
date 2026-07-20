@@ -276,6 +276,64 @@ fn pointer_release_dispatches_click_to_listener() {
 }
 
 #[test]
+fn pointer_gesture_delivers_coordinates_to_the_pressed_element() {
+    let mut tree = ElementTree::new();
+    let canvas = tree.element_create(1, ElementKind::View);
+    tree.set_root(canvas);
+    tree.set_viewport(200.0, 200.0);
+    tree.element_set_style(
+        canvas,
+        &[
+            StyleProp::Width(Dimension::px(200.0)),
+            StyleProp::Height(Dimension::px(200.0)),
+        ],
+    );
+    tree.render(0.0);
+    let down = tree.register_listener(canvas, DocumentEventKind::PointerDown);
+    let moved = tree.register_listener(canvas, DocumentEventKind::PointerDrag);
+    let up = tree.register_listener(canvas, DocumentEventKind::PointerUp);
+
+    tree.on_pointer_down_with_kind(10.0, 20.0, 0, PointerKind::Touch);
+    tree.on_pointer_move_with_kind(30.0, 40.0, PointerKind::Touch);
+    tree.on_pointer_up_with_kind(50.0, 60.0, PointerKind::Touch);
+
+    let deliveries = tree.poll_deliveries();
+    assert!(deliveries.iter().any(|delivery| {
+        delivery.listener_id == down
+            && matches!(
+                delivery.event,
+                Event::PointerDown { target_id, x, y, pointer_kind }
+                    if target_id == canvas
+                        && x == 10.0
+                        && y == 20.0
+                        && pointer_kind == PointerKind::Touch
+            )
+    }));
+    assert!(deliveries.iter().any(|delivery| {
+        delivery.listener_id == moved
+            && matches!(
+                delivery.event,
+                Event::PointerDrag { target_id, x, y, pointer_kind }
+                    if target_id == canvas
+                        && x == 30.0
+                        && y == 40.0
+                        && pointer_kind == PointerKind::Touch
+            )
+    }));
+    assert!(deliveries.iter().any(|delivery| {
+        delivery.listener_id == up
+            && matches!(
+                delivery.event,
+                Event::PointerUp { target_id, x, y, pointer_kind }
+                    if target_id == canvas
+                        && x == 50.0
+                        && y == 60.0
+                        && pointer_kind == PointerKind::Touch
+            )
+    }));
+}
+
+#[test]
 fn tap_delivers_click_on_release_not_on_press() {
     // タップは「押して離す」で確定する。クリックはリリース（pointer-up）で配信され、
     // 押下だけ（pointer-down）では配信されない。これにより slop を越えてスクロールに

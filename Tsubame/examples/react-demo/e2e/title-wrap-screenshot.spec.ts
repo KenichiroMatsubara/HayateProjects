@@ -1,8 +1,7 @@
 import { expect, test } from '@playwright/test';
 
 /**
- * 診断用: React TODO のタイトル行を DOM / Hayate(tiny-skia) 両モードで撮り比べる。
- * 「react が hayate だけタイトルが異常に折れ曲がる」症状の再現確認に使う。
+ * 診断用: React Sketch のスマホUIを DOM / Hayate(tiny-skia) 両モードで撮り比べる。
  */
 
 const SHOT_DIR = 'e2e/__screens__';

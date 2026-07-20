@@ -16,7 +16,7 @@ const canvas = document.getElementById('canvas-stage') as HTMLCanvasElement;
 
 // target（DOM / Hayate）の選択は Host に局在する。合成ルート `runTsubameApp` は IRenderer
 // しか知らず、DomRenderer / HayateRenderer も WebGPU プローブも見ない（ADR-0012）。
-// NOTE: 下の web Host adapter は react-todo の main.tsx と同型になる見込み。2 つ目が出た
+// NOTE: 下の web Host adapter は react-demo の main.tsx と同型になる見込み。2 つ目が出た
 // 時点で中立 App 階層パッケージへ抽出する（ADR-0012「1 adapter は仮の seam、2 で本物」）。
 let hayateRenderer: HayateRenderer | undefined;
 const host: Host =

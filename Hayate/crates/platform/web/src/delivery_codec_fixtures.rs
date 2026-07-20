@@ -84,6 +84,30 @@ mod tests {
             "fetch_font" => Event::FetchFont {
                 family: fields["family"].as_str().unwrap().to_string(),
             },
+            "pointer_down" => Event::PointerDown {
+                target_id: id("target_id"),
+                x: fields["x"].as_f64().unwrap() as f32,
+                y: fields["y"].as_f64().unwrap() as f32,
+                pointer_kind: hayate_core::PointerKind::from_u32(
+                    fields["pointer_kind"].as_u64().unwrap() as u32,
+                ),
+            },
+            "pointer_drag" => Event::PointerDrag {
+                target_id: id("target_id"),
+                x: fields["x"].as_f64().unwrap() as f32,
+                y: fields["y"].as_f64().unwrap() as f32,
+                pointer_kind: hayate_core::PointerKind::from_u32(
+                    fields["pointer_kind"].as_u64().unwrap() as u32,
+                ),
+            },
+            "pointer_up" => Event::PointerUp {
+                target_id: id("target_id"),
+                x: fields["x"].as_f64().unwrap() as f32,
+                y: fields["y"].as_f64().unwrap() as f32,
+                pointer_kind: hayate_core::PointerKind::from_u32(
+                    fields["pointer_kind"].as_u64().unwrap() as u32,
+                ),
+            },
             other => panic!("unknown fixture kind: {other}"),
         }
     }

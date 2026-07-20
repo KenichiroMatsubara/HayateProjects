@@ -13,7 +13,7 @@ import { App } from './App';
  *
  * protocol version の焼き込み・mount seam（`__torimiMount` / `__tsubame`）の登録・native
  * prelude といった wire 契約の配線は `@torimi/bundle` が隠し、ターゲット差（Native / Web）は
- * `__hayateHost` の有無でランタイム内部分岐する。solid 版（`examples/todo/src/main.bundle.tsx`）
+ * `__hayateHost` の有無でランタイム内部分岐する。solid 版（`examples/solid-demo/src/main.bundle.tsx`）
  * と対称：ここに残る FW 知識は mount の 1 行だけなので、FW を差し替えても露出する wire
  * シームは同一 — 同じホストが両方を描画できる（ADR-0001）。
  */

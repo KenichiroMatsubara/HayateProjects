@@ -13,7 +13,7 @@ retained グリフ層（描画用の glyph runs）が「要素の最終ボック
 - `text.rs` の `width_constraint` フィールド — 「直近どの幅でシェイプしたか」の簿記を retained 値に載せていた。
 - text-input の `content_layout` 経路 — drain とは別ループで `content_box_width()` を使い1回シェイプ（こちらは偶然正しい）。`missing_families → FetchFont` 発行ロジックが IFC 側と**重複**。
 
-タイトル折れバグ（react-todo、`align-items: baseline` 行）はこの不在を露呈した: Taffy は確定サイズの後にも intrinsic-size プローブ（min/max-content）を走らせ、baseline 行ではその最後が MinContent（max_advance=0）になり、`pending` が min-content 折返しのグリフを保持する。ボックス幾何は確定サイズからキャッシュされ正しいため、正しい幅の箱に 0 幅折返しのグリフが描かれ縦にはみ出した。commit 7cc0605 で drain に再シェイプを足して塞いだが、不変条件の**持ち主は依然不在**で、1リファクタで再発し得る。
+タイトル折れバグ（react-demo、`align-items: baseline` 行）はこの不在を露呈した: Taffy は確定サイズの後にも intrinsic-size プローブ（min/max-content）を走らせ、baseline 行ではその最後が MinContent（max_advance=0）になり、`pending` が min-content 折返しのグリフを保持する。ボックス幾何は確定サイズからキャッシュされ正しいため、正しい幅の箱に 0 幅折返しのグリフが描かれ縦にはみ出した。commit 7cc0605 で drain に再シェイプを足して塞いだが、不変条件の**持ち主は依然不在**で、1リファクタで再発し得る。
 
 ## Decision
 

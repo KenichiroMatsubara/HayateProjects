@@ -79,14 +79,14 @@ jobs:
         # （リポジトリ名が変わったらここも変える）。vite.config が VITE_BASE を読む。
         env:
           VITE_BASE: /HayateProjects/
-        run: pnpm --filter @tsubame/example-todo run build
+        run: pnpm --filter @tsubame/example-solid-demo run build
 
       - name: Build Tsubame React Todo example
         # React 版（tsubame-react）デモは Pages の /react/ サブパスに同梱する。
         # base はサブパスに合わせる（todo と同じく VITE_BASE 経由）。
         env:
           VITE_BASE: /HayateProjects/react/
-        run: pnpm --filter @tsubame/example-react-todo run build
+        run: pnpm --filter @tsubame/example-react-demo run build
 
       - name: Build Hayabusa web present demo (Rust WASM)
         # Hayabusa が組む hayate_core::ElementTree を、wire を介さず in-process Rust
@@ -98,22 +98,22 @@ jobs:
           RUSTFLAGS: ""
         run: wasm-pack build Hayabusa/web-demo --target web --release --out-dir pkg
 
-      - name: Assemble Pages site (todo at root, react-todo under /react, hayabusa under /hayabusa)
+      - name: Assemble Pages site (todo at root, react-demo under /react, hayabusa under /hayabusa)
         # Solid 版を root、React 版を /react/、Hayabusa present デモを /hayabusa/ に置いた
         # 単一の成果物へまとめる。
         run: |
-          mkdir -p Tsubame/examples/todo/dist/react
-          cp -r Tsubame/examples/react-todo/dist/. Tsubame/examples/todo/dist/react/
-          mkdir -p Tsubame/examples/todo/dist/hayabusa/pkg
-          cp Hayabusa/web-demo/index.html Tsubame/examples/todo/dist/hayabusa/index.html
+          mkdir -p Tsubame/examples/solid-demo/dist/react
+          cp -r Tsubame/examples/react-demo/dist/. Tsubame/examples/solid-demo/dist/react/
+          mkdir -p Tsubame/examples/solid-demo/dist/hayabusa/pkg
+          cp Hayabusa/web-demo/index.html Tsubame/examples/solid-demo/dist/hayabusa/index.html
           cp Hayabusa/web-demo/pkg/hayabusa_web_demo.js \
              Hayabusa/web-demo/pkg/hayabusa_web_demo_bg.wasm \
-             Tsubame/examples/todo/dist/hayabusa/pkg/
+             Tsubame/examples/solid-demo/dist/hayabusa/pkg/
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: Tsubame/examples/todo/dist
+          path: Tsubame/examples/solid-demo/dist
 
   deploy:
     name: Deploy to GitHub Pages

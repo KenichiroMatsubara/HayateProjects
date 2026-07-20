@@ -564,6 +564,12 @@ impl ElementTree {
     fn pointer_down_on_target(&mut self, target: Option<ElementId>, x: f32, y: f32) {
         self.interaction.last_input_modality = InputModality::Pointer;
         if let Some(t) = target {
+            self.emit_interaction(Event::PointerDown {
+                target_id: t,
+                x,
+                y,
+                pointer_kind: self.interaction.last_pointer_kind,
+            });
             // クリックはリリースで確定する（ADR-0082）。押下では `:active` を点け、
             // タップ起点を覚えるだけにする。押下→slop 超過でスクロールに化けた場合は
             // アダプタが `on_pointer_cancel` で押下を解除し、リリースでクリックを
@@ -587,7 +593,7 @@ impl ElementTree {
     /// ポインタアップ。`explicit_target` は active セッションが無いときだけ使う。
     pub fn on_pointer_up(&mut self, x: f32, y: f32) {
         let fallback = self.hit_test(x, y);
-        self.pointer_up_with_fallback(fallback);
+        self.pointer_up_with_fallback(fallback, x, y);
         self.interaction.pointer_gesture.end_drag();
     }
 
@@ -600,10 +606,23 @@ impl ElementTree {
 
     /// 明示フォールバックターゲットを伴うポインタアップ（HTML Mode）。
     pub fn on_pointer_up_on(&mut self, explicit_target: Option<ElementId>) {
-        self.pointer_up_with_fallback(explicit_target);
+        let (x, y) = self
+            .interaction
+            .last_pointer_pos
+            .or(self.interaction.active_press_pos)
+            .unwrap_or((0.0, 0.0));
+        self.pointer_up_with_fallback(explicit_target, x, y);
     }
 
-    fn pointer_up_with_fallback(&mut self, explicit_target: Option<ElementId>) {
+    fn pointer_up_with_fallback(&mut self, explicit_target: Option<ElementId>, x: f32, y: f32) {
+        if let Some(target_id) = self.interaction.active_element.or(explicit_target) {
+            self.emit_interaction(Event::PointerUp {
+                target_id,
+                x,
+                y,
+                pointer_kind: self.interaction.last_pointer_kind,
+            });
+        }
         // リリース確定（click-on-release・active 解除）は `Interaction` の状態機械が
         // 所有し、単一 seam（`InteractionIntent::PointerUp`）に通す（ADR-0082 / #572）。
         self.apply_interaction_intent(InteractionIntent::PointerUp { explicit_target });
@@ -673,6 +692,14 @@ impl ElementTree {
             y,
             pointer_kind: self.interaction.last_pointer_kind,
         });
+        if let Some(target_id) = self.interaction.active_element {
+            self.emit_interaction(Event::PointerDrag {
+                target_id,
+                x,
+                y,
+                pointer_kind: self.interaction.last_pointer_kind,
+            });
+        }
         let hit = self.hit_test(x, y);
         self.apply_pointer_hover(hit);
         let resolved_cursor = self.resolve_cursor(hit);

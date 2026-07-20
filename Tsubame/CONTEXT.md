@@ -27,7 +27,7 @@ _Avoid_: orchestrator が `renderer-dom` / `renderer-hayate` / `@torimi/hayate-h
 _Avoid_: mount の呼び形差を orchestrator に漏らす設計、FW ごとに host 配線・mode 検出を再実装する設計、`renderTsubame` の thunk/element 差を不当な非対称とみなし統一しようとする設計
 
 **Host bootstrap**:
-surface 取得・Hayate ランタイム構築（WASM ロード / WebGPU プローブ / backend 選択 / native RawHayate 注入）・clock 源の確立を行う配線。**Tsubame の renderer パッケージには属さない** — Hayate ランタイム側（web adapter / native）または App（合成ルート）が持つ。具体的には Hayate 側 JS パッケージ `@torimi/hayate-host`（`createHayateWebHost(canvas) → {raw, requestFrame, cancelFrame}` と `./native` の `createHayateNativeHost(raw)`）が web/native の host を供給する（#477）。App は host から `RawHayate`（+ clock）を受け、`new HayateRenderer({ raw, requestFrame, cancelFrame })` して mount する（合成ルート helper は `examples/todo` の `mountCanvasApp`、`@torimi/tsubame-app` の `runTsubameApp` へ昇格予定・ADR-0012）。browser/native はこの形で対称（docs/adr/0004）。
+surface 取得・Hayate ランタイム構築（WASM ロード / WebGPU プローブ / backend 選択 / native RawHayate 注入）・clock 源の確立を行う配線。**Tsubame の renderer パッケージには属さない** — Hayate ランタイム側（web adapter / native）または App（合成ルート）が持つ。具体的には Hayate 側 JS パッケージ `@torimi/hayate-host`（`createHayateWebHost(canvas) → {raw, requestFrame, cancelFrame}` と `./native` の `createHayateNativeHost(raw)`）が web/native の host を供給する（#477）。App は host から `RawHayate`（+ clock）を受け、`new HayateRenderer({ raw, requestFrame, cancelFrame })` して mount する（合成ルート helper は `examples/solid-demo` の `mountCanvasApp`、`@torimi/tsubame-app` の `runTsubameApp` へ昇格予定・ADR-0012）。browser/native はこの形で対称（docs/adr/0004）。
 _Avoid_: `@tsubame/renderer-canvas` 内に `init.ts` / `init-android.ts` 等の host bootstrap を置く設計、Tsubame が `hayate-adapter-web` に依存する設計、WASM 巻き込み回避のための `/android` サブパス分離
 
 **Hayate Renderer**:

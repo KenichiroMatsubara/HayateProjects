@@ -9,4 +9,7 @@ export type EventKind =
   | 'input'
   | 'hover-enter'
   | 'hover-leave'
-  | 'keydown';
+  | 'keydown'
+  | 'pointerdown'
+  | 'pointermove'
+  | 'pointerup';

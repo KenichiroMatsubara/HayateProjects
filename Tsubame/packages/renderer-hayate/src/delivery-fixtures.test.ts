@@ -43,6 +43,15 @@ function eventFields(ev: EventPayload): Record<string, string | number> {
       return { target_id: ev.targetId, key: ev.key, modifiers: ev.modifiers };
     case 'pointer_move':
       return { x: ev.x, y: ev.y, pointer_kind: ev.pointerKind };
+    case 'pointer_down':
+    case 'pointer_drag':
+    case 'pointer_up':
+      return {
+        target_id: ev.targetId,
+        x: ev.x,
+        y: ev.y,
+        pointer_kind: ev.pointerKind,
+      };
     case 'fetch_font':
       return { family: ev.family };
     case 'selection_change':

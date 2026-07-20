@@ -12,7 +12,7 @@
     "generate": "pnpm --filter @torimi/tsubame-protocol-generated run generate",
     "check:proto": "pnpm run generate && git diff --exit-code proto/generated packages/renderer-protocol/src/generated",
     "clean": "pnpm -r run clean",
-    "dev": "pnpm --filter @tsubame/example-todo dev"
+    "dev": "pnpm --filter @tsubame/example-solid-demo dev"
   },
   "devDependencies": {
     "@babel/core": "^8.0.1",

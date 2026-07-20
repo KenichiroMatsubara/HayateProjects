@@ -63,7 +63,7 @@ front-loaded convenience, not an architectural one.
   not self-schedule. The Android `CanvasRenderer` is built with `canvas: null` + `autoResize:
   false`, so the existing `canvas !== null` guards skip the browser EditContext/ResizeObserver
   wiring and native GameTextInput stays the IME owner — no fork of shared Tsubame code. `init.ts`
-  is unused; a new `init-android.ts` + `examples/todo/src/main.android.tsx` inject the host.
+  is unused; a new `init-android.ts` + `examples/solid-demo/src/main.android.tsx` inject the host.
 - **Non-destructive:** the JS path is added behind a Cargo feature (`tsubame-js`); `build_demo_tree`
   stays the default fallback so the verified native render asset is kept (ADR-0087).
 - Gradle gains a `bundleTsubameJs` task (esbuild→`hermesc`→assets) and links the Hermes AAR; the
