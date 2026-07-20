@@ -9,8 +9,8 @@ use std::collections::HashMap;
 
 use hayate_core::wire::MutationSink;
 use hayate_core::{
-    DocumentEventKind, ElementId, ElementKind, ElementTree, PseudoState, StyleProp, StylePropKind,
-    UserSelectValue, ViewportCondition,
+    DocumentEventKind, ElementId, ElementKind, ElementTree, InteractionIntent, PointerKind,
+    PointerRouting, PseudoState, StyleProp, StylePropKind, UserSelectValue, ViewportCondition,
 };
 use wasm_bindgen::prelude::*;
 use web_sys::{
@@ -269,17 +269,39 @@ impl HayateElementHtmlRenderer {
         if !self.nodes.contains_key(&target) {
             return;
         }
-        self.tree.on_pointer_down_on(target, x, y);
+        let _ = self
+            .tree
+            .apply_interaction_intent(InteractionIntent::PointerDown {
+                x,
+                y,
+                modifiers: 0,
+                pointer_kind: PointerKind::Mouse,
+                routing: PointerRouting::HtmlExplicitTarget(Some(target)),
+            });
     }
 
-    pub fn on_pointer_up(&mut self, target_id: f64, _x: f32, _y: f32) {
+    pub fn on_pointer_up(&mut self, target_id: f64, x: f32, y: f32) {
         let explicit = element_id_from_f64(target_id);
         let fallback = self.nodes.contains_key(&explicit).then_some(explicit);
-        self.tree.on_pointer_up_on(fallback);
+        let _ = self
+            .tree
+            .apply_interaction_intent(InteractionIntent::PointerUp {
+                x,
+                y,
+                pointer_kind: PointerKind::Mouse,
+                routing: PointerRouting::HtmlExplicitTarget(fallback),
+            });
     }
 
     pub fn on_pointer_move(&mut self, x: f32, y: f32) {
-        let _ = self.tree.on_pointer_move_coords(x, y);
+        let _ = self
+            .tree
+            .apply_interaction_intent(InteractionIntent::PointerMove {
+                x,
+                y,
+                pointer_kind: PointerKind::Mouse,
+                routing: PointerRouting::CoordinatesOnly,
+            });
     }
 
     pub fn on_pointer_enter(&mut self, target_id: f64) {

@@ -1,6 +1,7 @@
 use hayate_core::{
     Color, CursorValue, Dimension, DocumentEventKind, ElementKind, ElementTree, Event,
-    InputModality, PointerKind, PseudoState, StyleProp,
+    InputModality, InteractionIntent, InteractionResult, PointerKind, PointerRouting, PseudoState,
+    StyleProp,
 };
 
 /// 200×200 ビューポートを埋める root View に `state` の擬似スタイルを与え、
@@ -128,7 +129,7 @@ fn pointer_up_marks_active_pseudo_dirty() {
     tree.on_pointer_down_on(root, 5.0, 5.0);
     tree.render(0.0); // 押下のマークを排出し解放のマークを分離する
 
-    tree.on_pointer_up_on(Some(root));
+    tree.on_pointer_up_on(Some(root), 5.0, 5.0);
 
     assert!(
         tree.test_visual_dirty_contains(root),
@@ -259,7 +260,7 @@ fn pointer_release_dispatches_click_to_listener() {
     let listener = tree.register_listener(btn, DocumentEventKind::Click);
 
     tree.on_pointer_down_on(btn, 10.0, 20.0);
-    tree.on_pointer_up_on(Some(btn));
+    tree.on_pointer_up_on(Some(btn), 10.0, 20.0);
 
     let clicks: Vec<_> = tree
         .poll_deliveries()
@@ -273,6 +274,119 @@ fn pointer_release_dispatches_click_to_listener() {
         Event::Click { target_id, x, y }
             if *target_id == btn && (*x - 10.0).abs() < f32::EPSILON && (*y - 20.0).abs() < f32::EPSILON
     ));
+}
+
+#[test]
+fn pointer_intents_keep_canvas_hit_test_and_html_explicit_target_in_parity() {
+    // Canvas は core の hit-test、HTML は platform が既知の明示 target を同じ input
+    // vocabulary に載せる。どちらも wrapper を介さない直接 intent 適用で同じ click を
+    // 生成し、platform 側が pointer state や release target を別途解決しないことを守る。
+    fn button_tree() -> (ElementTree, hayate_core::ElementId, hayate_core::ListenerId) {
+        let mut tree = ElementTree::new();
+        let button = tree.element_create(1, ElementKind::Button);
+        tree.set_root(button);
+        tree.set_viewport(100.0, 100.0);
+        tree.element_set_style(
+            button,
+            &[
+                StyleProp::Width(Dimension::px(100.0)),
+                StyleProp::Height(Dimension::px(100.0)),
+            ],
+        );
+        tree.render(0.0);
+        let listener = tree.register_listener(button, DocumentEventKind::Click);
+        (tree, button, listener)
+    }
+
+    let (mut canvas_wrapper, _button, canvas_wrapper_listener) = button_tree();
+    let (mut canvas_intent, _button, canvas_intent_listener) = button_tree();
+    let (mut html_wrapper, button, html_wrapper_listener) = button_tree();
+    let (mut html_intent, _button, html_intent_listener) = button_tree();
+
+    canvas_wrapper.on_pointer_down_with_kind(10.0, 20.0, 0, PointerKind::Mouse);
+    canvas_wrapper.on_pointer_up_with_kind(10.0, 20.0, PointerKind::Mouse);
+    html_wrapper.on_pointer_down_on(button, 10.0, 20.0);
+    html_wrapper.on_pointer_up_on(Some(button), 10.0, 20.0);
+
+    for (tree, routing) in [
+        (&mut canvas_intent, PointerRouting::CanvasHitTest),
+        (
+            &mut html_intent,
+            PointerRouting::HtmlExplicitTarget(Some(button)),
+        ),
+    ] {
+        assert_eq!(
+            tree.apply_interaction_intent(InteractionIntent::PointerDown {
+                x: 10.0,
+                y: 20.0,
+                modifiers: 0,
+                pointer_kind: PointerKind::Mouse,
+                routing,
+            }),
+            InteractionResult::Consumed,
+        );
+        assert_eq!(
+            tree.apply_interaction_intent(InteractionIntent::PointerUp {
+                x: 10.0,
+                y: 20.0,
+                pointer_kind: PointerKind::Mouse,
+                routing,
+            }),
+            InteractionResult::Consumed,
+        );
+    }
+
+    let click_for = |tree: &mut ElementTree, listener| {
+        tree.poll_deliveries()
+            .into_iter()
+            .filter(|delivery| delivery.listener_id == listener)
+            .map(|delivery| delivery.event)
+            .collect::<Vec<_>>()
+    };
+    let assert_click = |clicks: &[Event]| {
+        assert!(matches!(
+            clicks,
+            [Event::Click { target_id, x, y }] if *target_id == button && *x == 10.0 && *y == 20.0
+        ));
+    };
+
+    let canvas_wrapper_clicks = click_for(&mut canvas_wrapper, canvas_wrapper_listener);
+    let canvas_intent_clicks = click_for(&mut canvas_intent, canvas_intent_listener);
+    let html_wrapper_clicks = click_for(&mut html_wrapper, html_wrapper_listener);
+    let html_intent_clicks = click_for(&mut html_intent, html_intent_listener);
+
+    assert_click(&canvas_wrapper_clicks);
+    assert_click(&canvas_intent_clicks);
+    assert_click(&html_wrapper_clicks);
+    assert_click(&html_intent_clicks);
+}
+
+#[test]
+fn coordinates_only_pointer_move_returns_a_closed_result_without_hit_testing() {
+    let mut tree = ElementTree::new();
+
+    let result = tree.apply_interaction_intent(InteractionIntent::PointerMove {
+        x: 12.0,
+        y: 34.0,
+        pointer_kind: PointerKind::Pen,
+        routing: PointerRouting::CoordinatesOnly,
+    });
+
+    assert_eq!(
+        result,
+        InteractionResult::PointerMove(hayate_core::PointerMoveResult {
+            moved: true,
+            resolved_cursor: CursorValue::Default,
+        }),
+    );
+    assert!(
+        tree.poll_events().iter().any(|event| matches!(
+            event,
+            Event::PointerMove { x, y, pointer_kind }
+                if *x == 12.0 && *y == 34.0 && *pointer_kind == PointerKind::Pen
+        )),
+        "coordinates-only routing must preserve physical pointer kind without a target lookup"
+    );
 }
 
 #[test]
@@ -680,7 +794,7 @@ fn click_bubbles_to_ancestors() {
     // クリックはリリースで確定する（ADR-0082）。押して離すとタップが leaf で
     // 解決し、祖先 root まで bubble する。
     tree.on_pointer_down_on(leaf, 4.0, 5.0);
-    tree.on_pointer_up_on(Some(leaf));
+    tree.on_pointer_up_on(Some(leaf), 4.0, 5.0);
 
     let ids: Vec<_> = tree
         .poll_deliveries()

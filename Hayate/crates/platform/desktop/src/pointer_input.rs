@@ -8,7 +8,7 @@
 //! unit test できるよう純粋関数として切り出す。`MouseInput` は座標を運ばないため、
 //! event loop は直近の `CursorMoved` 由来の論理座標を持ち回り、press/release に載せる。
 
-use hayate_core::{ElementTree, PointerKind};
+use hayate_core::{ElementTree, InteractionIntent, PointerKind, PointerRouting};
 use winit::dpi::PhysicalPosition;
 use winit::event::{ElementState, MouseButton};
 
@@ -70,13 +70,29 @@ pub fn mouse_input_to_dispatch(
 pub fn apply_pointer_dispatch(tree: &mut ElementTree, dispatch: PointerDispatch) {
     match dispatch {
         PointerDispatch::Move { x, y } => {
-            tree.on_pointer_move_with_kind(x, y, PointerKind::Mouse);
+            let _ = tree.apply_interaction_intent(InteractionIntent::PointerMove {
+                x,
+                y,
+                pointer_kind: PointerKind::Mouse,
+                routing: PointerRouting::CanvasHitTest,
+            });
         }
         PointerDispatch::Down { x, y } => {
-            tree.on_pointer_down_with_kind(x, y, 0, PointerKind::Mouse);
+            let _ = tree.apply_interaction_intent(InteractionIntent::PointerDown {
+                x,
+                y,
+                modifiers: 0,
+                pointer_kind: PointerKind::Mouse,
+                routing: PointerRouting::CanvasHitTest,
+            });
         }
         PointerDispatch::Up { x, y } => {
-            tree.on_pointer_up_with_kind(x, y, PointerKind::Mouse);
+            let _ = tree.apply_interaction_intent(InteractionIntent::PointerUp {
+                x,
+                y,
+                pointer_kind: PointerKind::Mouse,
+                routing: PointerRouting::CanvasHitTest,
+            });
         }
     }
 }

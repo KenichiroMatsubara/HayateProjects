@@ -59,7 +59,7 @@ mod tests {
         fn on_pointer_up(&mut self, target_id: u64) {
             let target = ElementId::from_u64(target_id);
             let fallback = self.nodes.contains(&target).then_some(target);
-            self.tree.on_pointer_up_on(fallback);
+            self.tree.on_pointer_up_on(fallback, 0.0, 0.0);
         }
 
         fn on_wheel(&mut self, target_id: u64, delta_x: f32, delta_y: f32) {
