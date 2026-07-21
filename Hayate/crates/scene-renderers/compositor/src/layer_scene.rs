@@ -328,7 +328,7 @@ pub fn extract_root_scene(
 ) -> SceneGraph {
     let mut exclude = boundaries.clone();
     exclude.remove(&root); // root 自身の anchor は root レイヤの内容
-    let mut out = SceneGraph::new();
+    let mut out = graph.empty_projection();
     for &top in graph.roots() {
         copy_subtree(graph, top, &mut out, None, &exclude);
     }
@@ -346,7 +346,7 @@ fn extract_layer_scene_inner(
     let mut exclude = boundaries.clone();
     exclude.remove(&layer);
 
-    let mut out = SceneGraph::new();
+    let mut out = graph.empty_projection();
     // CSS transform ラッパがあればその内側を content root とする。そこからさらに direct Clip
     // （overflow / scroll viewport）だけを剥がし、overscan 内容を cache texture に残す。
     let content_root = outer_transform_group(graph, anchor)
@@ -382,7 +382,7 @@ pub fn extract_scroll_layer_scene(
     let content_root = outer_transform_group(graph, anchor)
         .and_then(|(id, _)| graph.get(id))
         .unwrap_or(anchor);
-    let mut out = SceneGraph::new();
+    let mut out = graph.empty_projection();
     copy_scroll_contents(graph, content_root, &mut out, &exclude, scroll_affine);
     Some(out)
 }
@@ -401,7 +401,7 @@ pub fn extract_scroll_chrome_scene(
     let content_root = outer_transform_group(graph, anchor)
         .and_then(|(id, _)| graph.get(id))
         .unwrap_or(anchor);
-    let mut out = SceneGraph::new();
+    let mut out = graph.empty_projection();
     copy_scroll_chrome(graph, content_root, &mut out, &exclude);
     Some(out)
 }

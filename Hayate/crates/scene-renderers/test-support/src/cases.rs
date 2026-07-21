@@ -1118,7 +1118,7 @@ fn check_font_family(data: &[u8]) {
 
 /// wght=100（Thin）と wght=900（Black）を上下に並べる。バンドルフォント
 /// （NotoSansJP.ttf）は variable font で **fvar の既定インスタンスが wght=100**
-/// なので、レンダラが `TextRunData::normalized_coords` を無視すると両方 Thin で
+/// なので、レンダラが `FontInstance::normalized_coords` を無視すると両方 Thin で
 /// 描かれ、下段のインク量が上段と同じになって検出できる（skia 導入時の実回帰）。
 fn build_font_weight() -> ElementTree {
     let mut tree = ElementTree::new();
@@ -1159,7 +1159,7 @@ fn check_font_weight(data: &[u8]) {
         heavy as f32 >= thin as f32 * 1.5,
         "font-weight: wght=900 must lay substantially more ink than wght=100 \
          (thin={thin}, heavy={heavy}) — equal ink means the renderer ignored \
-         TextRunData::normalized_coords (variable-font axes)"
+         FontInstance::normalized_coords (variable-font axes)"
     );
 }
 

@@ -1,8 +1,12 @@
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use slotmap::{DefaultKey, SlotMap};
 
 use crate::render::{RenderFont, RenderGlyph, RenderImage};
+use crate::text_resources::{
+    ResourceSweepStats, SceneResources, TextResourceInterner, TextResourcePolicy, TextRunId,
+};
 
 pub type NodeId = DefaultKey;
 
@@ -56,6 +60,8 @@ pub struct TextDecorationLine {
 }
 
 #[derive(Debug, Clone)]
+/// Scene lowering が immutable text resources を intern するための入力値。
+/// Scene node と committed frame はこの payload ではなく [`TextRunId`] を保持する。
 pub struct TextRunData {
     pub font: RenderFont,
     pub font_size: f32,
@@ -190,7 +196,7 @@ pub enum NodeKind {
         x: f32,
         y: f32,
         color: [f32; 4],
-        data: Arc<TextRunData>,
+        text_run: TextRunId,
     },
     /// 子にアフィン変換（kurbo 係数 [a,b,c,d,e,f]）を適用する。
     Group { transform: [f64; 6] },
@@ -247,15 +253,80 @@ pub struct SceneGraph {
     // A handoff clone is O(1). The first subsequent UI mutation detaches this small index, while
     // individual retained nodes remain shared until that specific node changes.
     data: Arc<SceneGraphData>,
+    resources: SceneResources,
+    resource_interner: TextResourceInterner,
+    resource_policy: TextResourcePolicy,
+    retired_text_nodes_since_sweep: usize,
 }
 
 impl SceneGraph {
     pub fn new() -> Self {
+        Self::with_text_resource_policy(TextResourcePolicy::default())
+    }
+
+    pub fn with_text_resource_policy(resource_policy: TextResourcePolicy) -> Self {
         Self {
             data: Arc::new(SceneGraphData {
                 nodes: SlotMap::new(),
                 roots: Vec::new(),
             }),
+            resources: SceneResources::default(),
+            resource_interner: TextResourceInterner::new(),
+            resource_policy,
+            retired_text_nodes_since_sweep: 0,
+        }
+    }
+
+    /// Start an empty structural projection that shares this snapshot's immutable resources.
+    /// Layer projection code can copy only node IDs while renderer lookups remain valid.
+    pub fn empty_projection(&self) -> Self {
+        Self {
+            data: Arc::new(SceneGraphData {
+                nodes: SlotMap::new(),
+                roots: Vec::new(),
+            }),
+            resources: self.resources.clone(),
+            resource_interner: self.resource_interner.clone(),
+            resource_policy: self.resource_policy,
+            retired_text_nodes_since_sweep: 0,
+        }
+    }
+
+    /// Intern one immutable shaped run and pin it to this scene snapshot.
+    pub fn intern_text_run(&mut self, data: TextRunData) -> TextRunId {
+        let interned = self.resource_interner.intern_text_run(data);
+        let id = interned.id;
+        self.resources.pin(interned);
+        id
+    }
+
+    pub fn resources(&self) -> &SceneResources {
+        &self.resources
+    }
+
+    /// Release resource pins no longer referenced by this scene, then reclaim entries that no
+    /// concurrently alive scene snapshot still owns.
+    pub fn sweep_resources(&mut self) -> ResourceSweepStats {
+        let live: HashSet<TextRunId> = self
+            .data
+            .nodes
+            .values()
+            .filter_map(|node| match node.kind {
+                NodeKind::TextRun { text_run, .. } => Some(text_run),
+                _ => None,
+            })
+            .collect();
+        self.resources.retain_text_runs(&live);
+        self.retired_text_nodes_since_sweep = 0;
+        self.resource_interner.sweep()
+    }
+
+    /// Apply the typed sweep threshold at a completed scene-mutation transaction.
+    pub fn maintain_resources(&mut self) -> ResourceSweepStats {
+        if self.retired_text_nodes_since_sweep >= self.resource_policy.sweep_threshold() {
+            self.sweep_resources()
+        } else {
+            ResourceSweepStats::default()
         }
     }
 
@@ -304,7 +375,11 @@ impl SceneGraph {
                 Arc::make_mut(p).children.retain(|&child| child != id);
             }
         }
-        Some(Arc::unwrap_or_clone(node))
+        let node = Arc::unwrap_or_clone(node);
+        if matches!(node.kind, NodeKind::TextRun { .. }) {
+            self.retired_text_nodes_since_sweep += 1;
+        }
+        Some(node)
     }
 
     /// Group / Clip / ElementAnchor 配下にネストしているときの `id` の親。

@@ -881,7 +881,8 @@ fn text_input_text_run_respects_padding() {
     let text_run = sg
         .iter()
         .find_map(|(_, n)| {
-            if let NodeKind::TextRun { x, y, data, .. } = &n.kind {
+            if let NodeKind::TextRun { x, y, text_run, .. } = &n.kind {
+                let data = sg.resources().text_run(*text_run).ok()?;
                 Some((*x, *y, data.glyphs.first().map(|g| g.x)))
             } else {
                 None

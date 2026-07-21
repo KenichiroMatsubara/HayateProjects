@@ -1,7 +1,8 @@
-use crate::node::{NodeId, NodeKind, SceneGraph, TextRunData};
+use crate::node::{NodeId, NodeKind, SceneGraph};
 use crate::render::draw_path::{transform_verbs, Affine2, DrawFillRule, StrokeStyle};
 use crate::render::RenderImage;
 use crate::wire::protocol::PathVerb;
+use crate::{SceneResources, TextRunId};
 
 #[derive(Debug, Clone)]
 pub enum DrawOp {
@@ -57,7 +58,7 @@ pub enum DrawOp {
         x: f32,
         y: f32,
         color: [f32; 4],
-        data: TextRunData,
+        text_run: TextRunId,
     },
     DrawImage {
         x: f32,
@@ -235,7 +236,14 @@ pub trait ScenePainter {
         color: [f32; 4],
     );
 
-    fn draw_text_run(&mut self, x: f32, y: f32, color: [f32; 4], data: &TextRunData);
+    fn draw_text_run(
+        &mut self,
+        x: f32,
+        y: f32,
+        color: [f32; 4],
+        text_run: TextRunId,
+        resources: &SceneResources,
+    );
 
     fn draw_image(&mut self, x: f32, y: f32, width: f32, height: f32, data: &RenderImage);
 
@@ -424,12 +432,19 @@ impl ScenePainter for RecordingPainter {
         });
     }
 
-    fn draw_text_run(&mut self, x: f32, y: f32, color: [f32; 4], data: &TextRunData) {
+    fn draw_text_run(
+        &mut self,
+        x: f32,
+        y: f32,
+        color: [f32; 4],
+        text_run: TextRunId,
+        _resources: &SceneResources,
+    ) {
         self.ops.push(DrawOp::DrawTextRun {
             x,
             y,
             color,
-            data: data.clone(),
+            text_run,
         });
     }
 
@@ -560,7 +575,15 @@ impl ScenePainter for NullPainter {
     ) {
     }
 
-    fn draw_text_run(&mut self, _x: f32, _y: f32, _color: [f32; 4], _data: &TextRunData) {}
+    fn draw_text_run(
+        &mut self,
+        _x: f32,
+        _y: f32,
+        _color: [f32; 4],
+        _text_run: TextRunId,
+        _resources: &SceneResources,
+    ) {
+    }
 
     fn draw_image(&mut self, _x: f32, _y: f32, _width: f32, _height: f32, _data: &RenderImage) {}
 
@@ -587,6 +610,7 @@ impl ScenePainter for NullPainter {
 pub struct RecordedFrame {
     pub clear_color: [f32; 4],
     pub ops: Vec<DrawOp>,
+    pub resources: SceneResources,
 }
 
 #[derive(Debug, Default)]
@@ -605,6 +629,7 @@ impl SceneRecorder {
         self.frames.push(RecordedFrame {
             clear_color,
             ops: painter.into_ops(),
+            resources: graph.resources().clone(),
         });
     }
 
@@ -714,8 +739,13 @@ fn walk_node<P: ScenePainter>(graph: &SceneGraph, id: NodeId, painter: &mut P) {
             *border_width,
             *color,
         ),
-        NodeKind::TextRun { x, y, color, data } => {
-            painter.draw_text_run(*x, *y, *color, data.as_ref());
+        NodeKind::TextRun {
+            x,
+            y,
+            color,
+            text_run,
+        } => {
+            painter.draw_text_run(*x, *y, *color, *text_run, graph.resources());
         }
         NodeKind::Image {
             x,

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use hayate_core::{is_notdef, RenderImage, RenderImageAlphaType, TextFontSlant, TextRunData};
+use hayate_core::{is_notdef, RenderImage, RenderImageAlphaType, TextRun, TextRunId};
 use skia_safe::{
     images, AlphaType, ColorType, Data, Font, Image, ImageInfo, Point, TextBlob, TextBlobBuilder,
 };
@@ -26,47 +26,6 @@ struct ImageKey {
     alpha_type: u8,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-struct TextBlobKey {
-    font_blob_id: u64,
-    font_index: u32,
-    font_size: u32,
-    weight: u32,
-    width: u32,
-    slant: u8,
-    skew_tangent: Option<u32>,
-    embolden: Option<u32>,
-    normalized_coords: Vec<i16>,
-    glyphs: Vec<(u32, u32, u32)>,
-}
-
-impl TextBlobKey {
-    fn from_run(data: &TextRunData) -> Self {
-        let slant = match data.font_attributes.slant {
-            TextFontSlant::Upright => 0,
-            TextFontSlant::Italic => 1,
-            TextFontSlant::Oblique => 2,
-        };
-        Self {
-            font_blob_id: data.font.data.id(),
-            font_index: data.font.index,
-            font_size: data.font_size.to_bits(),
-            weight: data.font_attributes.weight.to_bits(),
-            width: data.font_attributes.width.to_bits(),
-            slant,
-            skew_tangent: data.synthesis.skew_tangent.map(f32::to_bits),
-            embolden: data.synthesis.embolden.map(f32::to_bits),
-            normalized_coords: data.normalized_coords.clone(),
-            glyphs: data
-                .glyphs
-                .iter()
-                .filter(|glyph| !is_notdef(glyph))
-                .map(|glyph| (glyph.id, glyph.x.to_bits(), glyph.y.to_bits()))
-                .collect(),
-        }
-    }
-}
-
 impl ImageKey {
     fn from_image(image: &RenderImage) -> Self {
         let format = match image.format {
@@ -89,7 +48,7 @@ impl ImageKey {
 
 pub(crate) struct PaintResourceCache {
     images: HashMap<ImageKey, CacheEntry<Image>>,
-    text_blobs: HashMap<TextBlobKey, CacheEntry<TextBlob>>,
+    text_blobs: HashMap<TextRunId, CacheEntry<TextBlob>>,
     work: SkiaResourceWorkCounts,
     budget: u64,
     used: u64,
@@ -162,28 +121,38 @@ impl PaintResourceCache {
         Some(sk_image)
     }
 
-    pub(crate) fn text_blob_for(&mut self, data: &TextRunData, font: &Font) -> Option<TextBlob> {
-        let key = TextBlobKey::from_run(data);
-        if key.glyphs.is_empty() {
-            return None;
-        }
+    pub(crate) fn text_blob_for(
+        &mut self,
+        text_run: TextRunId,
+        data: &TextRun,
+        font: &Font,
+    ) -> Option<TextBlob> {
         self.clock = self.clock.wrapping_add(1);
-        if let Some(cached) = self.text_blobs.get_mut(&key) {
+        if let Some(cached) = self.text_blobs.get_mut(&text_run) {
             cached.last_used = self.clock;
             return Some(cached.value.clone());
         }
+        let glyph_count = data.glyphs.iter().filter(|glyph| !is_notdef(glyph)).count();
+        if glyph_count == 0 {
+            return None;
+        }
         let mut builder = TextBlobBuilder::new();
-        let (glyph_ids, positions) = builder.alloc_run_pos(font, key.glyphs.len(), None);
-        for (i, &(glyph_id, x, y)) in key.glyphs.iter().enumerate() {
-            glyph_ids[i] = glyph_id as u16;
-            positions[i] = Point::new(f32::from_bits(x), f32::from_bits(y));
+        let (glyph_ids, positions) = builder.alloc_run_pos(font, glyph_count, None);
+        for (i, glyph) in data
+            .glyphs
+            .iter()
+            .filter(|glyph| !is_notdef(glyph))
+            .enumerate()
+        {
+            glyph_ids[i] = glyph.id as u16;
+            positions[i] = Point::new(glyph.x, glyph.y);
         }
         let blob = builder.make()?;
         self.work.text_blobs_created += 1;
-        let bytes = TEXT_BLOB_BASE_BYTES + key.glyphs.len() as u64 * TEXT_BLOB_BYTES_PER_GLYPH;
+        let bytes = TEXT_BLOB_BASE_BYTES + glyph_count as u64 * TEXT_BLOB_BYTES_PER_GLYPH;
         self.used = self.used.saturating_add(bytes);
         self.text_blobs.insert(
-            key,
+            text_run,
             CacheEntry {
                 value: blob.clone(),
                 bytes,
@@ -204,7 +173,7 @@ impl PaintResourceCache {
             let oldest_text = self
                 .text_blobs
                 .iter()
-                .map(|(key, entry)| (key.clone(), entry.last_used, entry.bytes))
+                .map(|(key, entry)| (*key, entry.last_used, entry.bytes))
                 .min_by_key(|(_, last_used, _)| *last_used);
             match (oldest_image, oldest_text) {
                 (Some((key, image_used, bytes)), Some((text_key, text_used, text_bytes))) => {

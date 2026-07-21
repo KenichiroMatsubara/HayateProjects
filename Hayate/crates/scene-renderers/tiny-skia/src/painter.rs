@@ -1,7 +1,7 @@
 use hayate_core::{
     build_draw_path, is_notdef, missing_glyph_placeholder, DrawFillRule, DrawLineCap, DrawLineJoin,
-    PathSink, PathVerb, RenderImage, RenderImageAlphaType, ScenePainter, ShadowOccluder,
-    StrokeStyle, TextRunData,
+    PathSink, PathVerb, RenderImage, RenderImageAlphaType, ScenePainter, SceneResources,
+    ShadowOccluder, StrokeStyle, TextRun, TextRunId,
 };
 use skrifa::{
     instance::{LocationRef, NormalizedCoord, Size},
@@ -281,10 +281,32 @@ impl ScenePainter for TinySkiaPainter<'_> {
             .stroke_path(&path, &paint, &stroke, transform, mask);
     }
 
-    fn draw_text_run(&mut self, x: f32, y: f32, color: [f32; 4], data: &TextRunData) {
+    fn draw_text_run(
+        &mut self,
+        x: f32,
+        y: f32,
+        color: [f32; 4],
+        text_run: TextRunId,
+        resources: &SceneResources,
+    ) {
+        let Ok(data) = resources.text_run(text_run) else {
+            return;
+        };
+        let Ok(font_instance) = resources.font_instance(data.font_instance) else {
+            return;
+        };
         let transform = self.state.transform;
         let mask = self.state.clip_masks.last();
-        draw_text_run(&mut self.pixmap, x, y, color, data, transform, mask);
+        draw_text_run(
+            &mut self.pixmap,
+            x,
+            y,
+            color,
+            data,
+            font_instance,
+            transform,
+            mask,
+        );
     }
 
     fn draw_image(&mut self, x: f32, y: f32, width: f32, height: f32, data: &RenderImage) {
@@ -896,28 +918,29 @@ fn draw_text_run(
     run_x: f32,
     run_y: f32,
     color: [f32; 4],
-    data: &TextRunData,
+    data: &TextRun,
+    font_instance: &hayate_core::FontInstance,
     transform: Transform,
     mask: Option<&Mask>,
 ) {
     let paint = color_to_paint(color);
-    let font_data = data.font.data.as_ref();
-    let font = match FontRef::from_index(font_data, data.font.index) {
+    let font_data = font_instance.font.data.as_ref();
+    let font = match FontRef::from_index(font_data, font_instance.font.index) {
         Ok(f) => f,
         Err(_) => return,
     };
     let outlines = font.outline_glyphs();
     let font_size = data.font_size;
     let size = Size::new(font_size);
-    let location = if data.normalized_coords.is_empty() {
+    let location = if font_instance.normalized_coords.is_empty() {
         LocationRef::default()
     } else {
-        LocationRef::new(normalized_coords_ref(&data.normalized_coords))
+        LocationRef::new(normalized_coords_ref(&font_instance.normalized_coords))
     };
-    let skew = data.synthesis.skew_tangent;
-    let embolden_width = data.synthesis.embolden;
+    let skew = font_instance.synthesis.skew_tangent;
+    let embolden_width = font_instance.synthesis.embolden;
 
-    for glyph in &data.glyphs {
+    for glyph in data.glyphs.iter() {
         // `.notdef` グリフはフォントがこのコードポイントを持たないことを意味する。
         // フォント任せの無音ボックスではなく意図的なプレースホルダ箱を描き、欠落が
         // 消えずに見えるようにする。
@@ -964,7 +987,7 @@ fn draw_text_run(
         }
     }
 
-    for deco in &data.decorations {
+    for deco in data.decorations.iter() {
         if let Some(rect) = tiny_skia::Rect::from_xywh(
             run_x + deco.x0,
             run_y + deco.y - deco.thickness * 0.5,

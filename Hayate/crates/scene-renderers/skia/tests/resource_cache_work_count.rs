@@ -26,14 +26,15 @@ fn image_scene(image: Arc<RenderImage>) -> SceneGraph {
     graph
 }
 
-fn text_scene(run: Arc<TextRunData>) -> SceneGraph {
-    let mut graph = SceneGraph::new();
+fn text_scene_from(resources: &SceneGraph, run: TextRunData) -> SceneGraph {
+    let mut graph = resources.empty_projection();
+    let text_run = graph.intern_text_run(run);
     graph.insert(Node {
         kind: NodeKind::TextRun {
             x: 0.0,
             y: 20.0,
             color: [0.0, 0.0, 0.0, 1.0],
-            data: run,
+            text_run,
         },
         children: Vec::new(),
     });
@@ -174,10 +175,16 @@ fn font_variation_is_part_of_the_text_blob_cache_identity() {
     varied.normalized_coords = vec![8_192];
     let mut renderer = SkiaSceneRenderer::new();
     let mut surface = new_raster_surface(40, 40).expect("raster surface");
+    let resources = SceneGraph::new();
 
-    renderer.render_scene(&text_scene(Arc::new(base)), surface.canvas(), [0.0; 4], 1.0);
     renderer.render_scene(
-        &text_scene(Arc::new(varied)),
+        &text_scene_from(&resources, base),
+        surface.canvas(),
+        [0.0; 4],
+        1.0,
+    );
+    renderer.render_scene(
+        &text_scene_from(&resources, varied),
         surface.canvas(),
         [0.0; 4],
         1.0,
@@ -198,10 +205,16 @@ fn font_synthesis_is_part_of_the_text_blob_cache_identity() {
     };
     let mut renderer = SkiaSceneRenderer::new();
     let mut surface = new_raster_surface(40, 40).expect("raster surface");
+    let resources = SceneGraph::new();
 
-    renderer.render_scene(&text_scene(Arc::new(base)), surface.canvas(), [0.0; 4], 1.0);
     renderer.render_scene(
-        &text_scene(Arc::new(synthesized)),
+        &text_scene_from(&resources, base),
+        surface.canvas(),
+        [0.0; 4],
+        1.0,
+    );
+    renderer.render_scene(
+        &text_scene_from(&resources, synthesized),
         surface.canvas(),
         [0.0; 4],
         1.0,

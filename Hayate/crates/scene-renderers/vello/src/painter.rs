@@ -1,6 +1,7 @@
 use hayate_core::{
     build_draw_path, is_notdef, missing_glyph_placeholder, DrawFillRule, DrawLineCap, DrawLineJoin,
-    PathSink, PathVerb, RenderImage, ScenePainter, ShadowOccluder, StrokeStyle, TextRunData,
+    PathSink, PathVerb, RenderImage, ScenePainter, SceneResources, ShadowOccluder, StrokeStyle,
+    TextRunId,
 };
 use vello::{
     kurbo::{Affine, Rect, RoundedRect},
@@ -383,10 +384,23 @@ impl ScenePainter for VelloPainter<'_> {
         scene.stroke(&style, Affine::IDENTITY, brush, None, &path);
     }
 
-    fn draw_text_run(&mut self, x: f32, y: f32, color: [f32; 4], data: &TextRunData) {
+    fn draw_text_run(
+        &mut self,
+        x: f32,
+        y: f32,
+        color: [f32; 4],
+        text_run: TextRunId,
+        resources: &SceneResources,
+    ) {
+        let Ok(data) = resources.text_run(text_run) else {
+            return;
+        };
+        let Ok(font_instance) = resources.font_instance(data.font_instance) else {
+            return;
+        };
         let scene = self.target();
         let brush = AlphaColor::<Srgb>::new(color);
-        let font = FontData::new(data.font.data.clone(), data.font.index);
+        let font = FontData::new(font_instance.font.data.clone(), font_instance.font.index);
         // 実グリフ描画では `.notdef` をスキップする。フォントの無言の箱ではなく、
         // 意図的なプレースホルダ箱として後で描くため。
         let glyphs = data
@@ -404,15 +418,15 @@ impl ScenePainter for VelloPainter<'_> {
             .font_size(data.font_size)
             .brush(brush)
             .transform(transform);
-        if !data.normalized_coords.is_empty() {
-            builder = builder.normalized_coords(data.normalized_coords.as_slice());
+        if !font_instance.normalized_coords.is_empty() {
+            builder = builder.normalized_coords(font_instance.normalized_coords.as_ref());
         }
-        if let Some(tangent) = data.synthesis.skew_tangent {
+        if let Some(tangent) = font_instance.synthesis.skew_tangent {
             let tangent = tangent as f64;
             builder =
                 builder.glyph_transform(Some(Affine::new([1.0, 0.0, tangent, 1.0, 0.0, 0.0])));
         }
-        if let Some(amount) = data.synthesis.embolden {
+        if let Some(amount) = font_instance.synthesis.embolden {
             let amount = amount as f64;
             builder = builder.font_embolden(FontEmbolden::new(Diagonal2::new(amount, amount)));
         }
@@ -435,7 +449,7 @@ impl ScenePainter for VelloPainter<'_> {
             let style = Stroke::new(ph.stroke_width as f64);
             scene.stroke(&style, transform, brush, None, &rect.to_path(0.1));
         }
-        for deco in &data.decorations {
+        for deco in data.decorations.iter() {
             let rect = Rect::new(
                 deco.x0 as f64,
                 (deco.y - deco.thickness * 0.5) as f64,

@@ -250,9 +250,12 @@ fn accumulate(
             }
         }
     }
-    if let NodeKind::TextRun { x, y, data, .. } = &node.kind {
+    if let NodeKind::TextRun { x, y, text_run, .. } = &node.kind {
+        let Ok(data) = scene.resources().text_run(*text_run) else {
+            return;
+        };
         let size = data.font_size.max(0.0);
-        for glyph in &data.glyphs {
+        for glyph in data.glyphs.iter() {
             include_rect(
                 extent,
                 clipped(
@@ -267,7 +270,7 @@ fn accumulate(
                 ),
             );
         }
-        for decoration in &data.decorations {
+        for decoration in data.decorations.iter() {
             include_rect(
                 extent,
                 clipped(
