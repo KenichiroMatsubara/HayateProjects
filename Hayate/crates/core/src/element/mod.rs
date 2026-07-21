@@ -20,6 +20,7 @@ pub mod inline_text;
 pub mod interaction;
 pub mod kind;
 pub mod layout_pass;
+mod paint_order;
 pub mod pointer;
 pub mod pointer_gesture;
 pub mod pseudo_state;

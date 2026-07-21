@@ -12,8 +12,6 @@ use crate::element::tree::{ElementTree, Visual};
 use crate::element::visual_invalidation::{self, VisualInvalidationReach};
 use crate::node::{Node, NodeId, NodeKind, SceneGraph, ShadowOccluder};
 use crate::render::shadow::{shadow_sigma, HARD_SHADOW_BLUR_THRESHOLD};
-use std::collections::HashSet;
-
 use crate::scroll::{overscroll_stretch_scale, ScrollPhysicsProfile, ScrollPhysicsTuning};
 
 /// 恒等 2x3 アフィン。scroll group がこれに等しいとき（オフセット 0・stretch 無し）は
@@ -216,15 +214,17 @@ trait AnchorSink {
     /// ephemeral は `resolved` をそのまま描く。
     fn displayed(&mut self, id: ElementId, resolved: Visual) -> Visual;
 
-    /// 再帰する子と各子のカーソル。`effective_parent` 下に接続する。retained は `reach` で絞り、
-    /// ephemeral は順序付き全子を取る。
-    fn children(
+    /// Paint Order view の各子に対するカーソル。`None` ならその子へ降りない。
+    /// retained は `reach` で絞り、ephemeral は全子を通す。順序と反復自体は shared walk が
+    /// retained view 上で行うため、この adapter は別の child list を構築しない。
+    fn child_cursor(
         &self,
         tree: &ElementTree,
         cursor: Self::Cursor,
-        id: ElementId,
+        parent: ElementId,
+        child: ElementId,
         effective_parent: Option<NodeId>,
-    ) -> Vec<(ElementId, Self::Cursor)>;
+    ) -> Option<Self::Cursor>;
 
     /// この要素の内容と子を出し終えた後の子配置の確定。retained は内容の後ろに子アンカーを
     /// 積み直す、ephemeral は no-op（新規ノードは既に描画順）。
@@ -260,8 +260,9 @@ impl AnchorSink for RetainedSink<'_> {
     ) -> Option<NodeId> {
         let tree = ctx.tree;
         let anchor_id = ensure_anchor(tree, ctx.sg, self.lowering, id, cursor.parent_anchor);
-        let children = tree.ordered_children(id);
-        clear_lowered_content(ctx.sg, anchor_id, &children, self.lowering);
+        tree.with_paint_order(id, |children| {
+            clear_lowered_content(ctx.sg, anchor_id, children, self.lowering)
+        });
         Some(anchor_id)
     }
 
@@ -275,35 +276,30 @@ impl AnchorSink for RetainedSink<'_> {
             .unwrap_or(resolved)
     }
 
-    fn children(
+    fn child_cursor(
         &self,
         tree: &ElementTree,
         cursor: RetainedCursor,
-        id: ElementId,
+        parent: ElementId,
+        child: ElementId,
         effective_parent: Option<NodeId>,
-    ) -> Vec<(ElementId, RetainedCursor)> {
-        visual_invalidation::children_for_reach(tree, id, cursor.reach)
-            .into_iter()
-            .map(|(child, reach)| {
-                (
-                    child,
-                    RetainedCursor {
-                        parent_anchor: effective_parent,
-                        reach,
-                    },
-                )
-            })
-            .collect()
+    ) -> Option<RetainedCursor> {
+        visual_invalidation::step_reach(
+            cursor.reach,
+            tree.element_context(parent),
+            tree.element_context(child),
+        )
+        .map(|reach| RetainedCursor {
+            parent_anchor: effective_parent,
+            reach,
+        })
     }
 
     fn end_element(&mut self, ctx: &mut WalkCtx, effective_parent: Option<NodeId>, id: ElementId) {
         let tree = ctx.tree;
-        reparent_child_anchors_under(
-            ctx.sg,
-            effective_parent,
-            &tree.ordered_children(id),
-            self.lowering,
-        );
+        tree.with_paint_order(id, |children| {
+            reparent_child_anchors_under(ctx.sg, effective_parent, children, self.lowering)
+        });
     }
 }
 
@@ -332,17 +328,15 @@ impl AnchorSink for EphemeralSink {
         resolved
     }
 
-    fn children(
+    fn child_cursor(
         &self,
-        tree: &ElementTree,
+        _tree: &ElementTree,
         _cursor: Option<NodeId>,
-        id: ElementId,
+        _parent: ElementId,
+        _child: ElementId,
         effective_parent: Option<NodeId>,
-    ) -> Vec<(ElementId, Option<NodeId>)> {
-        tree.ordered_children(id)
-            .into_iter()
-            .map(|child| (child, effective_parent))
-            .collect()
+    ) -> Option<Option<NodeId>> {
+        Some(effective_parent)
     }
 
     fn end_element(
@@ -788,11 +782,12 @@ fn reorder_children_for_z_index(
         return;
     };
     let parent_anchor = parent_entry.anchor_id;
-    let ordered = tree.ordered_children(parent_id);
-    let child_anchors: Vec<NodeId> = ordered
-        .iter()
-        .filter_map(|child| lowering.anchors.get(child).map(|e| e.anchor_id))
-        .collect();
+    let child_anchors: Vec<NodeId> = tree.with_paint_order(parent_id, |children| {
+        children
+            .iter()
+            .filter_map(|child| lowering.anchors.get(child).map(|e| e.anchor_id))
+            .collect()
+    });
     if let Some(parent) = sg.get_mut(parent_anchor) {
         parent.children = child_anchors;
     }
@@ -904,22 +899,23 @@ fn insert_anchor_ordered(
     // 直前に挿入。まだ存在しなければ末尾に追加。後続兄弟の前に挿入する（先行兄弟の後ろではなく）
     // ことで、親自身の内容ノード（どの子アンカーより前に出る fill/border）を全子の前に保ち、
     // ボックスが子の下に描かれる。
-    let following: HashSet<NodeId> = tree
+    let following = tree
         .elements
         .get(&id)
         .and_then(|el| el.parent)
-        .map(|p| tree.ordered_children(p))
-        .unwrap_or_default()
-        .into_iter()
-        .skip_while(|&sib| sib != id)
-        .skip(1)
-        .filter_map(|sib| lowering.anchors.get(&sib).map(|e| e.anchor_id))
-        .collect();
+        .and_then(|parent_id| {
+            tree.with_paint_order(parent_id, |children| {
+                children
+                    .iter()
+                    .copied()
+                    .skip_while(|&sibling| sibling != id)
+                    .skip(1)
+                    .find_map(|sibling| lowering.anchors.get(&sibling).map(|entry| entry.anchor_id))
+            })
+        });
     if let Some(p) = sg.get_mut(parent) {
-        let index = p
-            .children
-            .iter()
-            .position(|c| following.contains(c))
+        let index = following
+            .and_then(|following| p.children.iter().position(|&child| child == following))
             .unwrap_or(p.children.len());
         p.children.insert(index, child);
     }
@@ -974,10 +970,16 @@ fn walk<S: AnchorSink>(ctx: &mut WalkCtx, sink: &mut S, cursor: S::Cursor, id: E
         Some(TraversalStep::Visit(taffy_node, el)) => (taffy_node, el),
         Some(TraversalStep::Skip(_)) => {
             let base = sink.begin(ctx, cursor, id);
-            for (child, child_cursor) in sink.children(tree, cursor, id, base) {
-                let mut child_ctx = ctx.child(ctx.ox, ctx.oy, ctx.inherited.clone());
-                walk(&mut child_ctx, sink, child_cursor, child);
-            }
+            tree.with_paint_order(id, |children| {
+                for &child in children {
+                    let Some(child_cursor) = sink.child_cursor(tree, cursor, id, child, base)
+                    else {
+                        continue;
+                    };
+                    let mut child_ctx = ctx.child(ctx.ox, ctx.oy, ctx.inherited.clone());
+                    walk(&mut child_ctx, sink, child_cursor, child);
+                }
+            });
             return;
         }
         None => return,
@@ -1016,10 +1018,15 @@ fn clear_hidden_subtree<S: AnchorSink>(
 ) {
     let base = sink.begin(ctx, cursor, id);
     let tree = ctx.tree;
-    for (child, child_cursor) in sink.children(tree, cursor, id, base) {
-        let mut child_ctx = ctx.child(ctx.ox, ctx.oy, ctx.inherited.clone());
-        clear_hidden_subtree(&mut child_ctx, sink, child_cursor, child);
-    }
+    tree.with_paint_order(id, |children| {
+        for &child in children {
+            let Some(child_cursor) = sink.child_cursor(tree, cursor, id, child, base) else {
+                continue;
+            };
+            let mut child_ctx = ctx.child(ctx.ox, ctx.oy, ctx.inherited.clone());
+            clear_hidden_subtree(&mut child_ctx, sink, child_cursor, child);
+        }
+    });
     sink.end_element(ctx, base, id);
 }
 
@@ -1371,10 +1378,16 @@ fn emit_element<S: AnchorSink>(
         emit_scrollbar_overlay(tree, id, ctx.sg, ring_parent, x, y, w, h);
     }
 
-    for (child, child_cursor) in sink.children(tree, cursor, id, effective_parent) {
-        let mut child_ctx = ctx.child(x, y, child_inherited.clone());
-        walk(&mut child_ctx, sink, child_cursor, child);
-    }
+    tree.with_paint_order(id, |children| {
+        for &child in children {
+            let Some(child_cursor) = sink.child_cursor(tree, cursor, id, child, effective_parent)
+            else {
+                continue;
+            };
+            let mut child_ctx = ctx.child(x, y, child_inherited.clone());
+            walk(&mut child_ctx, sink, child_cursor, child);
+        }
+    });
     sink.end_element(ctx, effective_parent, id);
 }
 
