@@ -17,6 +17,7 @@ use crate::element::id::ElementId;
 use crate::element::inline_text::{self, ifc_root};
 use crate::element::kind::ElementKind;
 use crate::element::layout_pass::LayoutPass;
+use crate::element::paint_order::PaintOrder;
 use crate::element::pseudo_state::{
     self, diff_hover_sets, hover_set_for_hit, InteractionSnapshot, PseudoState, PseudoStyles,
 };
@@ -208,6 +209,9 @@ pub struct ElementTree {
     pub(crate) viewport: (f32, f32),
     pub(crate) scene_cache: SceneGraph,
     pub(crate) scene_lowering: SceneLowering,
+    /// parent 単位の retained Paint Order（ADR-0060）。scene lowering / hit-test /
+    /// Layer Topology が同じ借用 view を消費する。
+    pub(crate) paint_order: PaintOrder,
     #[cfg(any(debug_assertions, feature = "scene-validation"))]
     pub(crate) scene_validator: crate::SceneGraphValidator,
     #[cfg(any(debug_assertions, feature = "scene-validation"))]
@@ -293,6 +297,7 @@ impl ElementTree {
             viewport: (800.0, 600.0),
             scene_cache: SceneGraph::new(),
             scene_lowering: SceneLowering::default(),
+            paint_order: PaintOrder::default(),
             #[cfg(any(debug_assertions, feature = "scene-validation"))]
             scene_validator: crate::SceneGraphValidator::new(),
             #[cfg(any(debug_assertions, feature = "scene-validation"))]
@@ -418,7 +423,45 @@ impl ElementTree {
             return;
         }
         let old_viewport = self.viewport;
+        let interaction = self.interaction_snapshot();
+        let paint_order_parents: Vec<ElementId> = self
+            .elements
+            .iter()
+            .filter(|(_, element)| {
+                element
+                    .viewport_variants
+                    .iter()
+                    .any(|(_, prop)| matches!(prop, StyleProp::ZIndex(_)))
+            })
+            .filter_map(|(&id, element)| {
+                let inherited = effective_visual::inherited_context_at(&self.elements, id);
+                let old_z = effective_visual::resolve_effective(
+                    &inherited,
+                    &element.visual,
+                    &element.viewport_variants,
+                    old_viewport,
+                    &element.pseudo_styles,
+                    &interaction,
+                    id,
+                )
+                .z_index;
+                let new_z = effective_visual::resolve_effective(
+                    &inherited,
+                    &element.visual,
+                    &element.viewport_variants,
+                    new_viewport,
+                    &element.pseudo_styles,
+                    &interaction,
+                    id,
+                )
+                .z_index;
+                (old_z != new_z).then_some(element.parent).flatten()
+            })
+            .collect();
         self.viewport = new_viewport;
+        for parent in paint_order_parents {
+            self.paint_order.invalidate(parent);
+        }
         // projection も同じ論理ビューポートを知り、reconcile-sync が実効レイアウト
         // スタイル（base ＋ レイアウト系 variant）を正しく算出できるようにする。
         self.layout.projection.set_layout_viewport(new_viewport);
@@ -531,6 +574,7 @@ impl ElementTree {
             viewport_variants: Vec::new(),
         };
         self.elements.insert(id, element);
+        self.paint_order.register(id);
 
         if self.root.is_none() {
             self.root = Some(id);
@@ -1242,6 +1286,7 @@ impl ElementTree {
             Some(e) => e,
             None => return,
         };
+        let old_z_index = el.visual.z_index;
         let mut layout_changed = false;
         let mut text_dirty = false;
         for prop in props {
@@ -1268,6 +1313,12 @@ impl ElementTree {
         }
         if text_dirty {
             el.text_layout = None;
+        }
+        let z_index_parent = (el.visual.z_index != old_z_index)
+            .then_some(el.parent)
+            .flatten();
+        if let Some(parent) = z_index_parent {
+            self.paint_order.invalidate(parent);
         }
         if layout_changed {
             // `set_layout_prop` は base を直接 projection へ流す。レイアウト系 variant を
@@ -1364,6 +1415,11 @@ impl ElementTree {
         condition: ViewportCondition,
         prop: StyleProp,
     ) {
+        let old_z_index = self
+            .element_effective_visual(id)
+            .map(|visual| visual.z_index);
+        let visual_change =
+            (!prop.is_layout()).then(|| self.classify_style_props(id, std::slice::from_ref(&prop)));
         let el = match self.elements.get_mut(&id) {
             Some(e) => e,
             None => return,
@@ -1383,6 +1439,16 @@ impl ElementTree {
             self.engine
                 .mark_shape_dirty(id, VisualInvalidationReach::Subtree);
             self.layout.projection.mark_dirty(id);
+        } else if let Some(change) = visual_change {
+            self.apply_change_at(id, change);
+        }
+        let new_z_index = self
+            .element_effective_visual(id)
+            .map(|visual| visual.z_index);
+        if old_z_index != new_z_index {
+            if let Some(parent) = self.elements.get(&id).and_then(|element| element.parent) {
+                self.paint_order.invalidate(parent);
+            }
         }
     }
 
@@ -1427,6 +1493,7 @@ impl ElementTree {
         self.detach_from_current_parent(child);
         self.elements.get_mut(&parent).unwrap().children.push(child);
         self.elements.get_mut(&child).unwrap().parent = Some(parent);
+        self.paint_order.invalidate(parent);
         self.mark_child_attachment_dirty(parent, child);
     }
 
@@ -1461,6 +1528,7 @@ impl ElementTree {
             .children
             .insert(index, child);
         self.elements.get_mut(&child).unwrap().parent = Some(parent);
+        self.paint_order.invalidate(parent);
         self.mark_child_attachment_dirty(parent, child);
     }
 
@@ -1483,6 +1551,7 @@ impl ElementTree {
         }
         for node in to_remove.into_iter().rev() {
             self.elements.remove(&node);
+            self.paint_order.remove(node);
             self.runtime.remove_element_listeners(node);
             // 状態遷移ではなく解体: 要素は消え、サブツリー全体は既に
             // structure-dirty（上）なので、無効化すべき擬似スタイルは残っていない。
@@ -1553,6 +1622,9 @@ impl ElementTree {
         state: PseudoState,
         props: &[StyleProp],
     ) {
+        let old_z_index = self
+            .element_effective_visual(id)
+            .map(|visual| visual.z_index);
         let el = match self.elements.get_mut(&id) {
             Some(e) => e,
             None => return,
@@ -1572,6 +1644,14 @@ impl ElementTree {
                 reach,
             },
         );
+        let new_z_index = self
+            .element_effective_visual(id)
+            .map(|visual| visual.z_index);
+        if old_z_index != new_z_index {
+            if let Some(parent) = self.elements.get(&id).and_then(|element| element.parent) {
+                self.paint_order.invalidate(parent);
+            }
+        }
     }
 
     pub fn element_unset_pseudo_style(
@@ -2103,13 +2183,27 @@ impl ElementTree {
     /// 通さず document order を保つ（CSS が stacking、将来の a11y 読み上げ順は document
     /// order）。ADR-0021 / ADR-0060。
     pub fn ordered_children(&self, id: ElementId) -> Vec<ElementId> {
-        let mut children = match self.elements.get(&id) {
-            Some(el) => el.children.clone(),
-            None => return Vec::new(),
-        };
-        // 安定ソート: 同 z は元の document 順を保持する。
-        children.sort_by_key(|cid| self.elements.get(cid).map_or(0, |c| c.visual.z_index));
-        children
+        self.with_paint_order(id, |children| children.to_vec())
+    }
+
+    pub(crate) fn with_paint_order<R>(
+        &self,
+        id: ElementId,
+        consume: impl FnOnce(&[ElementId]) -> R,
+    ) -> R {
+        let document_children = self
+            .elements
+            .get(&id)
+            .map_or(&[][..], |element| element.children.as_slice());
+        self.paint_order.with_order(
+            id,
+            document_children,
+            |child| {
+                self.element_effective_visual(child)
+                    .map_or(0, |visual| visual.z_index)
+            },
+            consume,
+        )
     }
 
     /// IME 変換候補窓のための character bounds（ADR-0069）。事前のレイアウトが必要。
@@ -2209,6 +2303,7 @@ impl ElementTree {
             .children
             .retain(|&c| c != child);
         self.elements.get_mut(&child).unwrap().parent = None;
+        self.paint_order.invalidate(parent);
         self.mark_child_detachment_dirty(parent, child);
     }
 
@@ -2220,6 +2315,9 @@ impl ElementTree {
         if props.is_empty() {
             return;
         }
+        let changes_z_index = props
+            .iter()
+            .any(|prop| matches!(prop, StyleProp::ZIndex(_)));
         let reach = self.classify_style_props(id, props).reach;
         let affects_shaping = pseudo_state::pseudo_affects_text_shaping(props);
         // 擬似ブロックは box の visual とテキストスタイルの両方を持ちうるので、要素は
@@ -2240,6 +2338,11 @@ impl ElementTree {
                     reach,
                 },
             );
+        }
+        if changes_z_index {
+            if let Some(parent) = self.elements.get(&id).and_then(|element| element.parent) {
+                self.paint_order.invalidate(parent);
+            }
         }
         // トランジションのトリガはここではなく `resolve_effective` の lowering seam に
         // ある（ADR-0093）。要素を visual-dirty にすれば再 lowering され、そこで
@@ -2409,10 +2512,17 @@ fn hit_test_walk(
     let (cx, cy) = (x + sx, y + sy);
     // 子は paint の逆順（`.rev()`）で訪れ、最前面の要素が勝つようにする。
     // `ordered_children` を共有することでヒットテストを paint の正確な逆順に保つ。
-    for child in tree.ordered_children(id).into_iter().rev() {
-        if let Some(hit) = hit_test_walk(tree, child, cx, cy) {
-            return Some(hit);
+    let mut child_hit = None;
+    tree.with_paint_order(id, |children| {
+        for &child in children.iter().rev() {
+            if let Some(hit) = hit_test_walk(tree, child, cx, cy) {
+                child_hit = Some(hit);
+                break;
+            }
         }
+    });
+    if child_hit.is_some() {
+        return child_hit;
     }
     if tree.elements.get(&id).is_some_and(|e| e.disabled) {
         return None;
@@ -2522,6 +2632,13 @@ impl ElementTree {
         self.scene_lowering.walk_count
     }
 
+    /// Retained Paint Order の parent 単位再構築回数（ADR-0060）。無効化境界の回帰テスト用。
+    #[doc(hidden)]
+    #[cfg(any(debug_assertions, feature = "scene-validation"))]
+    pub fn test_paint_order_rebuild_count(&self, parent: ElementId) -> usize {
+        self.paint_order.rebuild_count(parent)
+    }
+
     #[cfg(any(debug_assertions, feature = "scene-validation"))]
     pub fn test_scene_validation_visited_nodes(&self) -> usize {
         self.last_scene_validation_visited
@@ -2581,28 +2698,29 @@ impl ElementTree {
         }
     }
 
-    /// root からの DFS で全要素 id を document 順に返す。レイヤ順序を決定的にするため。
-    fn elements_in_document_order(&self) -> Vec<ElementId> {
+    /// root からの DFS で全要素 id を Paint Order 順に返す。Layer Topology は scene
+    /// lowering と同じ forward view を使い、第二の ordering cache を持たない（ADR-0060）。
+    fn elements_in_paint_order(&self) -> Vec<ElementId> {
+        fn append(tree: &ElementTree, id: ElementId, out: &mut Vec<ElementId>) {
+            out.push(id);
+            tree.with_paint_order(id, |children| {
+                for &child in children {
+                    append(tree, child, out);
+                }
+            });
+        }
+
         let mut out = Vec::new();
         if let Some(root) = self.root {
-            let mut stack = vec![root];
-            while let Some(id) = stack.pop() {
-                out.push(id);
-                if let Some(el) = self.elements.get(&id) {
-                    // 子を逆順で push して document 順（先頭子から）に訪れる。
-                    for &child in el.children.iter().rev() {
-                        stack.push(child);
-                    }
-                }
-            }
+            append(self, root, &mut out);
         }
         out
     }
 
-    /// compositing layer 境界の要素集合を document 順（決定的）と HashSet で返す。
+    /// compositing layer 境界の要素集合を Paint Order 順（決定的）と HashSet で返す。
     fn compositing_boundaries(&self) -> (Vec<ElementId>, HashSet<ElementId>) {
         let ordered: Vec<ElementId> = self
-            .elements_in_document_order()
+            .elements_in_paint_order()
             .into_iter()
             .filter(|&id| self.compositing_facts(id).forms_layer())
             .collect();

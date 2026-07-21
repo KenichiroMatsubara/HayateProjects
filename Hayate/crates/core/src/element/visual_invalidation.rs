@@ -193,6 +193,7 @@ pub(crate) fn step_reach(
 pub(crate) trait ReachTopology {
     fn parent(&self, id: ElementId) -> Option<ElementId>;
     fn element_context(&self, id: ElementId) -> ElementContext;
+    #[cfg(test)]
     fn ordered_children(&self, id: ElementId) -> Vec<ElementId>;
 }
 
@@ -203,6 +204,7 @@ impl ReachTopology for ElementTree {
     fn element_context(&self, id: ElementId) -> ElementContext {
         ElementTree::element_context(self, id)
     }
+    #[cfg(test)]
     fn ordered_children(&self, id: ElementId) -> Vec<ElementId> {
         ElementTree::ordered_children(self, id)
     }
@@ -223,6 +225,7 @@ impl ReachTopology for ElementMapTopology<'_> {
     fn element_context(&self, id: ElementId) -> ElementContext {
         element_context_in(self.elements, id)
     }
+    #[cfg(test)]
     fn ordered_children(&self, id: ElementId) -> Vec<ElementId> {
         self.elements
             .get(&id)
@@ -234,6 +237,7 @@ impl ReachTopology for ElementMapTopology<'_> {
 /// `reach` のもとで `id` から reach 走査が降りる子を、各々が運ぶ reach と対にして
 /// 返す。すべて唯一の源 [`step_reach`] から導かれる: `step_reach` が `Some` を
 /// 返すときに限り子へ降りる。保持シーン走査の子降下もここを経由する。
+#[cfg(test)]
 pub(crate) fn children_for_reach<T: ReachTopology>(
     topology: &T,
     id: ElementId,
@@ -678,6 +682,7 @@ mod tests {
                 .copied()
                 .unwrap_or_else(|| ctx(ElementKind::View, false, false))
         }
+        #[cfg(test)]
         fn ordered_children(&self, id: ElementId) -> Vec<ElementId> {
             self.children.get(&id).cloned().unwrap_or_default()
         }
