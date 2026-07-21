@@ -4,11 +4,13 @@
 //! 座標ベースのポインタ API に変換され、タップでデモボタンの `:active` 色が
 //! 画面上で切り替わる。IME / AccessKit / クリップボードは未実装。
 
+use std::cell::Cell;
 use std::collections::HashSet;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use android_activity::input::{InputEvent, MotionAction};
 use android_activity::{AndroidApp, MainEvent, PollEvent};
+use hayate_app_host::FrameContinuation;
 use hayate_core::{CommittedFrame, ElementTree, SceneGraph};
 use hayate_layer_compositor::{PresentPlanner, RasterCommand, RasterHandoff, RasterThread};
 use hayate_performance_observability::{
@@ -22,6 +24,7 @@ use wgpu::util::TextureBlitter;
 
 use hayate_core::ElementId;
 
+use crate::frame_schedule::AndroidFrameScheduler;
 use crate::ime_bridge::AndroidImeBridge;
 use crate::safe_area::SafeAreaInsets;
 use crate::scene_demo::build_demo_tree;
@@ -116,10 +119,14 @@ pub fn android_main(app: AndroidApp) {
     let mut ime_keyboard_shown = false;
     let mut quit = false;
     let observability = PerformanceObservability::new();
+    let frame_scheduler = AndroidFrameScheduler::new();
+    frame_scheduler.request_frame();
 
     while !quit {
-        app.poll_events(Some(Duration::from_millis(16)), |event| {
+        let lifecycle_wake = Cell::new(false);
+        app.poll_events(None, |event| {
             if let PollEvent::Main(main_event) = event {
+                lifecycle_wake.set(true);
                 let lifecycle_event = match main_event {
                     MainEvent::InitWindow { .. } => {
                         Some(crate::surface_lifecycle::SurfaceLifecycleEvent::InitWindow)
@@ -187,17 +194,31 @@ pub fn android_main(app: AndroidApp) {
             }
         });
 
-        // 単調増加クロック。スクロールのリリース速度推定（指サンプルのタイムスタンプ）と
-        // 下の `tree.render` の両方がこれを共有する（フレーム内で同一時刻とみなす）。
-        let timestamp_ms = start.elapsed().as_secs_f64() * 1000.0;
-        process_touch_input(&app, &mut tree, &mut touch_scroll, timestamp_ms);
-        sync_ime(
+        let input_timestamp_ms = start.elapsed().as_secs_f64() * 1000.0;
+        let touch_woke =
+            process_touch_input(&app, &mut tree, &mut touch_scroll, input_timestamp_ms);
+        let ime_woke = sync_ime(
             &app,
             &mut tree,
             &mut ime_state,
             &mut ime_target,
             &mut ime_keyboard_shown,
         );
+        if lifecycle_wake.get() || touch_woke || ime_woke {
+            frame_scheduler.request_frame();
+        }
+
+        // Only a Choreographer callback may commit. OS/input wakes merely arm that one-shot
+        // callback; `frameTimeNanos` is the timestamp source for layout and animation.
+        let Some(timestamp_ms) = frame_scheduler.take_frame_timestamp_ms() else {
+            continue;
+        };
+        if raster
+            .as_ref()
+            .is_some_and(RasterHandle::has_terminal_failure)
+        {
+            continue;
+        }
 
         if let Some(rt) = raster.as_ref() {
             // 単調増加クロックでレイアウトとカーソル点滅を駆動し、lower した
@@ -221,6 +242,9 @@ pub fn android_main(app: AndroidApp) {
             let _ = observation.measure(PerformancePhase::RendererSubmit, || {
                 rt.send(frame_handoff(&frame))
             });
+            if FrameContinuation::after_commit(&frame).requests_frame() {
+                frame_scheduler.request_frame();
+            }
             observation.finish();
             if let Some(report) = observability.periodic_report() {
                 log::info!(
@@ -641,37 +665,51 @@ pub(crate) type RasterHandle = RasterThread<RasterCommand>;
 /// は tsubame 経路（surface を握ったまま再アタッチする将来拡張）向けに状態だけ持つ。
 pub(crate) fn spawn_raster_thread(mut surface: GpuSurface) -> RasterHandle {
     let mut surface_ready = true;
-    RasterThread::spawn(move |cmd: RasterCommand| match cmd {
-        RasterCommand::Frame(handoff) => {
-            if !surface_ready {
-                return; // surface 無し＝present をスキップ（次の RebuildSurface で復帰）。
+    RasterThread::spawn_fallible(move |cmd: RasterCommand| -> Result<(), String> {
+        match cmd {
+            RasterCommand::Frame(handoff) => {
+                if !surface_ready {
+                    return Ok(()); // surface 無し＝present をスキップ（次の RebuildSurface で復帰）。
+                }
+                let RasterHandoff {
+                    scene,
+                    layers,
+                    layer_raster_bounds: _,
+                    layer_dirty,
+                    transform_dirty,
+                    chrome_dirty,
+                    scroll_inputs: _,
+                } = handoff;
+                if let Err(err) = surface.render_frame(
+                    &scene,
+                    &layers,
+                    &layer_dirty,
+                    &transform_dirty,
+                    &chrome_dirty,
+                ) {
+                    let message = err.to_string();
+                    log_terminal_renderer_failure("vello", &message);
+                    return Err(message);
+                }
+                Ok(())
             }
-            let RasterHandoff {
-                scene,
-                layers,
-                layer_raster_bounds: _,
-                layer_dirty,
-                transform_dirty,
-                chrome_dirty,
-                scroll_inputs: _,
-            } = handoff;
-            if let Err(err) = surface.render_frame(
-                &scene,
-                &layers,
-                &layer_dirty,
-                &transform_dirty,
-                &chrome_dirty,
-            ) {
-                log::error!("hayate-adapter-android: raster-thread render failed: {err}");
+            RasterCommand::Resize {
+                width,
+                height,
+                content_scale,
+            } => {
+                surface.resize(width, height, content_scale);
+                Ok(())
+            }
+            RasterCommand::SurfaceLost => {
+                surface_ready = false;
+                Ok(())
+            }
+            RasterCommand::RebuildSurface => {
+                surface_ready = true;
+                Ok(())
             }
         }
-        RasterCommand::Resize {
-            width,
-            height,
-            content_scale,
-        } => surface.resize(width, height, content_scale),
-        RasterCommand::SurfaceLost => surface_ready = false,
-        RasterCommand::RebuildSurface => surface_ready = true,
     })
 }
 
@@ -683,41 +721,55 @@ pub(crate) fn spawn_skia_raster_thread(
     mut surface: crate::skia_window::SkiaGpuSurface,
 ) -> RasterHandle {
     let mut surface_ready = true;
-    let mut terminal_failure = false;
-    RasterThread::spawn(move |cmd: RasterCommand| match cmd {
-        RasterCommand::Frame(handoff) => {
-            if !surface_ready || terminal_failure {
-                return; // surface 無し＝present をスキップ（次の RebuildSurface で復帰）。
+    RasterThread::spawn_fallible(move |cmd: RasterCommand| -> Result<(), String> {
+        match cmd {
+            RasterCommand::Frame(handoff) => {
+                if !surface_ready {
+                    return Ok(()); // surface 無し＝present をスキップ（次の RebuildSurface で復帰）。
+                }
+                let RasterHandoff {
+                    scene,
+                    layers,
+                    layer_raster_bounds,
+                    layer_dirty,
+                    transform_dirty,
+                    chrome_dirty,
+                    scroll_inputs,
+                } = handoff;
+                if let Err(err) = surface.render_frame(
+                    &scene,
+                    &layers,
+                    &layer_raster_bounds,
+                    &layer_dirty,
+                    &transform_dirty,
+                    &chrome_dirty,
+                    &scroll_inputs,
+                ) {
+                    log_terminal_skia_failure(&err);
+                    return Err(err);
+                }
+                Ok(())
             }
-            let RasterHandoff {
-                scene,
-                layers,
-                layer_raster_bounds,
-                layer_dirty,
-                transform_dirty,
-                chrome_dirty,
-                scroll_inputs,
-            } = handoff;
-            if let Err(err) = surface.render_frame(
-                &scene,
-                &layers,
-                &layer_raster_bounds,
-                &layer_dirty,
-                &transform_dirty,
-                &chrome_dirty,
-                &scroll_inputs,
-            ) {
-                log_terminal_skia_failure(&err);
-                terminal_failure = true;
+            RasterCommand::Resize {
+                width,
+                height,
+                content_scale,
+            } => {
+                if let Err(err) = surface.resize(width, height, content_scale) {
+                    log_terminal_skia_failure(&err);
+                    return Err(err);
+                }
+                Ok(())
+            }
+            RasterCommand::SurfaceLost => {
+                surface_ready = false;
+                Ok(())
+            }
+            RasterCommand::RebuildSurface => {
+                surface_ready = true;
+                Ok(())
             }
         }
-        RasterCommand::Resize {
-            width,
-            height,
-            content_scale,
-        } => surface.resize(width, height, content_scale),
-        RasterCommand::SurfaceLost => surface_ready = false,
-        RasterCommand::RebuildSurface => surface_ready = true,
     })
 }
 
@@ -729,41 +781,52 @@ pub(crate) fn spawn_skia_gl_raster_thread(
     mut surface: crate::skia_gl_window::SkiaGlSurface,
 ) -> RasterHandle {
     let mut surface_ready = true;
-    let mut terminal_failure = false;
-    RasterThread::spawn(move |cmd: RasterCommand| match cmd {
-        RasterCommand::Frame(handoff) => {
-            if !surface_ready || terminal_failure {
-                return; // surface 無し＝present をスキップ（次の RebuildSurface で復帰）。
+    RasterThread::spawn_fallible(move |cmd: RasterCommand| -> Result<(), String> {
+        match cmd {
+            RasterCommand::Frame(handoff) => {
+                if !surface_ready {
+                    return Ok(()); // surface 無し＝present をスキップ（次の RebuildSurface で復帰）。
+                }
+                let RasterHandoff {
+                    scene,
+                    layers,
+                    layer_raster_bounds,
+                    layer_dirty,
+                    transform_dirty,
+                    chrome_dirty,
+                    scroll_inputs,
+                } = handoff;
+                if let Err(err) = surface.render_frame(
+                    &scene,
+                    &layers,
+                    &layer_raster_bounds,
+                    &layer_dirty,
+                    &transform_dirty,
+                    &chrome_dirty,
+                    &scroll_inputs,
+                ) {
+                    log_terminal_skia_failure(&err);
+                    return Err(err);
+                }
+                Ok(())
             }
-            let RasterHandoff {
-                scene,
-                layers,
-                layer_raster_bounds,
-                layer_dirty,
-                transform_dirty,
-                chrome_dirty,
-                scroll_inputs,
-            } = handoff;
-            if let Err(err) = surface.render_frame(
-                &scene,
-                &layers,
-                &layer_raster_bounds,
-                &layer_dirty,
-                &transform_dirty,
-                &chrome_dirty,
-                &scroll_inputs,
-            ) {
-                log_terminal_skia_failure(&err);
-                terminal_failure = true;
+            RasterCommand::Resize {
+                width,
+                height,
+                content_scale,
+            } => {
+                surface.resize(width, height, content_scale);
+                Ok(())
+            }
+            RasterCommand::SurfaceLost => {
+                surface_ready = false;
+                Ok(())
+            }
+            RasterCommand::RebuildSurface => {
+                surface_ready = true;
+                Ok(())
             }
         }
-        RasterCommand::Resize {
-            width,
-            height,
-            content_scale,
-        } => surface.resize(width, height, content_scale),
-        RasterCommand::SurfaceLost => surface_ready = false,
-        RasterCommand::RebuildSurface => surface_ready = true,
     })
 }
 
@@ -785,8 +848,12 @@ fn classify_skia_runtime_failure(
 }
 
 fn log_terminal_skia_failure(error: &str) {
+    log_terminal_renderer_failure("skia", error);
+}
+
+fn log_terminal_renderer_failure(renderer: &str, error: &str) {
     let reason = classify_skia_runtime_failure(error);
-    log::error!("terminal scene renderer failure: skia ({reason:?}): {error}");
+    log::error!("terminal scene renderer failure: {renderer} ({reason:?}): {error}");
 }
 
 /// Renderer Selection Policy（issue #801/#802、spec §4 REND-15）越しにレンダラを初期化し、

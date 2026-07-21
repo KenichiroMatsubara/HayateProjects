@@ -186,16 +186,30 @@ fn skia_is_the_first_attempt_when_nothing_is_forced() {
 #[test]
 fn selected_skia_failure_is_terminal_and_latched_on_android() {
     let app = src("app.rs");
+    let skia_raster = src("skia_window.rs");
+    let skia_gl = src("skia_gl_window.rs");
     assert!(
         app.contains("classify_skia_runtime_failure"),
         "Android skia errors must be normalized to the shared RendererSelectionReason vocabulary",
     );
     assert!(
-        app.matches("terminal_failure").count() >= 4,
-        "both skia raster and skia GL threads must latch a terminal failure and skip later commands",
+        app.matches("RasterThread::spawn_fallible").count() >= 3
+            && app.contains("RasterHandle::has_terminal_failure"),
+        "Vello and both Skia paths must delegate terminal latching to the shared raster handoff",
     );
     assert!(
-        app.contains("terminal scene renderer failure: skia"),
+        app.contains("terminal scene renderer failure: {renderer} ({reason:?})")
+            && app.contains("log_terminal_renderer_failure(\"skia\""),
         "the selected renderer and normalized failure category must be observable in logcat",
+    );
+    assert!(
+        app.contains("if let Err(err) = surface.resize")
+            && skia_raster.contains("set_buffers_geometry")
+            && skia_raster.contains("map_err"),
+        "Skia raster surface resize errors must enter the same terminal failure path",
+    );
+    assert!(
+        !skia_gl.contains("ganesh_failed"),
+        "Skia GL context failure must not leave a silent-skip runtime behind",
     );
 }

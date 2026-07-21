@@ -174,6 +174,29 @@ pub enum FrameCommitError<E> {
     Execution(FrameExecutionError<E>),
 }
 
+/// App Host-owned decision made after one Core commit. Platform Fronts translate
+/// `RequestNextFrame` into their native one-shot frame primitive; they do not inspect individual
+/// animation, cursor, scroll, or resource states themselves.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FrameContinuation {
+    Idle,
+    RequestNextFrame,
+}
+
+impl FrameContinuation {
+    pub fn after_commit(frame: &CommittedFrame<'_>) -> Self {
+        if frame.has_pending_visual_work() {
+            Self::RequestNextFrame
+        } else {
+            Self::Idle
+        }
+    }
+
+    pub fn requests_frame(self) -> bool {
+        self == Self::RequestNextFrame
+    }
+}
+
 /// platform 非依存の最上位協調層。`ElementTree` 実体を所有し、`tick` でフレームを進める。
 pub struct AppHost<S: PresentTarget> {
     tree: ElementTree,
@@ -291,7 +314,7 @@ impl<S: PresentTarget> AppHost<S> {
         }
         observation.finish();
         present.map_err(|source| FrameCommitError::Execution(FrameExecutionError { source }))?;
-        if frame.has_pending_visual_work() {
+        if FrameContinuation::after_commit(&frame).requests_frame() {
             (self.request_redraw)();
         }
         Ok(())
@@ -336,7 +359,8 @@ impl<S: PresentTarget> AppHost<S> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use hayate_core::{DocumentEventKind, ElementKind, Event};
+    use hayate_core::element::style::Dimension;
+    use hayate_core::{Color, DocumentEventKind, ElementKind, Event, PseudoState, StyleProp};
     use std::cell::RefCell;
     use std::rc::Rc;
 
@@ -610,6 +634,41 @@ mod tests {
             *redraws.borrow(),
             0,
             "静止フレームでは request_redraw を出さない"
+        );
+    }
+
+    #[test]
+    fn app_host_continuation_policy_rearms_only_for_pending_visual_work() {
+        let mut tree = ElementTree::new();
+        let root = tree.element_create(0, ElementKind::View);
+        tree.set_root(root);
+        tree.element_set_style(
+            root,
+            &[
+                StyleProp::Width(Dimension::px(40.0)),
+                StyleProp::Height(Dimension::px(40.0)),
+                StyleProp::BackgroundColor(Color::new(1.0, 0.0, 0.0, 1.0)),
+                StyleProp::TransitionDuration(200.0),
+            ],
+        );
+        tree.element_set_pseudo_style(
+            root,
+            PseudoState::Hover,
+            &[StyleProp::BackgroundColor(Color::new(0.0, 1.0, 0.0, 1.0))],
+        );
+
+        let initial = tree.commit_rendered_frame(0.0);
+        assert_eq!(
+            FrameContinuation::after_commit(&initial),
+            FrameContinuation::Idle
+        );
+        drop(initial);
+
+        tree.update_pointer_hover(Some(root));
+        let animated = tree.commit_rendered_frame(16.0);
+        assert_eq!(
+            FrameContinuation::after_commit(&animated),
+            FrameContinuation::RequestNextFrame
         );
     }
 

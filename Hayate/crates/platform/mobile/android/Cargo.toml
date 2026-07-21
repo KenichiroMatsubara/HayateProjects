@@ -51,6 +51,7 @@ skia-safe = { version = "=0.99.0", features = ["gl"] }
 android-activity = { version = "0.6", features = ["game-activity"] }
 android_logger = "0.14"
 ndk = "0.9"
+ndk-sys = "0.6"
 # QR スキャナ leaf（ADR-0125）の Rust↔Kotlin JNI seam。Code Scanner は Play services の
 # Kotlin/Java API しか無いため、本 leaf だけ JNI で Kotlin（QrScannerBridge）を呼ぶ。
 # JavaVM / Activity(Context) は android-activity が設定する ndk-context から受け取る。

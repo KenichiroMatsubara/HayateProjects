@@ -263,9 +263,6 @@ pub(crate) struct SkiaGlSurface {
     /// Ganesh `DirectContext`。Raster スレッド上の初回フレームで生成する（EGL bind 後で
     /// ないと作れず、bind 先スレッドに束縛されるため）。
     ganesh: Option<GaneshGl>,
-    /// Ganesh 生成に失敗したら以後のフレームを静かにスキップする（毎フレームのログ洪水を
-    /// 防ぐ。EGL プローブは init 時に済んでいるため、ここに来る失敗は稀）。
-    ganesh_failed: bool,
     egl: EglHandles,
     /// `ANativeWindow_acquire` 済みの独立参照。EGLSurface が結線している window を
     /// EGL ハンドルより長生きさせる（`skia_window.rs` と同じ前提）。
@@ -389,7 +386,6 @@ pub(crate) fn init_skia_gl_surface(
         Ok(SkiaGlSurface {
             presenter: SkiaLayerPresenter::new(width, height, content_scale),
             ganesh: None,
-            ganesh_failed: false,
             egl,
             _window: window,
             width,
@@ -418,11 +414,6 @@ impl SkiaGlSurface {
         present_dirty.extend(chrome_dirty.iter().copied());
         let scroll_geometry = scroll_layer_geometry_from_inputs(scroll_inputs);
 
-        if self.ganesh_failed {
-            // Ganesh 生成に一度失敗している（初回フレームでログ済み）。ログ洪水を避けて
-            // 静かにスキップする——EGL プローブは init 時に成功しているため、ここは稀。
-            return Ok(());
-        }
         if !self.bound {
             self.egl.make_current()?;
             self.bound = true;
@@ -430,12 +421,7 @@ impl SkiaGlSurface {
         if self.ganesh.is_none() {
             match make_ganesh_context() {
                 Ok(context) => self.ganesh = Some(GaneshGl { context }),
-                Err(err) => {
-                    self.ganesh_failed = true;
-                    return Err(format!(
-                        "skia GL DirectContext init failed (subsequent frames will be skipped): {err}"
-                    ));
-                }
+                Err(err) => return Err(format!("skia GL DirectContext init failed: {err}")),
             }
         }
         let ganesh = self
