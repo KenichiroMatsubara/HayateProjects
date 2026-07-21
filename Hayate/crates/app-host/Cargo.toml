@@ -11,10 +11,12 @@ backend-vello = []
 backend-tiny-skia = []
 backend-recording = []
 backend-null = []
+performance-observability = ["hayate-performance-observability/enabled"]
 
 [dependencies]
 hayate-core = { path = "../core" }
 hayate-layer-compositor = { path = "../scene-renderers/compositor" }
+hayate-performance-observability = { path = "../performance-observability" }
 anyhow.workspace = true
 log.workspace = true
 

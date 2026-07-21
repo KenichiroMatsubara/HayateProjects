@@ -18,6 +18,11 @@
 //! 最小 seam を [`PresentTarget`] trait の裏に置く（テストは no-op 実装を渡す）。
 
 use hayate_core::{CommittedFrame, ElementTree, EventDelivery};
+use hayate_performance_observability::{
+    FrameCounters, FrameDeadline, PerformanceObservability, PerformancePhase,
+    DEFAULT_REFRESH_RATE_HZ,
+};
+use std::time::Instant;
 
 mod font_mailbox;
 pub mod render_host;
@@ -177,6 +182,7 @@ pub struct AppHost<S: PresentTarget> {
     sink: Option<Box<dyn DeliverySink>>,
     font_mailbox: FontMailbox,
     frame_transaction: FrameTransaction,
+    observability: PerformanceObservability,
 }
 
 impl<S: PresentTarget> AppHost<S> {
@@ -190,6 +196,7 @@ impl<S: PresentTarget> AppHost<S> {
             sink: None,
             font_mailbox: FontMailbox::new(),
             frame_transaction: FrameTransaction::default(),
+            observability: PerformanceObservability::new(),
         }
     }
 
@@ -216,6 +223,14 @@ impl<S: PresentTarget> AppHost<S> {
     /// 再 configure する必要があるため、ここで具体型 `S` へ可変アクセスする。
     pub fn surface_mut(&mut self) -> &mut S {
         &mut self.surface
+    }
+
+    /// The bounded report from the most recently committed frame, when this binary was compiled
+    /// with `performance-observability`. Production hosts return `None` without recording.
+    pub fn latest_performance_report(
+        &self,
+    ) -> Option<hayate_performance_observability::FrameReport> {
+        self.observability.latest_report()
     }
 
     /// consumer の [`DeliverySink`] を登録する（mount）。
@@ -246,14 +261,36 @@ impl<S: PresentTarget> AppHost<S> {
     }
 
     pub fn commit_frame(&mut self, frame_id: FrameId) -> Result<(), FrameCommitError<S::Error>> {
+        let mut observation = self
+            .observability
+            .begin_frame(FrameDeadline::from_refresh_rate_hz(DEFAULT_REFRESH_RATE_HZ));
+        let app_host_started = observation.is_enabled().then(Instant::now);
         let timestamp_ms = self
             .frame_transaction
             .commit(frame_id)
             .map_err(FrameCommitError::Protocol)?;
-        let frame = self.tree.commit_rendered_frame(timestamp_ms);
-        self.surface
-            .present(&frame)
-            .map_err(|source| FrameCommitError::Execution(FrameExecutionError { source }))?;
+        let frame = observation.measure(PerformancePhase::CoreCommit, || {
+            self.tree.commit_rendered_frame(timestamp_ms)
+        });
+        observation.set_counters(FrameCounters {
+            nodes: frame.scene().len() as u32,
+            layers: frame.layers().len() as u32,
+            dirty_layers: frame.content_dirty_layers().len() as u32,
+            cache_hits: 0,
+            cache_misses: 0,
+            allocations: 0,
+        });
+        let present = observation.measure(PerformancePhase::RendererPresent, || {
+            self.surface.present(&frame)
+        });
+        if let Some(started) = app_host_started {
+            observation.record_phase(
+                PerformancePhase::AppHost,
+                started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64,
+            );
+        }
+        observation.finish();
+        present.map_err(|source| FrameCommitError::Execution(FrameExecutionError { source }))?;
         if frame.has_pending_visual_work() {
             (self.request_redraw)();
         }

@@ -46,6 +46,10 @@ use crate::torimi_reload::{
 use crate::touch_scroll::TouchScrollState;
 use hayate_core::element::ime_reconcile::TextInputState;
 use hayate_layer_compositor::RasterCommand;
+use hayate_performance_observability::{
+    FrameCounters, FrameDeadline, PerformanceObservability, PerformancePhase,
+    DEFAULT_REFRESH_RATE_HZ,
+};
 
 /// 1 boot 分の Hermes ランタイムと、それと共有する ElementTree。full reload では丸ごと作り直して
 /// state を捨てる（CONTEXT.md「Reload」）。scroll-view 上のタッチドラッグ→スクロール
@@ -271,6 +275,9 @@ pub(crate) fn run(app: AndroidApp) {
     // pump+present する。idle ではフレームを 1 枚も出さない（`poll_events` の最大 16ms ブロックで
     // OS イベント待ちに落ちる）。
     let mut frame_loop = OnDemandFrameLoop::started();
+    // This remains an inert value in ordinary release/debug builds. The profileable benchmark
+    // variant enables the Cargo feature and turns it into a fixed-capacity reporter.
+    let observability = PerformanceObservability::new();
 
     while !quit {
         // このイテレーションで lifecycle イベントを観測したか（surface 作成/破棄/resize は
@@ -494,10 +501,15 @@ pub(crate) fn run(app: AndroidApp) {
         }
 
         let timestamp_ms = start.elapsed().as_secs_f64() * 1000.0;
+        let mut observation =
+            observability.begin_frame(FrameDeadline::from_refresh_rate_hz(DEFAULT_REFRESH_RATE_HZ));
 
         // 2. JS フレーム（flush→render→poll_events を JS 内で回す）。ホストブリッジの `render` が
         //    `tree.render`（レイアウト + 保持シーン lower）を 1 回だけ走らせる。
-        runtime.hermes.pin_mut().pump_frame(timestamp_ms);
+        let app_host_started = observation.is_enabled().then(Instant::now);
+        observation.measure(PerformancePhase::CoreCommit, || {
+            runtime.hermes.pin_mut().pump_frame(timestamp_ms);
+        });
 
         // 3. present（保持シーンを再取得して GPU 提示）。`tree.render` を再実行せず、JS フレームが
         //    lower 済みの保持シーン（`scene_graph()`）をそのまま提示する＝tick 1 回 = 1 render
@@ -509,7 +521,17 @@ pub(crate) fn run(app: AndroidApp) {
             // raster を待たず、続けて次の JS フレーム / 入力処理へ進める（ADR-0128）。
             let tree_ref = runtime.tree.borrow();
             let frame = tree_ref.committed_frame();
-            let _ = rt.send(frame_handoff(&frame));
+            observation.set_counters(FrameCounters {
+                nodes: frame.scene().len() as u32,
+                layers: frame.layers().len() as u32,
+                dirty_layers: frame.content_dirty_layers().len() as u32,
+                cache_hits: 0,
+                cache_misses: 0,
+                allocations: 0,
+            });
+            let _ = observation.measure(PerformancePhase::RendererSubmit, || {
+                rt.send(frame_handoff(&frame))
+            });
         }
 
         // 描画後に残る pending visual work（進行中 transition / カーソル点滅 / スクロール物理）を
@@ -520,6 +542,28 @@ pub(crate) fn run(app: AndroidApp) {
         let pending = runtime.tree.borrow().has_pending_visual_work();
         if frame_loop.note_frame_rendered(pending) {
             runtime.hermes.pin_mut().request_redraw();
+        }
+        if let Some(started) = app_host_started {
+            observation.record_phase(
+                PerformancePhase::AppHost,
+                started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64,
+            );
+        }
+        observation.finish();
+        if let Some(report) = observability.periodic_report() {
+            log::info!(
+                target: "HayatePerf",
+                "frame deadline_ns={} total_ns={} missed={} nodes={} layers={} dirty={} cache_hit={} cache_miss={} allocations={}",
+                report.deadline_ns,
+                report.total_phase_ns(),
+                report.missed_deadline(),
+                report.counters.nodes,
+                report.counters.layers,
+                report.counters.dirty_layers,
+                report.counters.cache_hits,
+                report.counters.cache_misses,
+                report.counters.allocations,
+            );
         }
     }
 }

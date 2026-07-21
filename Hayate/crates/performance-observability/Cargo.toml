@@ -1,0 +1,15 @@
+[package]
+name = "hayate-performance-observability"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Fixed-capacity performance facts for Hayate frame pipelines"
+repository.workspace = true
+
+[features]
+# Production builds compile every call site to a no-op. The Android benchmark variant
+# explicitly enables this feature, so measurement never changes the release default.
+enabled = []
+
+[lib]
+crate-type = ["rlib"]

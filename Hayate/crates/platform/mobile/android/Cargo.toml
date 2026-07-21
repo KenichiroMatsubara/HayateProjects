@@ -19,6 +19,7 @@ crate-type = ["cdylib", "rlib"]
 # `--no-default-features`（Gradle では `-Pnativedemo`）で外す。
 default = ["tsubame-js"]
 tsubame-js = []
+performance-observability = ["hayate-performance-observability/enabled"]
 
 [dependencies]
 hayate-core = { path = "../../../core" }
@@ -28,6 +29,7 @@ hayate-scene-renderer-vello = { path = "../../../scene-renderers/vello" }
 # EGL 初期化失敗時は wgpu 非依存の CPU raster + ANativeWindow 直接 present へ落とす。
 hayate-scene-renderer-skia = { path = "../../../scene-renderers/skia" }
 hayate-layer-compositor = { path = "../../../scene-renderers/compositor" }
+hayate-performance-observability = { path = "../../../performance-observability" }
 wgpu = { workspace = true }
 log.workspace = true
 pollster.workspace = true

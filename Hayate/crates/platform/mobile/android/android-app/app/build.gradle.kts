@@ -94,6 +94,17 @@ android {
                 signingConfig = signingConfigs.getByName("release")
             }
         }
+        // The performance gate must exercise the same optimisation, renderer, assets, fonts and
+        // surface path as release. It differs only by the profileable manifest overlay and the
+        // explicitly requested Rust observability feature (see the cargo block below).
+        create("benchmark") {
+            initWith(getByName("release"))
+            applicationIdSuffix = ".benchmark"
+            versionNameSuffix = "-benchmark"
+            isDebuggable = false
+            isJniDebuggable = false
+            matchingFallbacks += listOf("release")
+        }
     }
 
     compileOptions {
@@ -158,6 +169,10 @@ cargo {
     if (project.hasProperty("nativedemo")) {
         // default features を外す（= cargo の --no-default-features）。空配列で追加なし。
         featureSpec.noDefaultBut(arrayOf<String>())
+    } else if (project.hasProperty("benchmark")) {
+        // `assembleBenchmark -Pbenchmark` is the explicit performance build. Normal release
+        // remains instrumentation-free, while this adds only the fixed-capacity observer.
+        featureSpec.defaultAnd(arrayOf("performance-observability"))
     }
     // Hermes/JSI のヘッダ・.so は vendor 済みで、build.rs が CARGO_MANIFEST_DIR 相対で
     // 自動解決する（third_party/include と src/main/jniLibs/arm64-v8a）。別バージョンを
