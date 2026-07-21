@@ -26,9 +26,12 @@
 //! ADR-0003）。借用は各ステップで非重複（JS が返ってから present で借りる）。
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
-use std::time::{Duration, Instant};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::time::Instant;
 
-use android_activity::{AndroidApp, MainEvent, PollEvent};
+use android_activity::{AndroidApp, AndroidAppWaker, MainEvent, PollEvent};
+use hayate_app_host::FrameContinuation;
 use hayate_core::{ElementId, ElementTree};
 
 use crate::app::{frame_handoff, process_touch_input, sync_ime, RasterHandle};
@@ -36,7 +39,7 @@ use crate::bundle_source;
 use crate::demo_manifest;
 use crate::dev_server_target;
 use crate::device_log::{self, DeviceLog, KotlinLogPort};
-use crate::frame_schedule::OnDemandFrameLoop;
+use crate::frame_schedule::AndroidFrameScheduler;
 use crate::hermes_bridge::{make_bridge, new_hermes_app, HermesApp};
 use crate::reload_socket::{connect_reload_ws, ReloadWsSocket};
 use crate::surface_lifecycle::{window_dimensions, SurfaceLifecycleAction, SurfaceLifecycleState};
@@ -102,7 +105,35 @@ fn now_epoch_ms() -> f64 {
         .unwrap_or(0.0)
 }
 
+/// Arm one resource timer only while a Device Log batch is buffered. The timer never commits a
+/// frame; it merely wakes the blocked Android loop so `DeviceLog::tick` can flush or schedule one
+/// retry. With an empty buffer there is no timer and the application remains fully idle.
+fn arm_device_log_flush_wake(
+    has_buffered_entries: bool,
+    armed: &Arc<AtomicBool>,
+    waker: &AndroidAppWaker,
+) {
+    if !has_buffered_entries
+        || armed
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+    {
+        return;
+    }
+    let armed = Arc::clone(armed);
+    let waker = waker.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(
+            device_log::FLUSH_INTERVAL_MS as u64,
+        ));
+        armed.store(false, Ordering::Release);
+        waker.wake();
+    });
+}
+
 pub(crate) fn run(app: AndroidApp) {
+    let event_waker = app.create_waker();
+    let device_log_flush_wake_armed = Arc::new(AtomicBool::new(false));
     // このホスト（decoder）に焼き込んだ wire 版数。Web ホストの HOST_PROTOCOL_VERSION と同じ
     // source of truth（`@hayate/protocol-spec` の manifest version）をネイティブ decoder
     // （生成物）から取る（#530/#533 共有）。
@@ -214,29 +245,36 @@ pub(crate) fn run(app: AndroidApp) {
 
     // ── full reload 購読（#533）────────────────────────────────────────────────
     // WS `reload` 受信で reload フラグを立て、poll ループが拾って再 boot する。WS の blocking read は
-    // 背景スレッド（reload_socket）が担い、main は毎フレーム pump() で排出する（単一スレッド契約）。
+    // 背景スレッド（reload_socket）が担い、受信 wake 後に main が pump() で排出する（単一スレッド契約）。
     let reload_requested = Rc::new(Cell::new(false));
     let reload_flag = Rc::clone(&reload_requested);
     // connect が張った具体 socket を main 用に保持する（pump 駆動のため。再接続で差し替わる）。
     let reload_socket_slot: Rc<RefCell<Option<Rc<ReloadWsSocket>>>> = Rc::new(RefCell::new(None));
     let slot_for_connect = Rc::clone(&reload_socket_slot);
+    let waker_for_connect = event_waker.clone();
     // backoff 再接続は main で起こす必要がある（open() が !Send な Rc/RefCell に触るため）。タイマー
-    // スレッドではなく「期限つき保留」を main ループが拾って発火する。
+    // 背景の one-shot timer は event loop を wake するだけで、「期限つき保留」の発火自体は main が行う。
     let pending_reconnect: Rc<RefCell<Option<(Box<dyn FnOnce()>, Instant)>>> =
         Rc::new(RefCell::new(None));
     let pending_for_schedule = Rc::clone(&pending_reconnect);
+    let waker_for_reconnect = event_waker.clone();
 
     let _reload_subscription = subscribe_reload(SubscribeReloadOptions {
         // バンドル fetch と同じ target を共有する＝同じ配信点を指す（https 由来なら wss・#742）。
         target: target.clone(),
         on_reload: Box::new(move || reload_flag.set(true)),
         connect: Box::new(move |url| {
-            let socket = connect_reload_ws(url);
+            let socket = connect_reload_ws(url, waker_for_connect.clone());
             *slot_for_connect.borrow_mut() = Some(Rc::clone(&socket));
             socket as Rc<dyn ReloadSocket>
         }),
         schedule_reconnect: Box::new(move |fire, delay| {
             *pending_for_schedule.borrow_mut() = Some((fire, Instant::now() + delay));
+            let waker = waker_for_reconnect.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(delay);
+                waker.wake();
+            });
         }),
     });
 
@@ -270,20 +308,19 @@ pub(crate) fn run(app: AndroidApp) {
     let mut ime_keyboard_shown = false;
     let mut quit = false;
 
-    // ADR-0126: 無条件 pump を撤廃し on-demand 化する。冷間始動を要求した状態で開始し、以後は
-    // wake（入力到着・lifecycle・reload）と継続（描画後に残る visual_dirty）のあるときだけ
-    // pump+present する。idle ではフレームを 1 枚も出さない（`poll_events` の最大 16ms ブロックで
-    // OS イベント待ちに落ちる）。
-    let mut frame_loop = OnDemandFrameLoop::started();
+    // ADR-0154: Choreographer is the only frame clock. The scheduler owns at most one posted
+    // one-shot callback and folds every wake before vsync into it.
+    let frame_scheduler = AndroidFrameScheduler::new();
+    frame_scheduler.request_frame();
     // This remains an inert value in ordinary release/debug builds. The profileable benchmark
     // variant enables the Cargo feature and turns it into a fixed-capacity reporter.
     let observability = PerformanceObservability::new();
 
     while !quit {
         // このイテレーションで lifecycle イベントを観測したか（surface 作成/破棄/resize は
-        // いずれも再描画が要る wake 源）。closure からは frame_loop を可変借用できないので Cell 経由。
+        // いずれも再描画が要る wake 源）。closure から scheduler を操作せず Cell 経由で集約する。
         let lifecycle_wake = Cell::new(false);
-        app.poll_events(Some(Duration::from_millis(16)), |event| {
+        app.poll_events(None, |event| {
             if let PollEvent::Main(main_event) = event {
                 lifecycle_wake.set(true);
                 let lifecycle_event = match main_event {
@@ -388,7 +425,7 @@ pub(crate) fn run(app: AndroidApp) {
 
         // lifecycle イベント（surface 作成/破棄/resize/RedrawNeeded）は再描画が要る wake 源。
         if lifecycle_wake.get() {
-            frame_loop.request_wake();
+            frame_scheduler.request_frame();
         }
 
         // reload WS の受信を排出し（on_reload がフラグを立てる / on_close が再接続を保留する）、
@@ -418,14 +455,14 @@ pub(crate) fn run(app: AndroidApp) {
                 "Torimi: reload を受信 — Hermes ランタイムを再構築します（full reload。state は飛びます）"
             );
             match boot() {
-                Ok(mut runtime) => {
+                Ok(runtime) => {
                     if let Some((vw, vh)) = last_viewport {
                         runtime.tree.borrow_mut().set_viewport(vw, vh);
                     }
                     current = Some(runtime);
                     crate::error_overlay::clear_error();
                     // 新ツリーは未描画。冷間始動を要求して最初のフレームを必ず出す。
-                    frame_loop.request_wake();
+                    frame_scheduler.request_frame();
                 }
                 Err(error) => {
                     // reload 後の boot 失敗（取得失敗・version 不一致）も host イベントとして合流させる（#789）。
@@ -442,12 +479,16 @@ pub(crate) fn run(app: AndroidApp) {
         }
 
         // Device Log の定期フラッシュ（#787）。monotonic clock（boot 起点の経過 ms）で間隔を計り、
-        // 溜まっていれば 1 バッチにまとめて送る。runtime の有無に関わらず毎イテレーション呼ぶ——idle
-        // でも `poll_events` の最大 16ms 間隔で回るので 2 秒間隔は満たせるし、boot 失敗中でも host
-        // イベント（#789）を外へ出せる。空バッファなら送らない。
+        // 溜まっていれば 1 バッチにまとめて送る。runtime の有無に関わらず、OS / resource /
+        // Choreographer のいずれかで起きたイテレーションで呼ぶ。idle を定期 polling で起こすことはしない。
         device_log
             .borrow_mut()
             .tick(start.elapsed().as_secs_f64() * 1000.0);
+        arm_device_log_flush_wake(
+            device_log.borrow().has_buffered_entries(),
+            &device_log_flush_wake_armed,
+            &event_waker,
+        );
 
         // ランタイム未確立（boot 失敗 / 不一致 / reload 待ち）なら入力も JS pump もしない
         // （謎クラッシュ回避）。エラー表示自体は上の `error_overlay` が Hayate/GPU パイプラインを
@@ -473,9 +514,9 @@ pub(crate) fn run(app: AndroidApp) {
             &mut ime_keyboard_shown,
         );
         if touch_woke || ime_woke {
-            frame_loop.request_wake();
+            frame_scheduler.request_frame();
             // JS 側の frame ループは自前の armed 状態（`HayateRenderer` の `pendingFrame`）を
-            // 持ち、native の on-demand ループ（`frame_loop`）が起きただけでは再武装されない
+            // 持ち、native の on-demand scheduler が起きただけでは再武装されない
             // （issue #475 で resize は native→tree 直結にしたが、`pumpFrame` 自体は JS が
             // armed でないと何もしない一発コールバック契約のまま）。Web は自前配線した
             // ポインタ/編集 listener から `set_request_redraw` を叩いて揃えている
@@ -491,16 +532,20 @@ pub(crate) fn run(app: AndroidApp) {
         // native 入力が来るまで pump が二度と起きず、タップの結果が永久に描画へ反映されない
         // （register_listener/dispatch 自体は成功しているのに見た目が変わらない不具合の原因）。
         if runtime.hermes.pin_mut().consume_wants_pump() {
-            frame_loop.request_wake();
+            frame_scheduler.request_frame();
         }
 
-        // wake も継続 pending も無ければ idle：このフレームは pump も present もしない
-        //（ADR-0126: idle で 0 フレーム）。`poll_events` の最大 16ms ブロックが次の OS イベントを待つ。
-        if !frame_loop.wants_frame() {
+        // Input/lifecycle/resource wakes only arm Choreographer. Commit at most once for an actual
+        // vsync callback, using its frameTimeNanos as the sole frame timestamp.
+        let Some(timestamp_ms) = frame_scheduler.take_frame_timestamp_ms() else {
+            continue;
+        };
+        if raster
+            .as_ref()
+            .is_some_and(RasterHandle::has_terminal_failure)
+        {
             continue;
         }
-
-        let timestamp_ms = start.elapsed().as_secs_f64() * 1000.0;
         let mut observation =
             observability.begin_frame(FrameDeadline::from_refresh_rate_hz(DEFAULT_REFRESH_RATE_HZ));
 
@@ -510,6 +555,11 @@ pub(crate) fn run(app: AndroidApp) {
         observation.measure(PerformancePhase::CoreCommit, || {
             runtime.hermes.pin_mut().pump_frame(timestamp_ms);
         });
+        // `pump_frame` 中の resource/microtask completion が JS の one-shot callback を
+        // 再武装した場合も、次の vsync を一度だけ要求する。
+        if runtime.hermes.pin_mut().consume_wants_pump() {
+            frame_scheduler.request_frame();
+        }
 
         // 3. present（保持シーンを再取得して GPU 提示）。`tree.render` を再実行せず、JS フレームが
         //    lower 済みの保持シーン（`scene_graph()`）をそのまま提示する＝tick 1 回 = 1 render
@@ -539,9 +589,13 @@ pub(crate) fn run(app: AndroidApp) {
         // 再武装する。Core が直接開始したスクロール物理は JS mutation を伴わないため、native
         // loop だけを継続しても `pumpFrame` が空振りし、端の overscroll 位置で次の入力まで
         // 固まることがある。無ければ両方とも idle へ落ちる。
-        let pending = runtime.tree.borrow().has_pending_visual_work();
-        if frame_loop.note_frame_rendered(pending) {
+        let continuation = {
+            let tree = runtime.tree.borrow();
+            FrameContinuation::after_commit(&tree.committed_frame())
+        };
+        if continuation.requests_frame() {
             runtime.hermes.pin_mut().request_redraw();
+            frame_scheduler.request_frame();
         }
         if let Some(started) = app_host_started {
             observation.record_phase(
@@ -565,5 +619,12 @@ pub(crate) fn run(app: AndroidApp) {
                 report.counters.allocations,
             );
         }
+        // JS console output may have been recorded by `pump_frame` after the tick near the top of
+        // this iteration. Arm its single resource wake now without scheduling another render.
+        arm_device_log_flush_wake(
+            device_log.borrow().has_buffered_entries(),
+            &device_log_flush_wake_armed,
+            &event_waker,
+        );
     }
 }

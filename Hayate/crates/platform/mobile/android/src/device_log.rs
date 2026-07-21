@@ -213,6 +213,12 @@ impl<P: LogSendPort> DeviceLog<P> {
         self.flush();
     }
 
+    /// Whether a one-shot resource wake is needed to deliver a future periodic flush. Platform
+    /// loops use this to stay fully blocked when there is no buffered log work.
+    pub fn has_buffered_entries(&self) -> bool {
+        !self.buffer.is_empty()
+    }
+
     /// バッファが空でなければ 1 バッチにまとめて送る。**送信成功時のみ**バッファから確定除去し、
     /// 失敗時はエントリを残して次間隔で再送する（at-least-once・#788）。重複は受け側（#785）が
     /// `(deviceId, seq)` で捨てるので、送り側は再送を恐れない。
@@ -445,7 +451,9 @@ mod tests {
         let mut log = DeviceLog::new("dev-abc".to_owned(), "Pixel 8".to_owned(), &port, 0.0);
 
         log.record(LogSource::Js, LogLevel::Log, "hello".to_owned(), 10.0);
+        assert!(log.has_buffered_entries());
         log.tick(FLUSH_INTERVAL_MS);
+        assert!(!log.has_buffered_entries());
 
         let sent = port.sent.borrow();
         assert_eq!(sent.len(), 1, "one batch should be flushed");

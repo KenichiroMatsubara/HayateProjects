@@ -53,8 +53,8 @@ mod torimi_reload;
 #[cfg(feature = "tsubame-js")]
 mod reload_socket;
 mod scene_demo;
-// on-demand フレームループの起床/継続判定（ADR-0117 / ADR-0126）。android 非依存の純粋
-// 判定器なので、ホストの cargo test で振る舞いを固定する（app_tsubame の実ループが利用）。
+// Choreographer one-shot callback の single-flight 制御（ADR-0154）。状態遷移は
+// Android 非依存の純粋部分としてホストでテストし、NDK FFI はこの module に封じ込める。
 mod frame_schedule;
 mod surface_lifecycle;
 // 安全領域インセット（edge-to-edge / b2, issue #794・ADR-0144）。Kotlin から JNI で push された

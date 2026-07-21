@@ -1176,6 +1176,7 @@ dependencies = [
  "log",
  "ndk",
  "ndk-context",
+ "ndk-sys",
  "pollster",
  "serde",
  "serde_json",

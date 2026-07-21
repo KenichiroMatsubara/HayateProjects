@@ -1,57 +1,100 @@
-//! On-demand フレームループの起床/継続判定（ADR-0117 / ADR-0126）。host-testable。
+//! Android Choreographer latest-wins single-flight scheduling（ADR-0154）。
 //!
-//! Android のメインループは従来 ~16ms ごとに**無条件**で `pump_frame`＋render を回し、
-//! idle でも 60–120Hz で GPU を焼いていた（ADR-0126 が指摘した契約違反）。本モジュールは
-//! 「このイテレーションでフレームを出すべきか」を純粋に判定する coalescer で、android 依存を
-//! 持たないためホストの `cargo test` で振る舞いを固定できる。実ループ（`app_tsubame`）は
-//! これを使って wake（入力到着・lifecycle・reload・signal 変化）と継続（進行中 transition /
-//! カーソル点滅 / スクロール物理 = `visual_dirty`）のあるときだけ pump+present する。
+//! Wake sources only arm one callback; only that callback may commit, using its `frameTimeNanos`.
+//! Continuation policy remains in App Host's `FrameContinuation`, so an idle host owns no callback
+//! and produces no timer, commit, render, or present work.
 
-/// on-demand フレームループの wake/継続を集約する純粋判定器。
-///
-/// 2 つの状態だけを持つ:
-/// - `wake_requested`: 外部 wake 源（入力到着・lifecycle・reload・非同期 signal 変化・初回）が
-///   立てるフラグ。`note_frame_rendered` で消費される。
-/// - `continuation_pending`: 直近の描画後に残る pending visual work。次フレームを自走させる。
-///
-/// idle（どちらも false）では [`wants_frame`](Self::wants_frame) が false を返し、1 枚も出さない。
+/// Choreographer の one-shot callback を最大 1 件に保つ single-flight state。
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-pub struct OnDemandFrameLoop {
-    wake_requested: bool,
-    continuation_pending: bool,
+pub struct SingleFlightVsync {
+    callback_armed: bool,
 }
 
-impl OnDemandFrameLoop {
-    /// 冷間始動を要求した状態で構築する（起動直後の最初の 1 フレームは必ず出す）。
-    pub fn started() -> Self {
-        OnDemandFrameLoop {
-            wake_requested: true,
-            continuation_pending: false,
+impl SingleFlightVsync {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// wake を次の vsync へ集約する。`true` のときだけ Platform Front は callback を post する。
+    pub fn request_frame(&mut self) -> bool {
+        if self.callback_armed {
+            return false;
+        }
+        self.callback_armed = true;
+        true
+    }
+
+    /// armed callback を一度だけ消費し、Choreographer の時刻を milliseconds に正規化する。
+    pub fn on_vsync(&mut self, frame_time_nanos: i64) -> Option<f64> {
+        if !self.callback_armed {
+            return None;
+        }
+        self.callback_armed = false;
+        Some(frame_time_nanos as f64 / 1_000_000.0)
+    }
+}
+
+/// Android NDK Choreographer adapter. The callback owns one temporary `Arc`, so the callback data
+/// stays valid even if shutdown races the final posted vsync (the NDK has no cancellation API).
+#[cfg(target_os = "android")]
+pub struct AndroidFrameScheduler {
+    state: std::sync::Arc<std::sync::Mutex<AndroidFrameState>>,
+}
+
+#[cfg(target_os = "android")]
+#[derive(Default)]
+struct AndroidFrameState {
+    schedule: SingleFlightVsync,
+    ready_timestamp_ms: Option<f64>,
+}
+
+#[cfg(target_os = "android")]
+impl AndroidFrameScheduler {
+    pub fn new() -> Self {
+        Self {
+            state: std::sync::Arc::new(std::sync::Mutex::new(AndroidFrameState::default())),
         }
     }
 
-    /// wake 源（入力到着・lifecycle・reload・非同期 signal 変化）を 1 つ記録する。冪等で、
-    /// 同一イテレーション内の複数 wake は 1 フレームに集約される。
-    pub fn request_wake(&mut self) {
-        self.wake_requested = true;
+    /// Request exactly one callback for the next display vsync. Repeated wakes before that vsync
+    /// only update application state; they do not post additional callbacks.
+    pub fn request_frame(&self) {
+        let should_post = self.state.lock().unwrap().schedule.request_frame();
+        if !should_post {
+            return;
+        }
+
+        let callback_state = std::sync::Arc::into_raw(std::sync::Arc::clone(&self.state));
+        unsafe {
+            let choreographer = ndk_sys::AChoreographer_getInstance();
+            assert!(
+                !choreographer.is_null(),
+                "AChoreographer_getInstance returned null on the Android main looper"
+            );
+            ndk_sys::AChoreographer_postFrameCallback(
+                choreographer,
+                Some(on_choreographer_frame),
+                callback_state.cast_mut().cast(),
+            );
+        }
     }
 
-    /// このイテレーションでフレームを produce すべきか。wake 要求か継続 pending のいずれかが
-    /// あれば true。idle では false＝フレームを 1 枚も出さない。
-    pub fn wants_frame(&self) -> bool {
-        self.wake_requested || self.continuation_pending
+    /// Consume the one timestamp delivered by the armed callback. `None` means this loop wake was
+    /// an input/lifecycle/resource event rather than a display vsync and must not commit a frame.
+    pub fn take_frame_timestamp_ms(&self) -> Option<f64> {
+        self.state.lock().unwrap().ready_timestamp_ms.take()
     }
+}
 
-    /// フレームを 1 枚 produce した直後に呼ぶ。wake 要求を消費し、描画後に残る pending visual
-    /// work（進行中 transition / カーソル点滅 / スクロール物理）を継続として記録する。
-    /// 戻り値は renderer 側の one-shot clock も再武装すべきか。Android では Core が
-    /// スクロール物理を所有するため、native loop の継続だけでは `pumpFrame` の callback が
-    /// 空になり得る。pending 中は host が両方を揃えて起こす。
-    pub fn note_frame_rendered(&mut self, pending_visual_work: bool) -> bool {
-        self.wake_requested = false;
-        self.continuation_pending = pending_visual_work;
-        pending_visual_work
-    }
+#[cfg(target_os = "android")]
+unsafe extern "C" fn on_choreographer_frame(
+    frame_time_nanos: std::os::raw::c_long,
+    data: *mut std::ffi::c_void,
+) {
+    let state =
+        unsafe { std::sync::Arc::from_raw(data.cast::<std::sync::Mutex<AndroidFrameState>>()) };
+    let mut state = state.lock().unwrap();
+    state.ready_timestamp_ms = state.schedule.on_vsync(frame_time_nanos as i64);
 }
 
 #[cfg(test)]
@@ -59,64 +102,22 @@ mod tests {
     use super::*;
 
     #[test]
-    fn started_loop_wants_the_first_frame() {
-        // 冷間始動：起動直後は wake 源が無くても最初の 1 フレームを出す。
-        let loop_ = OnDemandFrameLoop::started();
-        assert!(loop_.wants_frame());
-    }
+    fn duplicate_wakes_share_one_choreographer_callback_and_one_timestamp() {
+        let mut schedule = SingleFlightVsync::new();
 
-    #[test]
-    fn goes_idle_after_a_frame_with_no_pending_visual_work() {
-        // 描画後に pending visual work が無ければ idle：次イテレーションはフレームを出さない。
-        let mut loop_ = OnDemandFrameLoop::started();
-        loop_.note_frame_rendered(false);
-        assert!(!loop_.wants_frame(), "idle ではフレームを 1 枚も出さない");
-    }
-
-    #[test]
-    fn keeps_running_while_visual_work_is_pending_then_stops() {
-        // 進行中 transition / カーソル点滅 / スクロール物理がある間は継続フレームを自走させ、
-        // 解消したフレームの後に idle へ落ちる（退行なし）。
-        let mut loop_ = OnDemandFrameLoop::started();
-        loop_.note_frame_rendered(true);
-        assert!(loop_.wants_frame());
-        loop_.note_frame_rendered(true);
-        assert!(loop_.wants_frame());
-        loop_.note_frame_rendered(false);
-        assert!(!loop_.wants_frame());
-    }
-
-    #[test]
-    fn pending_native_work_requests_renderer_clock_rearm() {
-        let mut loop_ = OnDemandFrameLoop::started();
-
-        assert!(loop_.note_frame_rendered(true));
-        assert!(!loop_.note_frame_rendered(false));
-    }
-
-    #[test]
-    fn wake_cold_starts_an_idle_loop() {
-        // idle から入力到着・非同期 signal 変化で冷間始動する。
-        let mut loop_ = OnDemandFrameLoop::started();
-        loop_.note_frame_rendered(false);
-        assert!(!loop_.wants_frame());
-
-        loop_.request_wake();
-        assert!(loop_.wants_frame(), "wake は idle ループを冷間始動する");
-    }
-
-    #[test]
-    fn multiple_wakes_coalesce_into_one_frame() {
-        // 同一イテレーション内の複数 wake は 1 フレームに集約され、描画でまとめて消費される。
-        let mut loop_ = OnDemandFrameLoop::started();
-        loop_.note_frame_rendered(false);
-        loop_.request_wake();
-        loop_.request_wake();
-        loop_.request_wake();
-        assert!(loop_.wants_frame());
-
-        // 1 フレーム描画（pending なし）で wake をすべて消費 → idle へ。
-        loop_.note_frame_rendered(false);
-        assert!(!loop_.wants_frame());
+        assert!(
+            schedule.request_frame(),
+            "first wake must post one callback"
+        );
+        assert!(
+            !schedule.request_frame(),
+            "a second wake before vsync must reuse the armed callback"
+        );
+        assert_eq!(schedule.on_vsync(12_345_678), Some(12.345_678));
+        assert_eq!(
+            schedule.on_vsync(99_000_000),
+            None,
+            "one callback may commit App Host at most once"
+        );
     }
 }

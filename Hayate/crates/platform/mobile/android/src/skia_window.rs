@@ -110,25 +110,31 @@ impl SkiaGpuSurface {
         Ok(())
     }
 
-    pub(crate) fn resize(&mut self, width: u32, height: u32, content_scale: f32) {
+    pub(crate) fn resize(
+        &mut self,
+        width: u32,
+        height: u32,
+        content_scale: f32,
+    ) -> Result<(), String> {
         let content_scale = content_scale.max(1.0);
         if width == 0
             || height == 0
             || (width == self.width && height == self.height && content_scale == self.content_scale)
         {
-            return;
+            return Ok(());
         }
         self.width = width;
         self.height = height;
         self.content_scale = content_scale;
-        if let Err(e) = self.window.set_buffers_geometry(
-            width as i32,
-            height as i32,
-            Some(HardwareBufferFormat::R8G8B8X8_UNORM),
-        ) {
-            log::warn!("hayate-adapter-android: skia set_buffers_geometry (resize) failed: {e}");
-        }
+        self.window
+            .set_buffers_geometry(
+                width as i32,
+                height as i32,
+                Some(HardwareBufferFormat::R8G8B8X8_UNORM),
+            )
+            .map_err(|error| format!("skia set_buffers_geometry (resize): {error}"))?;
         self.presenter.resize(width, height, content_scale);
+        Ok(())
     }
 }
 

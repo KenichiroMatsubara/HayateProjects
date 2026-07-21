@@ -8,14 +8,15 @@
 //! UI スレッドが produce、Raster スレッドが consume する。`Send + Sync` 境界はこのハンドオフに引く。
 //! ハンドオフは非ブロッキング channel なので、重い raster が UI スレッドの入力処理を止めない。
 //!
-//! キューは無制限だが FIFO ではない——[`Coalesce`] が「まだ未処理の直近メッセージへ、新着を
-//! 安全に合成してよいか」を決める。`Frame` は連続する限り最新の SceneGraph へ差し替えつつ、
+//! Raster 側が実行中の 1 frame に加え、連続する frame の未処理 slot は最大 1 件。
+//! [`Coalesce`] が最新スナップショットへの置き換えと正しさの引き継ぎを決める。`Frame` は
+//! 最新の SceneGraph / layer topology / bounds / scroll input へ差し替えつつ、
 //! `layer_dirty`/`chrome_dirty` は union で畳む（古いスクロールオフセットを積み上げて後から
 //! 秒単位で「再生」しない一方、合成で消えた古いフレームが持っていた「このレイヤは要 raster」
 //! という情報は失わない——上書きにすると #680 と同系統の「穴あきキャッシュが直らず要素が
-//! 消えたまま」を raster バックログ側でも再現してしまう）。Resize/SurfaceLost/RebuildSurface の
-//! ようなライフサイクル境界は絶対に合成しない——`Coalesce` は直前と直後が両方 `Frame` のときだけ
-//! 合成し、境界を挟んだ相対順序はこれまで通り保たれる（元は #635 の単純な mpsc FIFO だったが、
+//! 消えたまま」を raster バックログ側でも再現してしまう）。Resize/SurfaceLost/RebuildSurface は
+//! 合成・削除せず、前後の frame も含めて送信順を保つ lifecycle barrier とする（元は #635 の
+//! 単純な mpsc FIFO だったが、
 //! raster が入力より遅くなった瞬間に無制限バックログとして溜まり、表示が数秒遅れて「追いつく」
 //! 形で見えていた——診断の詳細は該当 issue のコミットメッセージ参照）。
 //!
@@ -66,6 +67,15 @@ impl RasterHandoff {
             scroll_inputs: frame.scroll_inputs().to_vec(),
         }
     }
+
+    fn absorb_dirty_from(&mut self, older: RasterHandoff) {
+        self.layer_dirty.extend(older.layer_dirty);
+        self.transform_dirty.extend(older.transform_dirty);
+        self.chrome_dirty.extend(older.chrome_dirty);
+        for input in &mut self.scroll_inputs {
+            input.content_dirty |= self.layer_dirty.contains(&input.layer);
+        }
+    }
 }
 
 /// UI スレッド → Raster スレッドのメッセージ（ADR-0128）。フレーム提示だけでなく surface ライフ
@@ -100,16 +110,8 @@ impl Coalesce for RasterCommand {
         // そのまま失われて要素が画面から消えたまま戻らなくなる（#680 と同系統の退行）。
         match (&mut *self, incoming) {
             (RasterCommand::Frame(existing), RasterCommand::Frame(new)) => {
-                existing.scene = new.scene;
-                existing.layers = new.layers;
-                existing.layer_raster_bounds = new.layer_raster_bounds;
-                existing.layer_dirty.extend(new.layer_dirty);
-                existing.transform_dirty.extend(new.transform_dirty);
-                existing.chrome_dirty.extend(new.chrome_dirty);
-                existing.scroll_inputs = new.scroll_inputs;
-                for input in &mut existing.scroll_inputs {
-                    input.content_dirty |= existing.layer_dirty.contains(&input.layer);
-                }
+                let older = std::mem::replace(existing, new);
+                existing.absorb_dirty_from(older);
                 Ok(())
             }
             (_, incoming) => Err(incoming),
@@ -121,14 +123,16 @@ impl Coalesce for RasterCommand {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RasterHandoffError {
     Disconnected,
+    /// The selected renderer failed after boot. This state is terminal: no retry, fallback, or
+    /// worker restart is attempted.
+    TerminalFailure,
 }
 
 /// `M` の新着メッセージを、まだ raster スレッドに拾われていない直近のキュー末尾へ安全に
 /// 合成してよいか（＝古い方を単に捨てるのではなく、両者の情報を失わず 1 件へ畳めるか）を決める。
 ///
 /// 合成できるときは `self` を新しい状態へ更新して `Ok(())` を返す（キューには積み増さない）。
-/// 合成できないときは `incoming` をそのまま `Err` で返す（呼び出し側がキューへ積む）。常に
-/// `Err(incoming)` を返す実装は無制限 FIFO と同値（旧来の挙動）。
+/// 合成できないときは `incoming` をそのまま `Err` で返す（呼び出し側がキューへ積む）。
 ///
 /// **正しさの要件**: 合成後の 1 件は、合成前の 2 件を順番に処理したのと観測可能な結果が
 /// 一致しなければならない。例えば [`RasterCommand::Frame`] は最新の SceneGraph へ差し替える
@@ -148,6 +152,7 @@ impl Coalesce for RasterHandoff {
 struct QueueState<M> {
     queue: VecDeque<M>,
     closed: bool,
+    terminal_failure: bool,
 }
 
 struct Shared<M> {
@@ -158,8 +163,8 @@ struct Shared<M> {
 /// 専用 Raster スレッド。UI スレッド（core＝単一スレッドのまま）が produce したメッセージ `M`
 /// （典型は [`RasterCommand`]）を受けて raster/composite する。`sink` は cache+compositor
 /// （#610 の `Send` クリーン seam）と surface を所有し、Raster スレッド上だけで触る。core 自体は
-/// マルチスレッド化しない（ADR-0003 維持）。キューは [`Coalesce`] が許す範囲でのみ合成され、それ以外の
-/// 相対順序（Frame と surface ライフサイクルの順序を含む）は 1 本のキューに直列化されたまま保たれる。
+/// マルチスレッド化しない（ADR-0003 維持）。キューは [`Coalesce`] が許す範囲でのみ合成され、
+/// surface ライフサイクルは必ず順序どおり、その間の連続 frame は active 1 + latest pending 1 で処理される。
 pub struct RasterThread<M = RasterCommand>
 where
     M: Send + 'static,
@@ -177,10 +182,31 @@ where
     where
         S: FnMut(M) + Send + 'static,
     {
+        Self::spawn_driver(move |message| {
+            sink(message);
+            true
+        })
+    }
+
+    /// Spawn a renderer whose first runtime error permanently closes the handoff. This is the
+    /// selected-renderer policy: boot-time candidate fallback happens before this worker exists;
+    /// runtime render/surface/context failures never retry, fall back, or restart.
+    pub fn spawn_fallible<S, E>(mut sink: S) -> Self
+    where
+        S: FnMut(M) -> Result<(), E> + Send + 'static,
+    {
+        Self::spawn_driver(move |message| sink(message).is_ok())
+    }
+
+    fn spawn_driver<D>(mut drive: D) -> Self
+    where
+        D: FnMut(M) -> bool + Send + 'static,
+    {
         let shared = Arc::new(Shared {
             state: Mutex::new(QueueState {
                 queue: VecDeque::new(),
                 closed: false,
+                terminal_failure: false,
             }),
             condvar: Condvar::new(),
         });
@@ -199,7 +225,16 @@ where
                 }
             };
             match message {
-                Some(message) => sink(message),
+                Some(message) => {
+                    if !drive(message) {
+                        let mut state = worker_shared.state.lock().unwrap();
+                        state.terminal_failure = true;
+                        state.closed = true;
+                        state.queue.clear();
+                        worker_shared.condvar.notify_all();
+                        break;
+                    }
+                }
                 // closed かつキューが空＝送信側が全て drop された（綺麗な終了）。
                 None => break,
             }
@@ -208,6 +243,16 @@ where
             shared: Some(shared),
             handle: Some(handle),
         }
+    }
+
+    pub fn has_terminal_failure(&self) -> bool {
+        self.shared.as_ref().is_some_and(|shared| {
+            shared
+                .state
+                .lock()
+                .map(|state| state.terminal_failure)
+                .unwrap_or(true)
+        })
     }
 
     /// UI スレッドからメッセージを渡す（非ブロッキング）。raster 完了を待たずに返るので、UI スレッドは
@@ -229,6 +274,9 @@ where
             .state
             .lock()
             .map_err(|_| RasterHandoffError::Disconnected)?;
+        if state.terminal_failure {
+            return Err(RasterHandoffError::TerminalFailure);
+        }
         if state.closed {
             return Err(RasterHandoffError::Disconnected);
         }
@@ -714,6 +762,86 @@ mod tests {
             (1..=50).collect::<Vec<u64>>(),
             "合成された 1 件の layer_dirty は詰まっている間に届いた 50 件全ての union のはず\
              ——上書きで一部が失われていない"
+        );
+    }
+
+    #[test]
+    fn lifecycle_barriers_prevent_cross_boundary_frame_replacement() {
+        let gate_hit = Arc::new((std::sync::Mutex::new(false), std::sync::Condvar::new()));
+        let gate_for_sink = Arc::clone(&gate_hit);
+        let (release_tx, release_rx) = mpsc::channel::<()>();
+        let release_rx = std::sync::Mutex::new(release_rx);
+        let events = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let sink_events = Arc::clone(&events);
+        let mut first = true;
+
+        let rt = RasterThread::spawn(move |command: RasterCommand| {
+            if first {
+                first = false;
+                let (lock, cvar) = &*gate_for_sink;
+                *lock.lock().unwrap() = true;
+                cvar.notify_all();
+                let _ = release_rx.lock().unwrap().recv();
+            }
+            let event = match command {
+                RasterCommand::Frame(handoff) => format!("frame {:?}", rasterize(&handoff)),
+                RasterCommand::Resize { width, height, .. } => format!("resize {width}x{height}"),
+                RasterCommand::SurfaceLost => "lost".to_string(),
+                RasterCommand::RebuildSurface => "rebuild".to_string(),
+            };
+            sink_events.lock().unwrap().push(event);
+        });
+
+        rt.send(RasterCommand::Frame(handoff(&[0]))).unwrap();
+        {
+            let (lock, cvar) = &*gate_hit;
+            let mut hit = lock.lock().unwrap();
+            while !*hit {
+                hit = cvar.wait(hit).unwrap();
+            }
+        }
+
+        rt.send(RasterCommand::Frame(handoff(&[1]))).unwrap();
+        rt.send(RasterCommand::Resize {
+            width: 800,
+            height: 600,
+            content_scale: 1.0,
+        })
+        .unwrap();
+        rt.send(RasterCommand::Frame(handoff(&[2]))).unwrap();
+        release_tx.send(()).unwrap();
+        drop(rt);
+
+        assert_eq!(
+            *events.lock().unwrap(),
+            vec!["frame [0]", "frame [1]", "resize 800x600", "frame [2]"],
+            "lifecycle commands are barriers: frames on either side retain their observable order"
+        );
+    }
+
+    #[test]
+    fn renderer_failure_is_terminal_and_never_retried_by_the_scheduler() {
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let sink_attempts = Arc::clone(&attempts);
+        let rt = RasterThread::spawn_fallible(move |_command: RasterCommand| {
+            sink_attempts.fetch_add(1, SeqCst);
+            Err::<(), _>("selected renderer failed")
+        });
+
+        rt.send(RasterCommand::Frame(handoff(&[1]))).unwrap();
+        while !rt.has_terminal_failure() {
+            std::thread::yield_now();
+        }
+
+        assert_eq!(
+            rt.send(RasterCommand::Frame(handoff(&[2]))),
+            Err(RasterHandoffError::TerminalFailure)
+        );
+        drop(rt);
+        assert_eq!(
+            attempts.load(SeqCst),
+            1,
+            "runtime failure must not trigger renderer retry, fallback, or restart"
         );
     }
 }

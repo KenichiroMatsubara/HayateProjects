@@ -11,8 +11,8 @@
 //! （CONTEXT.md「Reload」/ ADR-0001 不変）。
 //!
 //! 単一スレッド契約（ADR-0003）を守るため、Kotlin のイベント待ち（blocking）は背景スレッドが
-//! 行い、受信を mpsc で main へ渡す。main の poll ループが毎フレーム [`ReloadWsSocket::pump`] を
-//! 呼んで、登録済みの `on_message` / `on_close` を **main スレッドで** 発火する（boot_runtime
+//! 行い、受信を mpsc で main へ渡す。受信時に Android event loop を wake し、main が
+//! [`ReloadWsSocket::pump`] で登録済みの `on_message` / `on_close` を **main スレッドで** 発火する（boot_runtime
 //! 再実行＝ Hermes/tree に触るため main で動かす必要がある）。実 WS 配線は実機で検証する
 //! （ローカル検証の領分・ADR-0001）。
 #![cfg_attr(not(target_os = "android"), allow(dead_code))]
@@ -42,7 +42,7 @@ pub struct ReloadWsSocket {
 
 impl ReloadWsSocket {
     /// 背景スレッドが mpsc に積んだ受信を main で排出し、登録済みコールバックを発火する。
-    /// poll ループが毎フレーム呼ぶ（blocking なイベント待ちを main から外すための drain シーム）。
+    /// wake した poll ループが呼ぶ（blocking なイベント待ちを main から外すための drain シーム）。
     pub fn pump(&self) {
         while let Ok(event) = self.events.try_recv() {
             match event {
@@ -88,6 +88,7 @@ pub use platform::connect_reload_ws;
 /// （`jni::` の直接使用は `jni_bridge` に封じ込め、leaf はそれだけを使う・ADR-0125）。
 #[cfg(target_os = "android")]
 mod platform {
+    use android_activity::AndroidAppWaker;
     use std::sync::mpsc::{channel, Sender};
     use std::thread;
 
@@ -115,19 +116,21 @@ mod platform {
     /// open が JNI 段階で失敗しても「即 Closed を積んだ」socket を返す — 購読側はそれを backoff
     /// 再接続のトリガにする（Web の `WebSocket` が onclose を出すのと同型。接続・TLS の失敗は
     /// Kotlin 側から Closed イベントとして返る）。
-    pub fn connect_reload_ws(ws_url: &str) -> std::rc::Rc<ReloadWsSocket> {
+    pub fn connect_reload_ws(ws_url: &str, waker: AndroidAppWaker) -> std::rc::Rc<ReloadWsSocket> {
         let (tx, rx) = channel();
 
         let handle = match open_platform_ws(ws_url) {
             Ok(handle) => {
-                thread::spawn(move || await_events(handle, &tx));
+                thread::spawn(move || await_events(handle, &tx, &waker));
                 Some(handle)
             }
             Err(err) => {
                 log::warn!(
                     "hayate-adapter-android: reload WS の open に失敗（backoff 再試行）: {err}"
                 );
-                let _ = tx.send(WsEvent::Closed);
+                if tx.send(WsEvent::Closed).is_ok() {
+                    waker.wake();
+                }
                 None
             }
         };
@@ -161,7 +164,7 @@ mod platform {
     /// Kotlin 側のイベントを取り出し続け、テキストは [`WsEvent::Message`]、切断（および JNI
     /// エラー・未知イベント）は [`WsEvent::Closed`] で main へ渡して抜ける。取り出しは
     /// ブロッキングなので専用の背景スレッドで回す（attach はスレッドの寿命で 1 回）。
-    fn await_events(handle: i64, tx: &Sender<WsEvent>) {
+    fn await_events(handle: i64, tx: &Sender<WsEvent>, waker: &AndroidAppWaker) {
         let result = crate::jni_bridge::with_activity_env(|env, activity| {
             let class = crate::jni_bridge::app_class(env, activity, BRIDGE_CLASS)?;
             loop {
@@ -182,7 +185,9 @@ mod platform {
                 let _ = env.delete_local_ref(jevent);
                 match event.strip_prefix(EVENT_TEXT_PREFIX) {
                     Some(text) => {
-                        let _ = tx.send(WsEvent::Message(text.to_owned()));
+                        if tx.send(WsEvent::Message(text.to_owned())).is_ok() {
+                            waker.wake();
+                        }
                     }
                     // "closed"（と未知イベント）は切断として扱い、スレッドを解く。
                     None => return Ok(()),
@@ -192,7 +197,9 @@ mod platform {
         if let Err(err) = result {
             log::warn!("hayate-adapter-android: reload WS のイベント待ちが失敗: {err}");
         }
-        let _ = tx.send(WsEvent::Closed);
+        if tx.send(WsEvent::Closed).is_ok() {
+            waker.wake();
+        }
     }
 
     /// Kotlin 側 WS を閉じる。イベント待ちスレッドには Kotlin から Closed イベントが流れて解ける。
