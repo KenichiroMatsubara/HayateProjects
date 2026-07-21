@@ -11,6 +11,10 @@ use android_activity::input::{InputEvent, MotionAction};
 use android_activity::{AndroidApp, MainEvent, PollEvent};
 use hayate_core::{CommittedFrame, ElementTree, SceneGraph};
 use hayate_layer_compositor::{PresentPlanner, RasterCommand, RasterHandoff, RasterThread};
+use hayate_performance_observability::{
+    FrameCounters, FrameDeadline, PerformanceObservability, PerformancePhase,
+    DEFAULT_REFRESH_RATE_HZ,
+};
 use hayate_scene_renderer_vello::{
     create_blitter, create_target_view, VelloRenderTarget, VelloSceneRenderer,
 };
@@ -75,7 +79,7 @@ pub(crate) struct GpuSurface {
 /// JS 駆動経路（ADR-0112, feature=tsubame-js）。Hermes に Tsubame バンドルを載せ、
 /// ネイティブ Hayate を `__hayateHost` として注入して描画する。既存のデモ経路
 /// （下の `#[cfg(not(...))]` 版）は非破壊で温存し、feature でこちらに分岐する。
-#[cfg(feature = "tsubame-js")]
+#[cfg(all(feature = "tsubame-js", not(feature = "performance-observability")))]
 #[no_mangle]
 pub fn android_main(app: AndroidApp) {
     android_logger::init_once(
@@ -85,7 +89,7 @@ pub fn android_main(app: AndroidApp) {
     crate::app_tsubame::run(app);
 }
 
-#[cfg(not(feature = "tsubame-js"))]
+#[cfg(any(not(feature = "tsubame-js"), feature = "performance-observability"))]
 #[no_mangle]
 pub fn android_main(app: AndroidApp) {
     android_logger::init_once(
@@ -111,6 +115,7 @@ pub fn android_main(app: AndroidApp) {
     let mut ime_target: Option<ElementId> = None;
     let mut ime_keyboard_shown = false;
     let mut quit = false;
+    let observability = PerformanceObservability::new();
 
     while !quit {
         app.poll_events(Some(Duration::from_millis(16)), |event| {
@@ -197,11 +202,41 @@ pub fn android_main(app: AndroidApp) {
         if let Some(rt) = raster.as_ref() {
             // 単調増加クロックでレイアウトとカーソル点滅を駆動し、lower した
             // シーンを提示する（`hayate-adapter-web` の `render` に対応）。
-            let frame = tree.commit_rendered_frame(timestamp_ms);
+            let mut observation = observability
+                .begin_frame(FrameDeadline::from_refresh_rate_hz(DEFAULT_REFRESH_RATE_HZ));
+            let frame = observation.measure(PerformancePhase::CoreCommit, || {
+                tree.commit_rendered_frame(timestamp_ms)
+            });
+            observation.set_counters(FrameCounters {
+                nodes: frame.scene().len() as u32,
+                layers: frame.layers().len() as u32,
+                dirty_layers: frame.content_dirty_layers().len() as u32,
+                cache_hits: 0,
+                cache_misses: 0,
+                allocations: 0,
+            });
             // render() が捕捉した保持シーン + frame_layers / frame_layer_dirty / chrome_dirty を
             // owned handoff にして Raster スレッドへ送る（#635）。UI スレッドは raster を待たず、
             // 続けて入力処理・次フレーム生成へ進める（ADR-0128）。
-            let _ = rt.send(frame_handoff(&frame));
+            let _ = observation.measure(PerformancePhase::RendererSubmit, || {
+                rt.send(frame_handoff(&frame))
+            });
+            observation.finish();
+            if let Some(report) = observability.periodic_report() {
+                log::info!(
+                    target: "HayatePerf",
+                    "frame deadline_ns={} total_ns={} missed={} nodes={} layers={} dirty={} cache_hit={} cache_miss={} allocations={}",
+                    report.deadline_ns,
+                    report.total_phase_ns(),
+                    report.missed_deadline(),
+                    report.counters.nodes,
+                    report.counters.layers,
+                    report.counters.dirty_layers,
+                    report.counters.cache_hits,
+                    report.counters.cache_misses,
+                    report.counters.allocations,
+                );
+            }
         }
     }
 }

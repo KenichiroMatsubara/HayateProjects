@@ -1169,6 +1169,7 @@ dependencies = [
  "hayate-app-host",
  "hayate-core",
  "hayate-layer-compositor",
+ "hayate-performance-observability",
  "hayate-scene-renderer-skia",
  "hayate-scene-renderer-vello",
  "jni 0.21.1",
@@ -1236,6 +1237,7 @@ dependencies = [
  "anyhow",
  "hayate-core",
  "hayate-layer-compositor",
+ "hayate-performance-observability",
  "log",
  "pollster",
 ]
@@ -1272,6 +1274,10 @@ dependencies = [
  "hayate-scene-renderer-tiny-skia",
  "tiny-skia",
 ]
+
+[[package]]
+name = "hayate-performance-observability"
+version = "0.1.0"
 
 [[package]]
 name = "hayate-platform-desktop"

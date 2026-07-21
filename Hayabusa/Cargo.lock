@@ -188,6 +188,7 @@ dependencies = [
  "anyhow",
  "hayate-core",
  "hayate-layer-compositor",
+ "hayate-performance-observability",
  "log",
 ]
 
@@ -212,6 +213,10 @@ version = "0.1.0"
 dependencies = [
  "hayate-core",
 ]
+
+[[package]]
+name = "hayate-performance-observability"
+version = "0.1.0"
 
 [[package]]
 name = "icu_collections"

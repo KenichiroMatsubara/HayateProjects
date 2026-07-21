@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "crates/performance-observability",
     "crates/core",
     "crates/app-host",
     "crates/demo-fixtures",
