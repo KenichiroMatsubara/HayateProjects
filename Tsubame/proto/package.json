@@ -48,6 +48,10 @@
         "types": "./dist/delivery.d.ts",
         "import": "./dist/delivery.js"
       },
+      "./edit-intent": {
+        "types": "./dist/edit-intent.d.ts",
+        "import": "./dist/edit-intent.js"
+      },
       "./recorder": {
         "types": "./dist/recorder.d.ts",
         "import": "./dist/recorder.js"

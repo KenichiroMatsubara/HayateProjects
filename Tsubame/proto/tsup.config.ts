@@ -15,6 +15,7 @@ export default defineConfig({
     'generated/codec.ts',
     'generated/catalog.ts',
     'generated/delivery.ts',
+    'generated/edit-intent.ts',
     'generated/recorder.ts',
   ],
   format: ['esm'],
