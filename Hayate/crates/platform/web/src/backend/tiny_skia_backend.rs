@@ -63,12 +63,15 @@ impl CanvasBackend for SelectedBackend {
 
     fn clear(&mut self, clear_color: ClearColor) -> Result<(), anyhow::Error> {
         let [r, g, b, a] = clear_color;
-        self.pixmap.fill(Color::from_rgba(
-            r.clamp(0.0, 1.0),
-            g.clamp(0.0, 1.0),
-            b.clamp(0.0, 1.0),
-            a.clamp(0.0, 1.0),
-        ));
+        self.pixmap.fill(
+            Color::from_rgba(
+                r.clamp(0.0, 1.0),
+                g.clamp(0.0, 1.0),
+                b.clamp(0.0, 1.0),
+                a.clamp(0.0, 1.0),
+            )
+            .unwrap_or(Color::TRANSPARENT),
+        );
         blit_to_canvas(&self.ctx, &self.pixmap, self.width, self.height).map_err(js_to_anyhow)
     }
 
