@@ -12,7 +12,7 @@ skrifa = { workspace = true }
 vello = { workspace = true }
 # vendored 経由（[patch.crates-io]）。永続パイプラインキャッシュ（ADR-0130b・#777）の
 # shader_hash キーに全 WGSL ソースの指紋を使うため。wgsl feature だけで足りる。
-vello_shaders = { version = "0.9", default-features = false, features = ["wgsl"] }
+vello_shaders = { version = "0.9.0", default-features = false, features = ["wgsl"] }
 wgpu = { workspace = true }
 bytemuck = { workspace = true }
 
@@ -21,4 +21,4 @@ hayate-scene-test-support = { path = "../test-support" }
 hayate-demo-fixtures = { path = "../../demo-fixtures" }
 pollster = { workspace = true }
 # vendored 経由（[patch.crates-io]）。エンコード結果の画像 patch を検査するテスト用。
-vello_encoding = "0.9"
+vello_encoding = "0.9.0"

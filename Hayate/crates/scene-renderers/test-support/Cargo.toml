@@ -11,6 +11,6 @@ hayate-core = { path = "../../core" }
 hayate-scene-renderer-tiny-skia = { path = "../tiny-skia" }
 hayate-scene-renderer-vello = { path = "../vello" }
 tiny-skia = { workspace = true }
-png = "0.18"
+png = "0.18.1"
 wgpu = { workspace = true }
-pollster = "0.4"
+pollster = "1.0.1"

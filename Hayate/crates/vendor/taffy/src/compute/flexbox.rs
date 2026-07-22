@@ -708,16 +708,10 @@ fn determine_flex_base_size(
                     cross_axis_available_space.into_option().maybe_sub(child.margin.cross_axis_sum(dir)),
                 );
             }
-            // Hayate local fix (#759). A definite cross size coming from `size` is still subject
-            // to the item's own min/max cross size. Without this clamp, an item like
-            // `width:620; max-width:100%` is laid out at its *unclamped* style width when its
-            // flex base (main) size is computed, so width-dependent content (e.g. wrapping text)
-            // is measured at the wrong width and the container under-sizes in the main axis
-            // (footer overflows its panel). taffy 0.12.1 fixes the wrap-line `ComputeSize`
-            // manifestation of this family of bugs upstream, but NOT this
-            // `determine_flex_base_size` cross clamp — so this remains the sole retained local
-            // patch after the 0.7.7 → 0.12.1 upgrade. Regression:
-            // `hayate-core` `flex_percent_max_width.rs`.
+            // Hayate local fix (#759). A definite cross size from `size` is still subject to the
+            // item's min/max cross size. Otherwise width-dependent content can be measured at an
+            // unclamped width while determining its flex base size, under-sizing the main axis.
+            // Regression: hayate-core/tests/flex_percent_max_width.rs.
             if let Some(cross) = ckd.cross(dir) {
                 ckd.set_cross(dir, Some(cross.maybe_clamp(child.min_size.cross(dir), child.max_size.cross(dir))));
             }

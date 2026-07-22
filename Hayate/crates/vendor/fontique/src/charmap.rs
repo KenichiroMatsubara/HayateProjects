@@ -7,9 +7,9 @@
 // crates.
 
 use read_fonts::{
+    FontData, FontRead, FontRef, TableProvider, TopLevelTable,
     tables::cmap::{Cmap, CmapSubtable},
     types::GlyphId,
-    FontData, FontRead, FontRef, TableProvider, TopLevelTable,
 };
 
 /// Metadata for constructing a character map from font data.

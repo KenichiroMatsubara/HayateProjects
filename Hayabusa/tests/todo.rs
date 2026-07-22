@@ -9,7 +9,7 @@
 
 use hayabusa::generated::todo;
 use hayabusa::prelude::*;
-use hayate_app_host::{AppHost, HeadlessSurface};
+use hayate_app_host::{AppHost, HeadlessPresentTarget};
 use hayate_core::{DocumentEventKind, ElementId, Event};
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -25,7 +25,7 @@ fn eid(raw: u64) -> ElementId {
 }
 
 /// 文字入力（on:input）を 1 件配送する。
-fn type_text(host: &mut AppHost<HeadlessSurface>, text: &str, ts: f64) {
+fn type_text(host: &mut AppHost<HeadlessPresentTarget>, text: &str, ts: f64) {
     host.tree_mut().dispatch_event(
         DocumentEventKind::TextInput,
         Event::TextInput {
@@ -37,7 +37,7 @@ fn type_text(host: &mut AppHost<HeadlessSurface>, text: &str, ts: f64) {
 }
 
 /// add ボタンをクリックする。
-fn click_add(host: &mut AppHost<HeadlessSurface>, ts: f64) {
+fn click_add(host: &mut AppHost<HeadlessPresentTarget>, ts: f64) {
     host.tree_mut().dispatch_event(
         DocumentEventKind::Click,
         Event::Click {
@@ -49,11 +49,11 @@ fn click_add(host: &mut AppHost<HeadlessSurface>, ts: f64) {
     host.tick(ts);
 }
 
-fn mount_todo() -> AppHost<HeadlessSurface> {
+fn mount_todo() -> AppHost<HeadlessPresentTarget> {
     let rt = Runtime::new();
     let sink = Rc::new(RefCell::new(RecordingSink::new()));
     let instance = todo::build(&rt, sink);
-    let mut host = AppHost::new(HeadlessSurface, Box::new(|| {}));
+    let mut host = AppHost::new(HeadlessPresentTarget, Box::new(|| {}));
     host.mount(Box::new(HayabusaApp::new(instance)));
     host.tick(0.0);
     host

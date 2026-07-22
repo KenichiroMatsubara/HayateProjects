@@ -159,10 +159,12 @@ fn skia_raster_surface_is_wired_as_the_fallback_renderer() {
 #[test]
 fn skia_present_uses_the_color_glyph_capable_renderer() {
     // paints_color_glyphs() = true な skia crate を使っていること（カラー絵文字 AC の土台）。
-    let skia_present = src("skia_present.rs");
+    let skia_raster = src("skia_window.rs");
+    let skia_gl = src("skia_gl_window.rs");
     assert!(
-        skia_present.contains("hayate_scene_renderer_skia"),
-        "present 経路は hayate-scene-renderer-skia（paints_color_glyphs=true）を使う"
+        skia_raster.contains("hayate_scene_renderer_skia")
+            && skia_gl.contains("hayate_scene_renderer_skia"),
+        "raster/GL の両 present 経路は hayate-scene-renderer-skia（paints_color_glyphs=true）を使う"
     );
 }
 

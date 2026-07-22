@@ -28,9 +28,9 @@
     "release:dry-run":        "node scripts/check-wasm-not-stub.mjs && pnpm -r publish --dry-run --no-git-checks"
   },
   "devDependencies": {
-    "@changesets/cli": "^2.29.7",
+    "@changesets/cli": "^2.31.1",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3"
   },
-  "packageManager": "pnpm@11.8.0"
+  "packageManager": "pnpm@11.15.1"
 }

@@ -30,10 +30,10 @@
     "@torimi/dev-server-contract": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^22.19.0",
+    "@types/node": "^26.1.1",
     "jsqr": "^1.4.0",
     "rimraf": "^6.1.3",
     "tsup": "^8.5.1",
-    "vitest": "^3.2.0"
+    "vitest": "^4.1.10"
   }
 }

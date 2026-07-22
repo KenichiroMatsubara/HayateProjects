@@ -258,7 +258,7 @@ describe('golden frame semantic parity (ADR-0079, #151)', () => {
     const frame = harness.capture();
     // 暗黙行のアイテムは grid-auto-rows = 30 の高さで、明示行 (50) の直下 y=50 に置かれる。
     // 高さ 30 のボックスは他に存在しないので、これで一意に特定できる。
-    const implicit = frame.elements.find((el) => Math.abs(el.bounds[3] - AUTO_ROW) < 1);
+    const implicit = frame.elements.find((el) => Math.abs(el.bounds[3]! - AUTO_ROW) < 1);
     expect(implicit, 'implicit-row item must be present').toBeDefined();
     expect(implicit!.bounds[1]).toBeCloseTo(EXPLICIT_ROW, 0);
     expect(implicit!.bounds[3]).toBeCloseTo(AUTO_ROW, 0);
@@ -438,7 +438,7 @@ describe('golden frame semantic parity (ADR-0079, #151)', () => {
     const frame = harness.capture();
     // 外形 = 80 + 2*20 = 120。スナップショットではなく解決幾何を直接固定する。
     const box = frame.elements.find(
-      (el) => Math.round(el.bounds[2]) === EXPECTED_OUTER_WIDTH,
+      (el) => Math.round(el.bounds[2]!) === EXPECTED_OUTER_WIDTH,
     );
     expect(box, 'content-box box must resolve to padded outer width').toBeDefined();
     expect(box!.bounds[2]).toBeCloseTo(EXPECTED_OUTER_WIDTH, 1);

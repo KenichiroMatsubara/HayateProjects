@@ -128,9 +128,13 @@ fn jni_bridge_exposes_the_native_inset_push_entry_point() {
 #[test]
 fn app_completes_safe_area_handling_inside_the_adapter() {
     let app = src("app.rs");
+    let skia_raster = src("skia_window.rs");
+    let skia_gl = src("skia_gl_window.rs");
     assert!(
-        app.contains("render_scene_with_offset"),
-        "b2: シーンを安全領域インセット分だけ平行移動して描画する（バー裏はルート背景色でクリア）"
+        app.contains("scene_origin: (origin_x, origin_y)")
+            && skia_raster.contains("scene_origin(self.content_scale)")
+            && skia_gl.contains("scene_origin(self.content_scale)"),
+        "b2: Vello/Skia raster/Skia GL の各経路でシーンを安全領域インセット分だけ平行移動する"
     );
     assert!(
         app.contains("scene_origin"),

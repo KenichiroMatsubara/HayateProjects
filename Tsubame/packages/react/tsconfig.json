@@ -5,7 +5,6 @@
     "outDir": "dist",
     "jsx": "react-jsx",
     "jsxImportSource": "@torimi/tsubame-react",
-    "baseUrl": ".",
     "paths": {
       "@torimi/tsubame-react/jsx-runtime": ["./src/jsx-runtime.ts"],
       "@torimi/tsubame-react/jsx-dev-runtime": ["./src/jsx-dev-runtime.ts"]

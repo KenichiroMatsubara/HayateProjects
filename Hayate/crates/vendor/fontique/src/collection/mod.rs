@@ -12,6 +12,7 @@ use crate::font::FontInfoOverride;
 use super::SourceCache;
 
 use super::{
+    Blob, FontStyle, FontWeight, FontWidth, GenericFamily, Language, Script,
     backend::SystemFonts,
     fallback::{FallbackKey, FallbackMap},
     family::{FamilyId, FamilyInfo},
@@ -19,7 +20,6 @@ use super::{
     font::FontInfo,
     generic::GenericFamilyMap,
     source::{SourceId, SourceInfo, SourceKind},
-    Blob, FontStyle, FontWeight, FontWidth, GenericFamily, Language, Script,
 };
 use crate::AtomicCounter;
 use alloc::{string::String, sync::Arc, vec::Vec};
@@ -28,7 +28,7 @@ use read_fonts::types::NameId;
 #[cfg(feature = "std")]
 use std::path::Path;
 #[cfg(feature = "std")]
-use std::sync::{atomic::Ordering, Mutex};
+use std::sync::{Mutex, atomic::Ordering};
 
 type FamilyMap = HashMap<FamilyId, Option<FamilyInfo>>;
 
@@ -831,7 +831,12 @@ impl Shared {
 #[test]
 #[cfg(all(
     feature = "std",
-    any(target_os = "linux", target_os = "macos", target_os = "windows")
+    any(
+        target_os = "linux",
+        target_os = "freebsd",
+        target_os = "macos",
+        target_os = "windows"
+    )
 ))]
 fn make_shared_matches_local() {
     use crate::{Collection, CollectionOptions};
@@ -846,6 +851,8 @@ fn make_shared_matches_local() {
         "/Library/Fonts",
         #[cfg(target_os = "linux")]
         "/usr/share/fonts",
+        #[cfg(target_os = "freebsd")]
+        "/usr/local/share/fonts",
         #[cfg(target_os = "windows")]
         "C:\\Windows\\Fonts",
     ]

@@ -18,7 +18,7 @@
 #![cfg(feature = "app-host")]
 
 use hayabusa::prelude::*;
-use hayate_app_host::{AppHost, HeadlessSurface};
+use hayate_app_host::{AppHost, HeadlessPresentTarget};
 use hayate_core::{DocumentEventKind, ElementId, Event};
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -61,7 +61,7 @@ fn build_counter_app() -> (Signal, HayabusaApp) {
 #[test]
 fn first_tick_mounts_and_builds_the_app_hosts_tree() {
     let (_count, app) = build_counter_app();
-    let mut host = AppHost::new(HeadlessSurface, Box::new(|| {}));
+    let mut host = AppHost::new(HeadlessPresentTarget, Box::new(|| {}));
     host.mount(Box::new(app));
 
     // delivery を積まずに最初のフレームを回す → ensure_mounted がツリーを組む。
@@ -75,7 +75,7 @@ fn first_tick_mounts_and_builds_the_app_hosts_tree() {
 #[test]
 fn click_through_app_host_patches_the_text_node() {
     let (_count, app) = build_counter_app();
-    let mut host = AppHost::new(HeadlessSurface, Box::new(|| {}));
+    let mut host = AppHost::new(HeadlessPresentTarget, Box::new(|| {}));
     host.mount(Box::new(app));
 
     // フレーム1：mount＋listener 登録。
@@ -102,7 +102,7 @@ fn click_through_app_host_patches_the_text_node() {
 #[test]
 fn repeated_clicks_across_frames_keep_patching_the_text_node() {
     let (count, app) = build_counter_app();
-    let mut host = AppHost::new(HeadlessSurface, Box::new(|| {}));
+    let mut host = AppHost::new(HeadlessPresentTarget, Box::new(|| {}));
     host.mount(Box::new(app));
     host.tick(0.0);
 
@@ -136,7 +136,7 @@ fn generated_hybs_component_runs_through_the_app_host() {
     let rt = Runtime::new();
     let sink = Rc::new(RefCell::new(RecordingSink::new()));
     let instance = counter::build(&rt, sink);
-    let mut host = AppHost::new(HeadlessSurface, Box::new(|| {}));
+    let mut host = AppHost::new(HeadlessPresentTarget, Box::new(|| {}));
     host.mount(Box::new(HayabusaApp::new(instance)));
 
     host.tick(0.0);
@@ -200,7 +200,7 @@ fn text_input_value_binding_and_on_input_through_app_host() {
     let clear_button_eid = ElementId::from_u64(2);
 
     let (draft, app) = build_field_app();
-    let mut host = AppHost::new(HeadlessSurface, Box::new(|| {}));
+    let mut host = AppHost::new(HeadlessPresentTarget, Box::new(|| {}));
     host.mount(Box::new(app));
     host.tick(0.0); // mount: build tree + register click/input listeners
 
@@ -247,7 +247,7 @@ fn static_style_drives_real_core_layout() {
     let sink = Rc::new(RefCell::new(RecordingSink::new()));
     let instance = instantiate(&rt, &template, &Scope::new(), Vec::new(), sink);
 
-    let mut host = AppHost::new(HeadlessSurface, Box::new(|| {}));
+    let mut host = AppHost::new(HeadlessPresentTarget, Box::new(|| {}));
     host.mount(Box::new(HayabusaApp::new(instance)));
     host.tick(0.0); // mount: build + apply style、tick 内で render→layout。
 
@@ -263,7 +263,7 @@ fn static_style_drives_real_core_layout() {
 #[test]
 fn click_on_unregistered_element_is_a_no_op() {
     let (_count, app) = build_counter_app();
-    let mut host = AppHost::new(HeadlessSurface, Box::new(|| {}));
+    let mut host = AppHost::new(HeadlessPresentTarget, Box::new(|| {}));
     host.mount(Box::new(app));
     host.tick(0.0);
 

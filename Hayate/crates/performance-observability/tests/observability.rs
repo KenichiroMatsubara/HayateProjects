@@ -1,8 +1,9 @@
-use hayate_performance_observability::{
-    FrameCounters, FrameDeadline, PerformanceObservability, PerformancePhase,
-};
+#[cfg(feature = "enabled")]
+use hayate_performance_observability::FrameCounters;
+use hayate_performance_observability::{FrameDeadline, PerformanceObservability, PerformancePhase};
 
 #[test]
+#[cfg(feature = "enabled")]
 fn records_one_fixed_size_frame_report_for_the_shared_pipeline_vocabulary() {
     let observability = PerformanceObservability::new();
     let mut frame = observability.begin_frame(FrameDeadline::from_refresh_rate_hz(60));
@@ -31,4 +32,16 @@ fn records_one_fixed_size_frame_report_for_the_shared_pipeline_vocabulary() {
     assert!(!report.missed_deadline());
     assert_eq!(report.counters.layers, 3);
     assert_eq!(report.counters.cache_misses, 1);
+}
+
+#[test]
+#[cfg(not(feature = "enabled"))]
+fn production_default_does_not_retain_frame_reports() {
+    let observability = PerformanceObservability::new();
+    let mut frame = observability.begin_frame(FrameDeadline::from_refresh_rate_hz(60));
+    frame.record_phase(PerformancePhase::AppHost, 100);
+    frame.finish();
+
+    assert!(!observability.is_enabled());
+    assert_eq!(observability.latest_report(), None);
 }

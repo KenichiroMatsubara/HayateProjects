@@ -15,8 +15,8 @@ use hashbrown::HashMap;
 use roxmltree::{Document, Node};
 
 use super::{
-    scan, FallbackKey, FamilyId, FamilyInfo, FamilyNameMap, GenericFamily, GenericFamilyMap,
-    Language, Script,
+    FallbackKey, FamilyId, FamilyInfo, FamilyNameMap, GenericFamily, GenericFamilyMap, Language,
+    Script, scan,
 };
 
 // TODO: Use actual generic families here, where available, when fonts.xml is properly parsed.

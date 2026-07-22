@@ -27,14 +27,14 @@
     "@torimi/tsubame-renderer-hayate": "workspace:*",
     "@torimi/tsubame-renderer-protocol": "workspace:*",
     "@torimi/tsubame-solid": "workspace:*",
-    "solid-js": "^1.9.13"
+    "solid-js": "^1.9.14"
   },
   "devDependencies": {
-    "@playwright/test": "^1.61.0",
+    "@playwright/test": "^1.61.1",
     "@torimi/tsubame-hayate-css-catalog": "workspace:*",
     "@torimi/cli": "workspace:*",
-    "vite": "^8.0.14",
-    "vite-plugin-solid": "^2.11.12",
-    "vitest": "^3.2.0"
+    "vite": "^8.1.5",
+    "vite-plugin-solid": "^2.11.13",
+    "vitest": "^4.1.10"
   }
 }

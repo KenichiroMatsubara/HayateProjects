@@ -13,7 +13,7 @@
 edition = "2021"
 rust-version = "1.71"
 name = "taffy"
-version = "0.12.1"
+version = "0.12.2"
 authors = [
     "Alice Cecile <alice.i.cecile@gmail.com>",
     "Johnathan Kelley <jkelleyrtp@gmail.com>",
@@ -132,7 +132,7 @@ name = "nested"
 path = "examples/nested.rs"
 
 [dependencies.arrayvec]
-version = "0.7"
+version = "0.7.8"
 default-features = false
 
 [dependencies.cssparser]
@@ -141,22 +141,22 @@ optional = true
 default-features = false
 
 [dependencies.document-features]
-version = "0.2.7"
+version = "0.2.12"
 optional = true
 
 [dependencies.grid]
-version = "1.0.0"
+version = "1.0.1"
 optional = true
 default-features = false
 
 [dependencies.serde]
-version = "1.0"
+version = "1.0.229"
 features = ["serde_derive"]
 optional = true
 default-features = false
 
 [dependencies.slotmap]
-version = "1.0.6"
+version = "1.1.1"
 optional = true
 default-features = false
 
@@ -164,7 +164,7 @@ default-features = false
 version = "0.21.1"
 
 [dev-dependencies.serde_json]
-version = "1.0.93"
+version = "1.0.151"
 
 [profile.release]
 lto = true

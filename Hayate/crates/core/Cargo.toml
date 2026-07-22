@@ -20,7 +20,7 @@ linebender_resource_handle = "0.1.1"
 accesskit.workspace = true
 
 [dev-dependencies]
-serde_json = "1"
+serde_json = "1.0.151"
 parley.workspace = true
 fontique.workspace = true
 linebender_resource_handle = "0.1.1"
