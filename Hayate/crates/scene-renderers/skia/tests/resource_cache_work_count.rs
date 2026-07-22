@@ -8,6 +8,7 @@ use hayate_core::{
     RenderImage, RenderImageAlphaType, RenderImageFormat, SceneGraph, StyleProp,
     TextFontAttributes, TextRunData, TextSynthesis,
 };
+use hayate_layer_compositor::ResidencyEvent;
 use hayate_scene_renderer_skia::{
     new_raster_surface, SkiaLayerRasterizer, SkiaRasterLayerSurfaceFactory, SkiaSceneRenderer,
 };
@@ -78,6 +79,30 @@ fn repeated_raster_reuses_the_render_images_byte_copy_and_sk_image() {
     let work = renderer.resource_work_counts();
     assert_eq!(work.image_byte_copies, 1);
     assert_eq!(work.sk_images_created, 1);
+}
+
+#[test]
+fn skia_paint_resources_follow_the_shared_cpu_residency_lifecycle() {
+    let image = Arc::new(RenderImage {
+        width: 2,
+        height: 2,
+        format: RenderImageFormat::Rgba8,
+        alpha_type: RenderImageAlphaType::Alpha,
+        data: Blob::from(vec![255_u8; 2 * 2 * 4]),
+    });
+    let graph = image_scene(image);
+    let mut renderer = SkiaSceneRenderer::new();
+    let mut surface = new_raster_surface(2, 2).expect("raster surface");
+    renderer.render_scene(&graph, surface.canvas(), [0.0; 4], 1.0);
+
+    let before_loss = renderer.resource_residency_stats();
+    renderer.handle_resource_lifecycle(ResidencyEvent::SurfaceLost);
+    let after_surface_loss = renderer.resource_residency_stats();
+    renderer.handle_resource_lifecycle(ResidencyEvent::Shutdown);
+
+    assert_eq!(before_loss.cpu.resident_bytes, 16);
+    assert_eq!(after_surface_loss.cpu.resident_bytes, 16);
+    assert_eq!(renderer.resource_residency_stats().cpu.resident_bytes, 0);
 }
 
 #[test]

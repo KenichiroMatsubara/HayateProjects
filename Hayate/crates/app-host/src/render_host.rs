@@ -16,7 +16,10 @@ use std::collections::HashSet;
 use anyhow::Error;
 use hayate_core::element::id::ElementId;
 use hayate_core::{LayerTopology, SceneSnapshot, Surface};
-use hayate_layer_compositor::ScrollLayerGeometry;
+use hayate_layer_compositor::{
+    DeviceMemoryClass, RenderResourceBudgetPolicy, ResidencyEvent, ResourceBudgetInputs,
+    ScrollLayerGeometry,
+};
 
 use crate::renderer_selection::{
     has_terminal_runtime_failure, is_runtime_fallback_reason, RendererCapabilities,
@@ -31,6 +34,8 @@ pub type ClearColor = [f32; 4];
 /// `Result<(), JsValue>` から `Result<(), anyhow::Error>` へ変更して hoist）。
 pub trait SceneRenderer {
     fn kind(&self) -> SceneRendererKind;
+    fn configure_resource_residency(&mut self, _policy: RenderResourceBudgetPolicy) {}
+    fn handle_resource_lifecycle(&mut self, _event: ResidencyEvent) {}
     fn clear(&mut self, clear_color: ClearColor) -> Result<(), Error>;
 
     /// Present one committed snapshot and its renderer-neutral layer topology.
@@ -61,6 +66,14 @@ pub trait SceneRenderer {
 /// future を要求したくなった場合は、この trait とは別に境界を足す形で対応する。
 #[allow(async_fn_in_trait)]
 pub trait RendererInit<S: Surface> {
+    fn resource_budget_inputs(&self, surface: &S) -> ResourceBudgetInputs {
+        ResourceBudgetInputs::new(
+            DeviceMemoryClass::Balanced,
+            surface.width(),
+            surface.height(),
+        )
+    }
+
     /// 起動時の非同期初期化（一度きり、tick ループはまだ回っていないので mailbox 不要）。
     async fn try_init(
         &self,
@@ -96,6 +109,9 @@ pub struct RenderHost<S: Surface, I: RendererInit<S>> {
     /// skia-safe の選択後 failure。設定後は renderer を二度と呼ばず、同じ terminal
     /// category を App Host へ返し続ける（暗黙 retry/restart を型の状態として封じる）。
     terminal_failure: Option<String>,
+    resource_budget_policy: RenderResourceBudgetPolicy,
+    device_memory_class: DeviceMemoryClass,
+    shutdown_sent: bool,
 }
 
 impl<S: Surface, I: RendererInit<S>> RenderHost<S, I> {
@@ -109,6 +125,8 @@ impl<S: Surface, I: RendererInit<S>> RenderHost<S, I> {
         init: I,
     ) -> Result<Self, Error> {
         let plan = selection_policy.choose(capabilities);
+        let resource_budget_inputs = init.resource_budget_inputs(&surface);
+        let resource_budget_policy = RenderResourceBudgetPolicy::for_device(resource_budget_inputs);
 
         // 見送ったレンダラーと理由（RendererSelectionReason 語彙）を成功時にも観測可能に
         // する（issue #801: 選択レンダラ・選択理由を stderr / console ログで確認できる）。
@@ -128,7 +146,8 @@ impl<S: Surface, I: RendererInit<S>> RenderHost<S, I> {
 
         for &renderer_kind in plan.attempt_order() {
             match init.try_init(renderer_kind, surface.clone()).await {
-                Ok(renderer) => {
+                Ok(mut renderer) => {
+                    renderer.configure_resource_residency(resource_budget_policy);
                     log::info!("selected scene renderer: {}", renderer.kind().name());
                     return Ok(Self {
                         surface,
@@ -136,6 +155,9 @@ impl<S: Surface, I: RendererInit<S>> RenderHost<S, I> {
                         selection_plan: plan,
                         init,
                         terminal_failure: None,
+                        resource_budget_policy,
+                        device_memory_class: resource_budget_inputs.memory_class,
+                        shutdown_sent: false,
                     });
                 }
                 Err(error) => {
@@ -164,6 +186,13 @@ impl<S: Surface, I: RendererInit<S>> RenderHost<S, I> {
             return Err(error);
         };
         let reason = self.init.classify_init_error(failed_kind, &error);
+        let lifecycle = match reason {
+            RendererSelectionReason::SurfaceLost => ResidencyEvent::SurfaceLost,
+            _ => ResidencyEvent::ContextLost,
+        };
+        if let Some(renderer) = self.renderer.as_mut() {
+            renderer.handle_resource_lifecycle(lifecycle);
+        }
         if has_terminal_runtime_failure(failed_kind) {
             let failure = format!(
                 "terminal scene renderer failure: {} ({reason:?}): {error}",
@@ -189,10 +218,11 @@ impl<S: Surface, I: RendererInit<S>> RenderHost<S, I> {
             next_kind.name()
         );
 
-        let failed_renderer = self
+        let mut failed_renderer = self
             .renderer
             .take()
             .expect("runtime fallback requires an active scene renderer");
+        failed_renderer.handle_resource_lifecycle(ResidencyEvent::Shutdown);
         drop(failed_renderer);
 
         match self
@@ -201,6 +231,7 @@ impl<S: Surface, I: RendererInit<S>> RenderHost<S, I> {
         {
             Ok(mut renderer) => {
                 debug_assert!(self.selection_plan.includes(renderer.kind()));
+                renderer.configure_resource_residency(self.resource_budget_policy);
                 renderer.resize(self.surface.width(), self.surface.height(), 1.0);
                 let retry_result = retry(renderer.as_mut());
                 self.renderer = Some(renderer);
@@ -212,6 +243,27 @@ impl<S: Surface, I: RendererInit<S>> RenderHost<S, I> {
                 next_kind.name(),
             )),
         }
+    }
+
+    pub fn handle_resource_lifecycle(&mut self, event: ResidencyEvent) {
+        if event == ResidencyEvent::Shutdown {
+            self.shutdown_sent = true;
+        }
+        if let Some(renderer) = self.renderer.as_mut() {
+            renderer.handle_resource_lifecycle(event);
+        }
+    }
+}
+
+impl<S: Surface, I: RendererInit<S>> Drop for RenderHost<S, I> {
+    fn drop(&mut self) {
+        if self.shutdown_sent {
+            return;
+        }
+        if let Some(renderer) = self.renderer.as_mut() {
+            renderer.handle_resource_lifecycle(ResidencyEvent::Shutdown);
+        }
+        self.shutdown_sent = true;
     }
 }
 
@@ -268,7 +320,11 @@ impl<S: Surface, I: RendererInit<S>> SceneRenderer for RenderHost<S, I> {
         if self.terminal_failure.is_some() {
             return;
         }
+        self.resource_budget_policy = RenderResourceBudgetPolicy::for_device(
+            ResourceBudgetInputs::new(self.device_memory_class, width, height),
+        );
         if let Some(renderer) = self.renderer.as_mut() {
+            renderer.configure_resource_residency(self.resource_budget_policy);
             renderer.resize(width, height, content_scale);
         }
     }
@@ -278,6 +334,9 @@ impl<S: Surface, I: RendererInit<S>> SceneRenderer for RenderHost<S, I> {
 mod tests {
     use super::*;
     use crate::renderer_selection::RendererSelectionPolicy;
+    use hayate_layer_compositor::{
+        DeviceMemoryClass, RenderResourceBudgetPolicy, ResourceBudgetInputs,
+    };
     use std::cell::RefCell;
     use std::rc::Rc;
 
@@ -599,6 +658,156 @@ mod tests {
             assert!(
                 result.is_err(),
                 "the last renderer in the plan has nowhere left to fall back to"
+            );
+        });
+    }
+
+    struct BudgetRenderer {
+        configured: Rc<RefCell<Vec<RenderResourceBudgetPolicy>>>,
+        lifecycle: Rc<RefCell<Vec<hayate_layer_compositor::ResidencyEvent>>>,
+    }
+
+    impl SceneRenderer for BudgetRenderer {
+        fn kind(&self) -> SceneRendererKind {
+            SceneRendererKind::TinySkia
+        }
+
+        fn configure_resource_residency(&mut self, policy: RenderResourceBudgetPolicy) {
+            self.configured.borrow_mut().push(policy);
+        }
+
+        fn handle_resource_lifecycle(&mut self, event: hayate_layer_compositor::ResidencyEvent) {
+            self.lifecycle.borrow_mut().push(event);
+        }
+
+        fn present_layers(
+            &mut self,
+            _scene: &SceneSnapshot,
+            _topology: &LayerTopology,
+            _scroll_geometry: &HashMap<ElementId, ScrollLayerGeometry>,
+            _clear_color: ClearColor,
+        ) -> Result<(), Error> {
+            Ok(())
+        }
+
+        fn clear(&mut self, _clear_color: ClearColor) -> Result<(), Error> {
+            Ok(())
+        }
+    }
+
+    struct BudgetInit {
+        configured: Rc<RefCell<Vec<RenderResourceBudgetPolicy>>>,
+        lifecycle: Rc<RefCell<Vec<hayate_layer_compositor::ResidencyEvent>>>,
+    }
+
+    impl RendererInit<FakeSurface> for BudgetInit {
+        async fn try_init(
+            &self,
+            _kind: SceneRendererKind,
+            _surface: FakeSurface,
+        ) -> Result<Box<dyn SceneRenderer>, Error> {
+            Ok(Box::new(BudgetRenderer {
+                configured: self.configured.clone(),
+                lifecycle: self.lifecycle.clone(),
+            }))
+        }
+
+        fn try_init_sync_for_fallback(
+            &self,
+            _kind: SceneRendererKind,
+            _surface: FakeSurface,
+        ) -> Result<Box<dyn SceneRenderer>, Error> {
+            unreachable!("the selected renderer does not fail")
+        }
+
+        fn classify_init_error(
+            &self,
+            _kind: SceneRendererKind,
+            _error: &Error,
+        ) -> RendererSelectionReason {
+            RendererSelectionReason::RendererInitFailed
+        }
+
+        fn resource_budget_inputs(&self, surface: &FakeSurface) -> ResourceBudgetInputs {
+            ResourceBudgetInputs::new(
+                DeviceMemoryClass::Constrained,
+                surface.width(),
+                surface.height(),
+            )
+        }
+    }
+
+    #[test]
+    fn render_host_selects_and_configures_the_resource_budget_from_device_capability() {
+        pollster::block_on(async {
+            let configured = Rc::new(RefCell::new(Vec::new()));
+            let lifecycle = Rc::new(RefCell::new(Vec::new()));
+            let surface = FakeSurface {
+                width: 800,
+                height: 600,
+            };
+            RenderHost::init_with_policy(
+                surface.clone(),
+                RendererSelectionPolicy::new(
+                    &[SceneRendererKind::TinySkia],
+                    &[SceneRendererKind::TinySkia],
+                ),
+                RendererCapabilities {
+                    webgpu_available: false,
+                },
+                BudgetInit {
+                    configured: configured.clone(),
+                    lifecycle,
+                },
+            )
+            .await
+            .expect("tiny-skia initializes");
+
+            assert_eq!(
+                configured.borrow().as_slice(),
+                &[RenderResourceBudgetPolicy::for_device(
+                    ResourceBudgetInputs::new(DeviceMemoryClass::Constrained, 800, 600)
+                )]
+            );
+        });
+    }
+
+    #[test]
+    fn render_host_routes_memory_pressure_to_only_the_selected_renderer_residency() {
+        pollster::block_on(async {
+            let configured = Rc::new(RefCell::new(Vec::new()));
+            let lifecycle = Rc::new(RefCell::new(Vec::new()));
+            let mut host = RenderHost::init_with_policy(
+                FakeSurface {
+                    width: 800,
+                    height: 600,
+                },
+                RendererSelectionPolicy::new(
+                    &[SceneRendererKind::TinySkia],
+                    &[SceneRendererKind::TinySkia],
+                ),
+                RendererCapabilities {
+                    webgpu_available: false,
+                },
+                BudgetInit {
+                    configured,
+                    lifecycle: lifecycle.clone(),
+                },
+            )
+            .await
+            .expect("tiny-skia initializes");
+
+            host.handle_resource_lifecycle(
+                hayate_layer_compositor::ResidencyEvent::MemoryPressure(
+                    hayate_layer_compositor::MemoryPressure::Moderate,
+                ),
+            );
+
+            assert_eq!(
+                lifecycle.borrow().as_slice(),
+                &[hayate_layer_compositor::ResidencyEvent::MemoryPressure(
+                    hayate_layer_compositor::MemoryPressure::Moderate
+                )]
             );
         });
     }

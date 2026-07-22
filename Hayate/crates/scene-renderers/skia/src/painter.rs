@@ -9,20 +9,15 @@
 
 use hayate_core::{
     build_draw_path, is_notdef, missing_glyph_placeholder, DrawFillRule, DrawLineCap, DrawLineJoin,
-    FontInstance, FontInstanceId, PathSink, PathVerb, RenderGlyph, RenderImage, ScenePainter,
-    SceneResources, StrokeStyle, TextRun, TextRunId,
+    FontInstance, PathSink, PathVerb, RenderGlyph, RenderImage, ScenePainter, SceneResources,
+    StrokeStyle, TextRun, TextRunId,
 };
 use skia_safe::{
     canvas::SrcRectConstraint,
     dash_path_effect,
-    font_arguments::{variation_position::Coordinate, FontArguments, VariationPosition},
     paint::{Cap as PaintCap, Join as PaintJoin, Style as PaintStyle},
-    Canvas, Color4f, Font, FontMgr, FourByteTag, Paint, Path, PathBuilder as SkPathBuilder,
-    PathFillType, Point, RRect, Rect, SamplingOptions,
-};
-use skrifa::{
-    raw::{tables::avar::SegmentMaps, FontRef, TableProvider},
-    MetadataProvider,
+    Canvas, Color4f, Font, Paint, Path, PathBuilder as SkPathBuilder, PathFillType, Point, RRect,
+    Rect, SamplingOptions,
 };
 
 use crate::resource_cache::PaintResourceCache;
@@ -306,137 +301,6 @@ impl PathSink for SkiaPathSink {
     }
 }
 
-thread_local! {
-    /// スレッドごとに 1 度だけ構築する SkFontMgr。`FontMgr::default()`（`FontMgr::new` 相当）は
-    /// 呼ぶたびに新しい SkFontMgr を生成し、Android では system font config XML のパース＋全
-    /// システムフォントの列挙が走る。TextRun ごとに毎フレーム生成していたところ、実機
-    /// （issue #803 の on-device 検証・OPPO A101OP）でフレームごとの `[SkFontMgr Android
-    /// Parser]` ログ洪水とネイティブメモリ膨張→LMK kill（テキストの多いシーンで起動 15 秒後に
-    /// プロセス死）を起こした。raster / GL の両 surface に共通の painter 品質問題であり、GL 対応
-    /// （surface 非依存契約 ADR-0146 §3）とは独立の修正。
-    static FONT_MGR: FontMgr = FontMgr::default();
-}
-
-/// スレッド共有の SkFontMgr で `f` を実行する（生成は重いので使い回す）。
-fn shared_font_mgr<R>(f: impl FnOnce(&FontMgr) -> R) -> R {
-    FONT_MGR.with(f)
-}
-
-thread_local! {
-    /// Core-owned `FontInstanceId` をキーにした typeface の常駐キャッシュ。
-    /// `new_from_data` はフォントバイト列全体を SkData へコピーするため、TextRun ごと・
-    /// フレームごとの再構築は実機でネイティブメモリ膨張→LMK kill を起こした（issue #803 の
-    /// on-device 検証）。`FontInstanceId` は font face と variation 座標をまとめて指し、
-    /// steady-state 描画では可変長の座標列を clone / hash せず固定長 ID だけを引く。
-    /// 組み合わせ数は「フォント数 × 使用ウェイト数」でたかだか数十なので無制限で保持する。
-    static TYPEFACE_CACHE: std::cell::RefCell<
-        std::collections::HashMap<FontInstanceId, Option<skia_safe::Typeface>>,
-    > = std::cell::RefCell::new(std::collections::HashMap::new());
-}
-
-/// avar の区分線形写像（pre-avar 正規化 → post-avar 正規化）を逆向きに評価する。
-/// 区分は from/to とも単調非減少なので、post 側の区間を見つけて線形補間で from 側へ戻す。
-fn inverse_avar_segment(map: &SegmentMaps, post: f32) -> f32 {
-    let maps = map.axis_value_maps();
-    let from = |i: usize| maps[i].from_coordinate().to_f32();
-    let to = |i: usize| maps[i].to_coordinate().to_f32();
-    match maps.len() {
-        0 => return post,
-        1 => return post - to(0) + from(0),
-        _ => {}
-    }
-    if post <= to(0) {
-        return from(0);
-    }
-    for i in 1..maps.len() {
-        if post <= to(i) {
-            let span = to(i) - to(i - 1);
-            if span <= 0.0 {
-                return from(i);
-            }
-            return from(i - 1) + (post - to(i - 1)) * (from(i) - from(i - 1)) / span;
-        }
-    }
-    from(maps.len() - 1)
-}
-
-/// Parley 由来の正規化 variation 座標（avar 適用後・F2Dot14・fvar 軸順）を fvar の
-/// design 座標へ戻す。Skia の `FontArguments` は design 座標しか受けないため、avar が
-/// あれば区分線形写像を逆向きに評価してから、fvar の min/default/max で線形展開する。
-fn design_coords_from_normalized(
-    font: &hayate_core::RenderFont,
-    normalized: &[i16],
-) -> Vec<Coordinate> {
-    let bytes: &[u8] = font.data.as_ref();
-    let Ok(font_ref) = FontRef::from_index(bytes, font.index) else {
-        return Vec::new();
-    };
-    let axes = font_ref.axes();
-    let avar = font_ref.avar().ok();
-    let mut out = Vec::with_capacity(axes.len());
-    for (i, axis) in axes.iter().enumerate() {
-        let Some(&raw) = normalized.get(i) else {
-            break;
-        };
-        let post = f32::from(raw) / 16384.0;
-        let pre = match avar
-            .as_ref()
-            .and_then(|a| a.axis_segment_maps().iter().nth(i))
-        {
-            Some(Ok(map)) => inverse_avar_segment(&map, post),
-            _ => post,
-        };
-        let (min, def, max) = (axis.min_value(), axis.default_value(), axis.max_value());
-        let design = if pre >= 0.0 {
-            def + pre * (max - def)
-        } else {
-            def + pre * (def - min)
-        };
-        let tag = FourByteTag::from(u32::from_be_bytes(axis.tag().to_be_bytes()));
-        out.push(Coordinate {
-            axis: tag,
-            value: design,
-        });
-    }
-    out
-}
-
-/// `RenderFont` のバイト列から、`normalized_coords` の variable font インスタンスを
-/// 焼き込んだ SkTypeface を作る（`FontInstanceId` の常駐キャッシュ越し）。
-/// 座標を無視すると variable font は fvar 既定インスタンスで描かれる——バンドルの
-/// NotoSansJP は既定が wght=100（Thin）なので、全テキストがヘアラインになり UI 全体が
-/// 「淡く」見える実回帰があった（vello/tiny-skia は座標を消費する。共有
-/// css_pixels の font-weight ケースがこの契約を固定する）。
-fn cached_typeface(
-    font_id: FontInstanceId,
-    instance: &FontInstance,
-) -> Option<skia_safe::Typeface> {
-    TYPEFACE_CACHE.with(|cache| {
-        cache
-            .borrow_mut()
-            .entry(font_id)
-            .or_insert_with(|| {
-                let font = &instance.font;
-                let normalized_coords = instance.normalized_coords.as_ref();
-                let bytes: &[u8] = font.data.as_ref();
-                let base = shared_font_mgr(|mgr| mgr.new_from_data(bytes, font.index as usize))?;
-                if normalized_coords.is_empty() {
-                    return Some(base);
-                }
-                let coords = design_coords_from_normalized(font, normalized_coords);
-                if coords.is_empty() {
-                    return Some(base);
-                }
-                let args = FontArguments::new().set_variation_design_position(VariationPosition {
-                    coordinates: &coords,
-                });
-                // clone 失敗（非 variable font 等）は既定インスタンスへフォールバック。
-                base.clone_with_arguments(&args).or(Some(base))
-            })
-            .clone()
-    })
-}
-
 fn draw_text_run(
     canvas: &Canvas,
     resources: &mut PaintResourceCache,
@@ -447,7 +311,7 @@ fn draw_text_run(
     data: &TextRun,
     font_instance: &FontInstance,
 ) {
-    let Some(typeface) = cached_typeface(data.font_instance, font_instance) else {
+    let Some(typeface) = resources.typeface_for(data.font_instance, font_instance) else {
         return;
     };
     let mut font = Font::new(typeface, data.font_size);
@@ -533,67 +397,4 @@ fn draw_image(
         SamplingOptions::default(),
         &paint,
     );
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// RCHandle の native ポインタ（同一 SkFontMgr インスタンスかの同定用）。
-    /// SAFETY: `RCHandle<N>` は `NonNull<N>` の透明ラッパ（skia-safe は `=0.99.0` に厳密ピン）。
-    fn native_ptr(mgr: &FontMgr) -> *const std::ffi::c_void {
-        unsafe { std::mem::transmute_copy::<FontMgr, *const std::ffi::c_void>(mgr) }
-    }
-
-    #[test]
-    fn typefaces_are_cached_per_font_instance_and_reused_across_frames() {
-        // `FontMgr::new_from_data` はフォントバイト列全体を SkData へコピーする。TextRun ごと・
-        // フレームごとに typeface を作り直すと、実機（issue #803 検証・OPPO A101OP）でネイティブ
-        // メモリが伸び続け起動 ~70 秒で LMK kill された。Core が発行する安定な
-        // `FontInstanceId` で typeface を使い回すことを固定する。
-        let bytes = std::fs::read(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/tests/assets/twemoji_smiley_sbix.ttf"
-        ))
-        .expect("test font asset");
-        let font =
-            hayate_core::RenderFont::new(hayate_core::Blob::new(std::sync::Arc::new(bytes)), 0);
-        let mut scene = hayate_core::SceneGraph::new();
-        let text_run = scene.intern_text_run(hayate_core::TextRunData {
-            font,
-            font_size: 16.0,
-            font_attributes: hayate_core::TextFontAttributes::default(),
-            glyphs: Vec::new(),
-            decorations: Vec::new(),
-            text: std::sync::Arc::from("cache probe"),
-            synthesis: hayate_core::TextSynthesis::default(),
-            normalized_coords: Vec::new(),
-        });
-        let run = scene.resources().text_run(text_run).unwrap();
-        let id = run.font_instance;
-        let instance = scene.resources().font_instance(id).unwrap();
-        let a = cached_typeface(id, instance).expect("typeface from valid font bytes");
-        let b = cached_typeface(id, instance).expect("typeface from valid font bytes");
-        assert_eq!(
-            unsafe { std::mem::transmute_copy::<skia_safe::Typeface, *const std::ffi::c_void>(&a) },
-            unsafe { std::mem::transmute_copy::<skia_safe::Typeface, *const std::ffi::c_void>(&b) },
-            "the same FontInstanceId must reuse the cached SkTypeface"
-        );
-    }
-
-    #[test]
-    fn the_font_mgr_is_constructed_once_per_thread_and_reused() {
-        // SkFontMgr の生成は重い（Android では system font config XML のパース＋全システム
-        // フォントの列挙）。TextRun ごとに毎フレーム生成すると、実機（issue #803 の検証）で
-        // フレームごとの XML パースとネイティブメモリ膨張→LMK kill を起こした。同一スレッド
-        // 内では同じインスタンスが返ることを固定する（clone を両方生かしたまま native
-        // ポインタを比較——毎回生成する誤実装ならこの 2 つは別インスタンスになる）。
-        let a = shared_font_mgr(|mgr| mgr.clone());
-        let b = shared_font_mgr(|mgr| mgr.clone());
-        assert_eq!(
-            native_ptr(&a),
-            native_ptr(&b),
-            "shared_font_mgr must hand out the same per-thread SkFontMgr instance"
-        );
-    }
 }

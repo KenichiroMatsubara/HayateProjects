@@ -49,6 +49,10 @@ pub struct FrameCounters {
     pub cache_hits: u32,
     pub cache_misses: u32,
     pub allocations: u32,
+    pub cpu_resident_bytes: u64,
+    pub gpu_resident_bytes: u64,
+    pub resource_evictions: u64,
+    pub resource_rebuild_cost: u64,
 }
 
 /// One refresh interval, in nanoseconds.

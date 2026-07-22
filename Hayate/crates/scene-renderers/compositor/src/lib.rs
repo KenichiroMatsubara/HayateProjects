@@ -31,22 +31,24 @@ pub use layer_presentation::{
 };
 pub mod raster_thread;
 pub use raster_thread::{RasterCommand, RasterHandoff, RasterHandoffError, RasterThread};
+pub mod resource_residency;
+pub use resource_residency::{
+    DeviceMemoryClass, ImageResourceId, LayerResourceId, LayerResourcePlane, MemoryPressure,
+    PoolBudgetPolicy, PoolResidencyStats, RenderResourceBudgetPolicy, RenderResourceKey,
+    RenderResourceResidency, ResidencyEvent, ResidencyMutation, ResidencyStats,
+    ResourceBudgetInputs, ResourceDomain,
+};
 pub mod scroll_geometry;
 pub use scroll_geometry::{
     scroll_layer_geometry, scroll_layer_geometry_from_inputs, scroll_layer_geometry_table,
     RasterBand, ScrollLayerGeometry,
 };
 
-/// 名前付き tunable（ADR-0127）。オーバースキャン余白・GPU 予算・ピクセルバイトの単一正本。値は
-/// プレースホルダで、マジックナンバーをロジックへ散らさないことが目的。予算（ビューポート N 枚分）は
-/// platform が注入する既定値で、core のレイヤ判定はこれを知らない（policy=core, budget=platform）。
+/// Renderer implementation tunables. Resource budgets live exclusively in
+/// [`RenderResourceBudgetPolicy`], selected by Render Host.
 pub mod tunables {
     /// scroll 内容レイヤの可視域外オーバースキャン余白（上下それぞれ、論理 px）。
     pub const OVERSCAN_MARGIN_PX: f32 = 600.0;
-    /// GPU 予算（ビューポート N 枚分）。モバイル既定は小さめ（ADR-0127）。
-    pub const GPU_BUDGET_VIEWPORTS_MOBILE: f32 = 3.0;
-    /// GPU 予算（ビューポート N 枚分）。デスクトップ/native ハイエンド既定は大きめ。
-    pub const GPU_BUDGET_VIEWPORTS_DESKTOP: f32 = 8.0;
     /// 1 ピクセルあたりのバイト数（RGBA8 / BGRA8 とも 4）。
     pub const BYTES_PER_PIXEL: u64 = 4;
 }
@@ -231,8 +233,8 @@ impl LayerCache {
     }
 }
 
-/// platform が注入する GPU texture 予算（ADR-0127）。core（#609）のレイヤ判定・`layer_dirty` は
-/// これを知らない（policy=core, budget=platform）。単位「ビューポート N 枚分」をバイトに換算して持つ。
+/// Layer ledgerへ適用するbyte上限。値はRender Host所有の
+/// [`RenderResourceBudgetPolicy`]からselected rendererが投影する。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GpuBudget {
     pub max_bytes: u64,
@@ -244,9 +246,8 @@ impl GpuBudget {
         Self { max_bytes }
     }
 
-    /// ビューポート（幅×高 px）× N 枚 × 4byte で予算バイトを計算する。viewport と N は platform が
-    /// 注入する（モバイルは [`tunables::GPU_BUDGET_VIEWPORTS_MOBILE`]、デスクトップは
-    /// [`tunables::GPU_BUDGET_VIEWPORTS_DESKTOP`] 等）。
+    /// テストと明示的fixture向けに、ビューポート枚数からbyte上限を組み立てる。
+    /// ProductionはRender Hostのtyped policyを使う。
     pub fn from_viewports(viewport_w: u32, viewport_h: u32, viewports: f32) -> Self {
         let per = u64::from(viewport_w) * u64::from(viewport_h) * tunables::BYTES_PER_PIXEL;
         Self {
@@ -747,7 +748,6 @@ mod tests {
     fn named_tunables_have_documented_placeholder_values() {
         // マジックナンバーを散らさないため、tunable は名前付き定数の単一正本に置く（ADR-0127）。
         assert!(tunables::OVERSCAN_MARGIN_PX > 0.0);
-        assert!(tunables::GPU_BUDGET_VIEWPORTS_MOBILE < tunables::GPU_BUDGET_VIEWPORTS_DESKTOP);
         assert_eq!(tunables::BYTES_PER_PIXEL, 4);
     }
 }

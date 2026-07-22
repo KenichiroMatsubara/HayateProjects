@@ -42,6 +42,7 @@ use hayate_app_host::renderer_selection::{
 use hayate_app_host::{AppHost, PresentTarget};
 use hayate_core::{ImeBridge, ImeBuffer, ImePresentation, Surface, ViewportMetrics};
 use hayate_demo_fixtures::tasks_tree;
+use hayate_layer_compositor::{DeviceMemoryClass, ResourceBudgetInputs};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::WindowEvent;
@@ -160,6 +161,14 @@ impl DesktopRendererInit {
 }
 
 impl RendererInit<DesktopWindowSurface> for DesktopRendererInit {
+    fn resource_budget_inputs(&self, surface: &DesktopWindowSurface) -> ResourceBudgetInputs {
+        ResourceBudgetInputs::new(
+            DeviceMemoryClass::Expanded,
+            surface.width(),
+            surface.height(),
+        )
+    }
+
     async fn try_init(
         &self,
         kind: SceneRendererKind,

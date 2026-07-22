@@ -578,6 +578,7 @@ pub(crate) fn run(app: AndroidApp) {
                 cache_hits: 0,
                 cache_misses: 0,
                 allocations: 0,
+                ..FrameCounters::default()
             });
             let _ = observation.measure(PerformancePhase::RendererSubmit, || {
                 rt.send(frame_handoff(&frame))

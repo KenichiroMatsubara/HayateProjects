@@ -11,13 +11,13 @@
 //! は logical scene 座標なので、合成時に `scale(s) ∘ placement ∘ scale(1/s)` へ写して device px の
 //! draw 変換にする（texture 自身は device 解像度なので線形部は素通り・translate だけ ×s される）。
 
-use std::collections::HashMap;
-
 use hayate_core::element::id::ElementId;
 use hayate_core::{LayerRasterBounds, LayerScene, SceneRead};
 use hayate_layer_compositor::{
-    CompositeQuad, LayerCompositor, LayerPresentationAdapter, LayerRasterizer, PlacementPlan,
-    RasterBand, RasterJob, RasterJobKind,
+    CompositeQuad, DeviceMemoryClass, LayerCompositor, LayerPresentationAdapter, LayerRasterizer,
+    LayerResourceId, LayerResourcePlane, PlacementPlan, RasterBand, RasterJob, RasterJobKind,
+    RenderResourceBudgetPolicy, RenderResourceKey, RenderResourceResidency, ResidencyEvent,
+    ResidencyStats, ResourceBudgetInputs, ResourceDomain,
 };
 use tiny_skia::{Color, FillRule, Mask, PathBuilder, Pixmap, PixmapPaint, Point, Rect, Transform};
 
@@ -43,7 +43,8 @@ pub struct TinySkiaLayerRasterizer {
     width: u32,
     height: u32,
     content_scale: f32,
-    textures: HashMap<ElementId, TinySkiaLayerTexture>,
+    plane: LayerResourcePlane,
+    resources: RenderResourceResidency<TinySkiaLayerTexture>,
 }
 
 /// A layer-local Pixmap plus the device-pixel scene origin represented by pixel (0, 0).
@@ -73,12 +74,40 @@ impl TinySkiaLayerTexture {
 
 impl TinySkiaLayerRasterizer {
     pub fn new(width: u32, height: u32, content_scale: f32) -> Self {
+        Self::new_for_plane(width, height, content_scale, LayerResourcePlane::Content)
+    }
+
+    pub fn new_for_plane(
+        width: u32,
+        height: u32,
+        content_scale: f32,
+        plane: LayerResourcePlane,
+    ) -> Self {
         Self {
             width: width.max(1),
             height: height.max(1),
             content_scale,
-            textures: HashMap::new(),
+            plane,
+            resources: RenderResourceResidency::new(RenderResourceBudgetPolicy::for_device(
+                ResourceBudgetInputs::new(DeviceMemoryClass::Balanced, width, height),
+            )),
         }
+    }
+
+    fn resource_key(&self, layer: ElementId) -> RenderResourceKey {
+        RenderResourceKey::Layer(LayerResourceId::new(layer, self.plane))
+    }
+
+    pub fn configure_resource_residency(&mut self, policy: RenderResourceBudgetPolicy) {
+        self.resources.set_policy(policy);
+    }
+
+    pub fn handle_resource_lifecycle(&mut self, event: ResidencyEvent) {
+        self.resources.handle_lifecycle(event);
+    }
+
+    pub fn residency_stats(&self) -> ResidencyStats {
+        self.resources.stats()
     }
 
     /// サーフェスサイズ / DPR 変更。キャッシュ面は全部作り直しになる（呼び元は planner も invalidate）。
@@ -86,7 +115,7 @@ impl TinySkiaLayerRasterizer {
         self.width = width.max(1);
         self.height = height.max(1);
         self.content_scale = content_scale;
-        self.textures.clear();
+        self.resources.clear_domain(ResourceDomain::Cpu);
     }
 
     fn device_region(&self, bounds: LayerRasterBounds) -> ((i32, i32), u32, u32) {
@@ -125,22 +154,30 @@ impl TinySkiaLayerRasterizer {
             self.content_scale,
             device_origin,
         );
-        self.textures.insert(
-            layer,
+        let bytes = u64::from(width)
+            * u64::from(height)
+            * hayate_layer_compositor::tunables::BYTES_PER_PIXEL;
+        self.resources.insert_retained(
+            ResourceDomain::Cpu,
+            self.resource_key(layer),
             TinySkiaLayerTexture {
                 pixmap,
                 device_origin,
             },
+            bytes,
+            u64::from(width) * u64::from(height),
         );
         Ok(())
     }
 
     pub fn texture_bytes(&self, layer: ElementId) -> u64 {
-        self.textures.get(&layer).map_or(0, |texture| {
-            u64::from(texture.width())
-                * u64::from(texture.height())
-                * hayate_layer_compositor::tunables::BYTES_PER_PIXEL
-        })
+        self.resources
+            .peek(ResourceDomain::Cpu, self.resource_key(layer))
+            .map_or(0, |texture| {
+                u64::from(texture.width())
+                    * u64::from(texture.height())
+                    * hayate_layer_compositor::tunables::BYTES_PER_PIXEL
+            })
     }
 }
 
@@ -164,18 +201,25 @@ impl LayerRasterizer for TinySkiaLayerRasterizer {
             TRANSPARENT,
             self.content_scale,
         );
-        self.textures.insert(
-            layer,
+        let bytes = u64::from(self.width)
+            * u64::from(self.height)
+            * hayate_layer_compositor::tunables::BYTES_PER_PIXEL;
+        self.resources.insert_retained(
+            ResourceDomain::Cpu,
+            self.resource_key(layer),
             TinySkiaLayerTexture {
                 pixmap,
                 device_origin: (0, 0),
             },
+            bytes,
+            u64::from(self.width) * u64::from(self.height),
         );
         Ok(())
     }
 
     fn texture(&self, layer: ElementId) -> Option<&TinySkiaLayerTexture> {
-        self.textures.get(&layer)
+        self.resources
+            .peek(ResourceDomain::Cpu, self.resource_key(layer))
     }
 
     fn texture_bytes_per_layer(&self) -> u64 {
@@ -185,11 +229,12 @@ impl LayerRasterizer for TinySkiaLayerRasterizer {
     }
 
     fn discard(&mut self, layer: ElementId) {
-        self.textures.remove(&layer);
+        self.resources
+            .remove(ResourceDomain::Cpu, self.resource_key(layer));
     }
 
     fn discard_all(&mut self) {
-        self.textures.clear();
+        self.resources.clear_domain(ResourceDomain::Cpu);
     }
 }
 

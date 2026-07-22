@@ -20,6 +20,10 @@ fn records_one_fixed_size_frame_report_for_the_shared_pipeline_vocabulary() {
         cache_hits: 4,
         cache_misses: 1,
         allocations: 0,
+        cpu_resident_bytes: 8 * 1024 * 1024,
+        gpu_resident_bytes: 24 * 1024 * 1024,
+        resource_evictions: 2,
+        resource_rebuild_cost: 4096,
     });
     frame.finish();
 
@@ -31,4 +35,8 @@ fn records_one_fixed_size_frame_report_for_the_shared_pipeline_vocabulary() {
     assert!(!report.missed_deadline());
     assert_eq!(report.counters.layers, 3);
     assert_eq!(report.counters.cache_misses, 1);
+    assert_eq!(report.counters.cpu_resident_bytes, 8 * 1024 * 1024);
+    assert_eq!(report.counters.gpu_resident_bytes, 24 * 1024 * 1024);
+    assert_eq!(report.counters.resource_evictions, 2);
+    assert_eq!(report.counters.resource_rebuild_cost, 4096);
 }
