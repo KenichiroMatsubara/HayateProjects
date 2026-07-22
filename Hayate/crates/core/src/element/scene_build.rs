@@ -350,7 +350,7 @@ impl AnchorSink for EphemeralSink {
 
 /// retained アンカー無しの ephemeral 全再構築（パリティ参照／テスト用）。
 pub fn build_ephemeral(tree: &ElementTree) -> SceneGraph {
-    let mut sg = SceneGraph::new();
+    let mut sg = tree.scene_cache.empty_projection();
     let interaction = tree.interaction_snapshot();
     if let Some(root) = tree.root() {
         let mut sink = EphemeralSink;
@@ -390,7 +390,7 @@ pub(crate) fn update(
     let interaction = tree.interaction_snapshot();
 
     if dirty.full_rebuild || !lowering.built {
-        *scene_cache = SceneGraph::new();
+        *scene_cache = scene_cache.empty_projection();
         lowering.anchors.clear();
         if let Some(root) = tree.root() {
             let mut sink = RetainedSink {
@@ -420,6 +420,7 @@ pub(crate) fn update(
         lowering.toolbar_root = None;
         lowering.handles_root = None;
         refresh_selection_chrome(tree, scene_cache, lowering);
+        scene_cache.sweep_resources();
         return;
     }
 
@@ -427,6 +428,7 @@ pub(crate) fn update(
         // 要素の再描画が無くても選択（つまりそのクローム）は移動/クリアし得るので、
         // オーバーレイは常に更新する。
         refresh_selection_chrome(tree, scene_cache, lowering);
+        scene_cache.maintain_resources();
         return;
     }
 
@@ -484,6 +486,7 @@ pub(crate) fn update(
         }
     }
     refresh_selection_chrome(tree, scene_cache, lowering);
+    scene_cache.maintain_resources();
 }
 
 /// コア描画の選択オーバーレイを再エミットする（ADR-0097）。先にドラッグハンドル、次に浮動
@@ -642,6 +645,7 @@ fn emit_toolbar_label(
     let lx = cell.x + (cell.width - label.layout.width()) / 2.0;
     let ly = cell.y + (cell.height - label.layout.height()) / 2.0;
     for run in &label.runs {
+        let text_run = sg.intern_text_run(run.as_ref().clone());
         sg.insert_child(
             group,
             Node {
@@ -649,7 +653,7 @@ fn emit_toolbar_label(
                     x: lx,
                     y: ly,
                     color,
-                    data: run.clone(),
+                    text_run,
                 },
                 children: Vec::new(),
             },
@@ -1264,6 +1268,7 @@ fn emit_element<S: AnchorSink>(
         };
         if let Some(runs) = runs {
             for run in runs {
+                let text_run = ctx.sg.intern_text_run(run.as_ref().clone());
                 emit(
                     ctx.sg,
                     effective_parent,
@@ -1272,7 +1277,7 @@ fn emit_element<S: AnchorSink>(
                             x: content_x,
                             y: content_y,
                             color: run_color,
-                            data: run.clone(),
+                            text_run,
                         },
                         children: Vec::new(),
                     },
@@ -1346,6 +1351,7 @@ fn emit_element<S: AnchorSink>(
         let color = confirmed_color.with_opacity(visual.opacity).to_array_f32();
         emit_selection_highlight(tree, id, &tl.layout, x, y, ctx.sg, effective_parent);
         for run in &tl.runs {
+            let text_run = ctx.sg.intern_text_run(run.as_ref().clone());
             emit(
                 ctx.sg,
                 effective_parent,
@@ -1354,7 +1360,7 @@ fn emit_element<S: AnchorSink>(
                         x,
                         y,
                         color,
-                        data: run.clone(),
+                        text_run,
                     },
                     children: Vec::new(),
                 },

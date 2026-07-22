@@ -35,7 +35,13 @@ fn text_run_synthesis(tree: &mut ElementTree) -> TextSynthesis {
     let sg = tree.render(0.0);
     sg.iter()
         .find_map(|(_, node)| match &node.kind {
-            NodeKind::TextRun { data, .. } => Some(data.synthesis),
+            NodeKind::TextRun { text_run, .. } => {
+                let run = sg.resources().text_run(*text_run).ok()?;
+                sg.resources()
+                    .font_instance(run.font_instance)
+                    .ok()
+                    .map(|font| font.synthesis)
+            }
             _ => None,
         })
         .expect("expected a text run in the scene graph")

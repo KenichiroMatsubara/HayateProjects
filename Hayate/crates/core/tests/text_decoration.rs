@@ -7,7 +7,8 @@ use hayate_core::{
 fn text_run_placements(sg: &hayate_core::SceneGraph) -> Vec<(f32, f32, f32)> {
     sg.iter()
         .filter_map(|(_, n)| match &n.kind {
-            NodeKind::TextRun { data, .. } => {
+            NodeKind::TextRun { text_run, .. } => {
+                let data = sg.resources().text_run(*text_run).ok()?;
                 let min_glyph_y = data
                     .glyphs
                     .iter()

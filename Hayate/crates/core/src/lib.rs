@@ -31,6 +31,7 @@ pub mod share;
 pub mod subscription;
 pub mod surface;
 pub mod surface_lifecycle;
+mod text_resources;
 pub mod touch_input;
 pub mod url_launcher;
 pub mod viewport_metrics;
@@ -109,6 +110,10 @@ pub use scroll::{MoveOutcome, ScrollGesture, ScrollPhysicsProfile, ScrollPhysics
 pub use subscription::{Subscription, SubscriptionSource};
 pub use surface::Surface;
 pub use surface_lifecycle::{SurfaceLifecycleAction, SurfaceLifecycleEvent, SurfaceLifecycleState};
+pub use text_resources::{
+    FontInstance, FontInstanceId, ResourceLookupError, ResourceSweepStats, SceneResources,
+    TextResourcePolicy, TextRun, TextRunId, DEFAULT_TEXT_RESOURCE_SWEEP_THRESHOLD,
+};
 pub use touch_input::{translate_touch, PointerInput, TouchAction};
 pub use url_launcher::UrlLauncher;
 pub use viewport_metrics::{viewport_size_changed, ViewportMetrics};

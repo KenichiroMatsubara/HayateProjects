@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crate::{layer_raster_bounds, ElementId, LayerRasterBounds, SceneGraph};
+use crate::{layer_raster_bounds, ElementId, LayerRasterBounds, SceneGraph, SceneResources};
 
 /// Platform-free, renderer-ready view produced by one frame commit.
 pub struct CommittedFrame<'a> {
@@ -54,6 +54,10 @@ impl<'a> CommittedFrame<'a> {
 
     pub fn scene(&self) -> &SceneGraph {
         self.scene
+    }
+    /// Immutable Core resource snapshot used by every Scene Renderer for fixed-size ID lookup.
+    pub fn resources(&self) -> &SceneResources {
+        self.scene.resources()
     }
     pub fn layers(&self) -> &[ElementId] {
         self.layers

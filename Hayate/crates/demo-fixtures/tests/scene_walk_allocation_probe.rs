@@ -126,3 +126,45 @@ fn tasks_scene_walk_allocates_nothing_for_structural_child_traversal() {
         "scene walk allocated while visiting {groups} groups, {clips} clips, and {anchors} anchors"
     );
 }
+
+#[test]
+fn steady_state_text_resource_lookup_allocates_nothing() {
+    let mut tree = tasks_tree("text-resource-allocation-probe");
+    let _ = tree.render(0.0);
+    let graph = tree.scene_graph();
+    let text_runs: Vec<_> = graph
+        .iter()
+        .filter_map(|(_, node)| match node.kind {
+            NodeKind::TextRun { text_run, .. } => Some(text_run),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        !text_runs.is_empty(),
+        "representative tasks fixture must contain shaped text"
+    );
+
+    for &text_run in &text_runs {
+        let run = graph
+            .resources()
+            .text_run(text_run)
+            .expect("scene text identity resolves");
+        graph
+            .resources()
+            .font_instance(run.font_instance)
+            .expect("scene font identity resolves");
+    }
+
+    let allocations = allocation_count(|| {
+        for &text_run in &text_runs {
+            let run = graph.resources().text_run(text_run).unwrap();
+            let font = graph.resources().font_instance(run.font_instance).unwrap();
+            std::hint::black_box((run.glyphs.len(), font.normalized_coords.len()));
+        }
+    });
+
+    assert_eq!(
+        allocations, 0,
+        "fixed-size text/font ID lookup must not clone vectors, rebuild cache keys, or allocate"
+    );
+}

@@ -5,7 +5,11 @@ use hayate_core::{Color, Dimension, ElementId, ElementKind, ElementTree, NodeKin
 fn text_run_font_sizes(sg: &hayate_core::SceneGraph) -> Vec<f32> {
     sg.iter()
         .filter_map(|(_, n)| match &n.kind {
-            NodeKind::TextRun { data, .. } => Some(data.font_size),
+            NodeKind::TextRun { text_run, .. } => sg
+                .resources()
+                .text_run(*text_run)
+                .ok()
+                .map(|data| data.font_size),
             _ => None,
         })
         .collect()

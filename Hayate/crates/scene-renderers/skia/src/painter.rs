@@ -9,7 +9,8 @@
 
 use hayate_core::{
     build_draw_path, is_notdef, missing_glyph_placeholder, DrawFillRule, DrawLineCap, DrawLineJoin,
-    PathSink, PathVerb, RenderGlyph, RenderImage, ScenePainter, StrokeStyle, TextRunData,
+    FontInstance, FontInstanceId, PathSink, PathVerb, RenderGlyph, RenderImage, ScenePainter,
+    SceneResources, StrokeStyle, TextRun, TextRunId,
 };
 use skia_safe::{
     canvas::SrcRectConstraint,
@@ -189,8 +190,30 @@ impl ScenePainter for SkiaPainter<'_> {
         self.canvas.restore();
     }
 
-    fn draw_text_run(&mut self, x: f32, y: f32, color: [f32; 4], data: &TextRunData) {
-        draw_text_run(self.canvas, self.resources, x, y, color, data);
+    fn draw_text_run(
+        &mut self,
+        x: f32,
+        y: f32,
+        color: [f32; 4],
+        text_run: TextRunId,
+        scene_resources: &SceneResources,
+    ) {
+        let Ok(data) = scene_resources.text_run(text_run) else {
+            return;
+        };
+        let Ok(font_instance) = scene_resources.font_instance(data.font_instance) else {
+            return;
+        };
+        draw_text_run(
+            self.canvas,
+            self.resources,
+            x,
+            y,
+            color,
+            text_run,
+            data,
+            font_instance,
+        );
     }
 
     fn draw_image(&mut self, x: f32, y: f32, width: f32, height: f32, data: &RenderImage) {
@@ -300,15 +323,14 @@ fn shared_font_mgr<R>(f: impl FnOnce(&FontMgr) -> R) -> R {
 }
 
 thread_local! {
-    /// `Blob::id()`＋face index＋正規化 variation 座標をキーにした typeface の常駐キャッシュ。
+    /// Core-owned `FontInstanceId` をキーにした typeface の常駐キャッシュ。
     /// `new_from_data` はフォントバイト列全体を SkData へコピーするため、TextRun ごと・
     /// フレームごとの再構築は実機でネイティブメモリ膨張→LMK kill を起こした（issue #803 の
-    /// on-device 検証）。core の画像アトラス（`RenderImage`）と同じ「Blob が生きている間は
-    /// id が安定」という前提でキーにする。variation 座標をキーに含めるのは、variable font
-    /// の各インスタンス（wght 等）が SkTypeface 単位で焼き込まれるため。組み合わせ数は
-    /// 「フォント数 × 使用ウェイト数」でたかだか数十なので無制限で保持する。
+    /// on-device 検証）。`FontInstanceId` は font face と variation 座標をまとめて指し、
+    /// steady-state 描画では可変長の座標列を clone / hash せず固定長 ID だけを引く。
+    /// 組み合わせ数は「フォント数 × 使用ウェイト数」でたかだか数十なので無制限で保持する。
     static TYPEFACE_CACHE: std::cell::RefCell<
-        std::collections::HashMap<(u64, u32, Vec<i16>), Option<skia_safe::Typeface>>,
+        std::collections::HashMap<FontInstanceId, Option<skia_safe::Typeface>>,
     > = std::cell::RefCell::new(std::collections::HashMap::new());
 }
 
@@ -380,21 +402,22 @@ fn design_coords_from_normalized(
 }
 
 /// `RenderFont` のバイト列から、`normalized_coords` の variable font インスタンスを
-/// 焼き込んだ SkTypeface を作る（`Blob::id()`＋座標キーの常駐キャッシュ越し）。
+/// 焼き込んだ SkTypeface を作る（`FontInstanceId` の常駐キャッシュ越し）。
 /// 座標を無視すると variable font は fvar 既定インスタンスで描かれる——バンドルの
 /// NotoSansJP は既定が wght=100（Thin）なので、全テキストがヘアラインになり UI 全体が
 /// 「淡く」見える実回帰があった（vello/tiny-skia は座標を消費する。共有
 /// css_pixels の font-weight ケースがこの契約を固定する）。
 fn cached_typeface(
-    font: &hayate_core::RenderFont,
-    normalized_coords: &[i16],
+    font_id: FontInstanceId,
+    instance: &FontInstance,
 ) -> Option<skia_safe::Typeface> {
-    let key = (font.data.id(), font.index, normalized_coords.to_vec());
     TYPEFACE_CACHE.with(|cache| {
         cache
             .borrow_mut()
-            .entry(key)
+            .entry(font_id)
             .or_insert_with(|| {
+                let font = &instance.font;
+                let normalized_coords = instance.normalized_coords.as_ref();
                 let bytes: &[u8] = font.data.as_ref();
                 let base = shared_font_mgr(|mgr| mgr.new_from_data(bytes, font.index as usize))?;
                 if normalized_coords.is_empty() {
@@ -414,19 +437,17 @@ fn cached_typeface(
     })
 }
 
-fn typeface_for(data: &TextRunData) -> Option<skia_safe::Typeface> {
-    cached_typeface(&data.font, &data.normalized_coords)
-}
-
 fn draw_text_run(
     canvas: &Canvas,
     resources: &mut PaintResourceCache,
     run_x: f32,
     run_y: f32,
     color: [f32; 4],
-    data: &TextRunData,
+    text_run: TextRunId,
+    data: &TextRun,
+    font_instance: &FontInstance,
 ) {
-    let Some(typeface) = typeface_for(data) else {
+    let Some(typeface) = cached_typeface(data.font_instance, font_instance) else {
         return;
     };
     let mut font = Font::new(typeface, data.font_size);
@@ -435,10 +456,10 @@ fn draw_text_run(
     // ビットマップ絵文字（CBDT/CBLC・sbix）が描かれるために必須（既定 false）。COLR/CPAL
     // ベクタカラーグリフはこのフラグと無関係に自動判定される（ADR-0146 §4）。
     font.set_embedded_bitmaps(true);
-    if let Some(tangent) = data.synthesis.skew_tangent {
+    if let Some(tangent) = font_instance.synthesis.skew_tangent {
         font.set_skew_x(tangent);
     }
-    if data.synthesis.embolden.is_some() {
+    if font_instance.synthesis.embolden.is_some() {
         font.set_embolden(true);
     }
 
@@ -446,17 +467,17 @@ fn draw_text_run(
 
     // notdef グリフはフォールバックの無音アウトラインではなく、意図的なプレースホルダ
     // 箱を描く（vello / tiny-skia と同じ geometry を共有 `missing_glyph_placeholder` から借りる）。
-    for glyph in &data.glyphs {
+    for glyph in data.glyphs.iter() {
         if is_notdef(glyph) {
             draw_missing_glyph(canvas, run_x, run_y, &paint, glyph, data.font_size);
         }
     }
 
-    if let Some(blob) = resources.text_blob_for(data, &font) {
+    if let Some(blob) = resources.text_blob_for(text_run, data, &font) {
         canvas.draw_text_blob(&blob, (run_x, run_y), &paint);
     }
 
-    for deco in &data.decorations {
+    for deco in data.decorations.iter() {
         let rect = Rect::from_xywh(
             run_x + deco.x0,
             run_y + deco.y - deco.thickness * 0.5,
@@ -525,11 +546,11 @@ mod tests {
     }
 
     #[test]
-    fn typefaces_are_cached_per_font_blob_and_reused_across_frames() {
+    fn typefaces_are_cached_per_font_instance_and_reused_across_frames() {
         // `FontMgr::new_from_data` はフォントバイト列全体を SkData へコピーする。TextRun ごと・
         // フレームごとに typeface を作り直すと、実機（issue #803 検証・OPPO A101OP）でネイティブ
-        // メモリが伸び続け起動 ~70 秒で LMK kill された。`Blob::id()`（同一フォントが生きて
-        // いる間は安定、core の画像アトラスと同じキー設計）で typeface を使い回すことを固定する。
+        // メモリが伸び続け起動 ~70 秒で LMK kill された。Core が発行する安定な
+        // `FontInstanceId` で typeface を使い回すことを固定する。
         let bytes = std::fs::read(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/tests/assets/twemoji_smiley_sbix.ttf"
@@ -537,12 +558,26 @@ mod tests {
         .expect("test font asset");
         let font =
             hayate_core::RenderFont::new(hayate_core::Blob::new(std::sync::Arc::new(bytes)), 0);
-        let a = cached_typeface(&font, &[]).expect("typeface from valid font bytes");
-        let b = cached_typeface(&font, &[]).expect("typeface from valid font bytes");
+        let mut scene = hayate_core::SceneGraph::new();
+        let text_run = scene.intern_text_run(hayate_core::TextRunData {
+            font,
+            font_size: 16.0,
+            font_attributes: hayate_core::TextFontAttributes::default(),
+            glyphs: Vec::new(),
+            decorations: Vec::new(),
+            text: std::sync::Arc::from("cache probe"),
+            synthesis: hayate_core::TextSynthesis::default(),
+            normalized_coords: Vec::new(),
+        });
+        let run = scene.resources().text_run(text_run).unwrap();
+        let id = run.font_instance;
+        let instance = scene.resources().font_instance(id).unwrap();
+        let a = cached_typeface(id, instance).expect("typeface from valid font bytes");
+        let b = cached_typeface(id, instance).expect("typeface from valid font bytes");
         assert_eq!(
             unsafe { std::mem::transmute_copy::<skia_safe::Typeface, *const std::ffi::c_void>(&a) },
             unsafe { std::mem::transmute_copy::<skia_safe::Typeface, *const std::ffi::c_void>(&b) },
-            "the same RenderFont (same Blob id + index) must reuse the cached SkTypeface"
+            "the same FontInstanceId must reuse the cached SkTypeface"
         );
     }
 

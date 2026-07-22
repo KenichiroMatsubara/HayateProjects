@@ -797,18 +797,20 @@ pub fn dual_transition_tree() -> ElementTree {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use hayate_core::{render_scene_graph, DrawOp, RecordingPainter};
+    use hayate_core::NodeKind;
 
     /// Lay the fixture out and collect every string the scene draws as text.
     fn text_runs(tree: &mut ElementTree) -> Vec<String> {
         let _ = tree.render(0.0);
-        let mut painter = RecordingPainter::new();
-        render_scene_graph(tree.scene_graph(), &mut painter);
-        painter
-            .ops()
+        let scene = tree.scene_graph();
+        scene
             .iter()
-            .filter_map(|op| match op {
-                DrawOp::DrawTextRun { data, .. } => Some(data.text.to_string()),
+            .filter_map(|(_, node)| match node.kind {
+                NodeKind::TextRun { text_run, .. } => scene
+                    .resources()
+                    .text_run(text_run)
+                    .ok()
+                    .map(|run| run.text.to_string()),
                 _ => None,
             })
             .collect()

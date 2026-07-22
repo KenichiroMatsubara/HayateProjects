@@ -132,7 +132,7 @@ fn visit(
         return Err(SceneValidationError::MultipleParents { node });
     }
     let current = graph.get(node).expect("caller verifies node exists");
-    if !valid_node_kind(&current.kind) {
+    if !valid_node_kind(graph, &current.kind) {
         return Err(SceneValidationError::InvalidCommand { node });
     }
     for &child in &current.children {
@@ -149,7 +149,7 @@ fn visit(
     Ok(())
 }
 
-fn valid_node_kind(kind: &NodeKind) -> bool {
+fn valid_node_kind(graph: &SceneGraph, kind: &NodeKind) -> bool {
     match kind {
         NodeKind::Rect {
             x,
@@ -246,7 +246,15 @@ fn valid_node_kind(kind: &NodeKind) -> bool {
                 && *std_dev >= 0.0
                 && valid_color(color)
         }
-        NodeKind::TextRun { x, y, color, data } => {
+        NodeKind::TextRun {
+            x,
+            y,
+            color,
+            text_run,
+        } => {
+            let Ok(data) = graph.resources().text_run(*text_run) else {
+                return false;
+            };
             finite([*x, *y, data.font_size])
                 && data.font_size >= 0.0
                 && valid_color(color)

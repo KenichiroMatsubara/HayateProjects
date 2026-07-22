@@ -77,9 +77,14 @@ fn perf_probe() {
             BlurredRoundedRect { .. } => blurred += 1,
             InsetBlurredRoundedRect { .. } => blurred += 1,
             DashedBorder { .. } => dashed += 1,
-            TextRun { data, .. } => {
+            TextRun { text_run, .. } => {
                 texts += 1;
-                glyphs += data.glyphs.len();
+                glyphs += graph
+                    .resources()
+                    .text_run(*text_run)
+                    .expect("text run resource")
+                    .glyphs
+                    .len();
             }
             Group { .. } => groups += 1,
             Clip { .. } => clips += 1,
@@ -111,13 +116,11 @@ fn perf_probe() {
     let mut no_text = graph.clone();
     let ids: Vec<_> = no_text.iter().map(|(id, _)| id).collect();
     for id in ids {
-        if let Some(node) = no_text.get_mut(id) {
-            if let hayate_core::NodeKind::TextRun { data, .. } = &mut node.kind {
-                let mut d = (**data).clone();
-                d.glyphs.clear();
-                d.decorations.clear();
-                *data = std::sync::Arc::new(d);
-            }
+        if no_text
+            .get(id)
+            .is_some_and(|node| matches!(node.kind, hayate_core::NodeKind::TextRun { .. }))
+        {
+            no_text.remove(id);
         }
     }
     {
