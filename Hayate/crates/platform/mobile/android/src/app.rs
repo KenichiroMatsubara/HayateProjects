@@ -243,19 +243,29 @@ pub fn android_main(app: AndroidApp) {
                 frame_scheduler.request_frame();
             }
             observation.finish();
-            if let Some(report) = observability.periodic_report() {
+            if let Some(report) = observability.periodic_summary() {
                 log::info!(
                     target: "HayatePerf",
-                    "frame deadline_ns={} total_ns={} missed={} nodes={} layers={} dirty={} cache_hit={} cache_miss={} allocations={}",
-                    report.deadline_ns,
-                    report.total_phase_ns(),
-                    report.missed_deadline(),
+                    "window samples={} total_p95_ns={} frames_over_2x={} app_host_p95_ns={} core_commit_p95_ns={} scene_lowering_p95_ns={} layer_presentation_p95_ns={} renderer_submit_p95_ns={} renderer_present_p95_ns={} nodes={} layers={} dirty={} cache_hit={} cache_miss={} allocations={} cpu_resident_bytes={} gpu_resident_bytes={} resource_evictions={} resource_rebuild_cost={}",
+                    report.sample_count,
+                    report.total_p95_ns,
+                    report.frames_over_two_intervals,
+                    report.phase_p95_ns[PerformancePhase::AppHost as usize],
+                    report.phase_p95_ns[PerformancePhase::CoreCommit as usize],
+                    report.phase_p95_ns[PerformancePhase::SceneLowering as usize],
+                    report.phase_p95_ns[PerformancePhase::LayerPresentation as usize],
+                    report.phase_p95_ns[PerformancePhase::RendererSubmit as usize],
+                    report.phase_p95_ns[PerformancePhase::RendererPresent as usize],
                     report.counters.nodes,
                     report.counters.layers,
                     report.counters.dirty_layers,
                     report.counters.cache_hits,
                     report.counters.cache_misses,
                     report.counters.allocations,
+                    report.counters.cpu_resident_bytes,
+                    report.counters.gpu_resident_bytes,
+                    report.counters.resource_evictions,
+                    report.counters.resource_rebuild_cost,
                 );
             }
         }

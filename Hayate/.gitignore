@@ -3,6 +3,8 @@
 
 # Rust build artifacts
 target/
+__pycache__/
+*.py[cod]
 
 # Node
 node_modules/

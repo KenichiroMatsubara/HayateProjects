@@ -1291,6 +1291,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "hayate-performance-matrix"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "hayate-performance-observability"
 version = "0.1.0"
 

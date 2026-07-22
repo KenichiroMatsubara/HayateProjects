@@ -13,3 +13,7 @@ enabled = []
 
 [lib]
 crate-type = ["rlib"]
+
+[[test]]
+name = "observability"
+required-features = ["enabled"]
