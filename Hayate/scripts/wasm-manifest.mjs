@@ -33,6 +33,9 @@ function validateTarget(target) {
     if (typeof target.host !== 'object') invalid(target, 'host must be null or an object');
     if (typeof target.host.backend !== 'string') invalid(target, 'host.backend must be a string');
     if (target.host.bootstrap !== undefined) invalid(target, 'host.bootstrap is no longer supported');
+    if (target.host.runtimeLayerPresentArg !== undefined) {
+      invalid(target, 'host.runtimeLayerPresentArg is no longer supported');
+    }
   }
 
   const { cargoFeatures } = target;

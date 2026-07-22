@@ -8,8 +8,9 @@ use hayate_core::{
     RenderImage, RenderImageAlphaType, RenderImageFormat, SceneGraph, StyleProp,
     TextFontAttributes, TextRunData, TextSynthesis,
 };
-use hayate_layer_compositor::LayerRasterizer;
-use hayate_scene_renderer_skia::{new_raster_surface, SkiaLayerRasterizer, SkiaSceneRenderer};
+use hayate_scene_renderer_skia::{
+    new_raster_surface, SkiaLayerRasterizer, SkiaRasterLayerSurfaceFactory, SkiaSceneRenderer,
+};
 
 fn image_scene(image: Arc<RenderImage>) -> SceneGraph {
     let mut graph = SceneGraph::new();
@@ -129,13 +130,14 @@ fn layer_rasterizer_keeps_paint_resources_across_dirty_rasters() {
     });
     let graph = image_scene(image);
     let mut rasterizer = SkiaLayerRasterizer::new(2, 2, 1.0);
+    let mut factory = SkiaRasterLayerSurfaceFactory;
     let layer = ElementId::from_u64(1);
 
     rasterizer
-        .rasterize(layer, &graph, None)
+        .rasterize_with_layer_surface_factory(&mut factory, layer, &graph, None)
         .expect("first raster");
     rasterizer
-        .rasterize(layer, &graph, None)
+        .rasterize_with_layer_surface_factory(&mut factory, layer, &graph, None)
         .expect("second raster");
 
     let work = rasterizer.resource_work_counts();

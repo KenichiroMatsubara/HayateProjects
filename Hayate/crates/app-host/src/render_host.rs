@@ -9,11 +9,13 @@
 //! オーケストレーション（どの順で試すか・いつフォールバックするか）はここに hoist
 //! されているので、`RendererInit` 越しに呼ぶ。
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
+#[cfg(test)]
+use std::collections::HashSet;
 
 use anyhow::Error;
 use hayate_core::element::id::ElementId;
-use hayate_core::{LayerRasterBounds, SceneGraph, Surface};
+use hayate_core::{LayerTopology, SceneSnapshot, Surface};
 use hayate_layer_compositor::ScrollLayerGeometry;
 
 use crate::renderer_selection::{
@@ -29,55 +31,21 @@ pub type ClearColor = [f32; 4];
 /// `Result<(), JsValue>` から `Result<(), anyhow::Error>` へ変更して hoist）。
 pub trait SceneRenderer {
     fn kind(&self) -> SceneRendererKind;
-    fn render_scene(&mut self, scene: &SceneGraph, clear_color: ClearColor) -> Result<(), Error>;
     fn clear(&mut self, clear_color: ClearColor) -> Result<(), Error>;
 
-    /// このバックエンドが per-layer present（#636）を実装するか。true なら present ループは
-    /// [`present_layers`](Self::present_layers) を使う。既定（false）は全面 raster にフォールバック。
+    /// Present one committed snapshot and its renderer-neutral layer topology.
     ///
-    /// ⚠️ ADR-0135 により封印中 — true を返す実装（web `layer-present` feature 等）を製品として
-    /// 有効化しないこと。#697 で実 Chromium 実行時に描画バグが確認され、実用段階にないと判定
-    /// された。性能上の実害が具体的に発生するまで再開しない（ADR-0135 が定める本人調査用
-    /// トグルは例外）。
-    fn supports_layer_present(&self) -> bool {
-        false
-    }
-
-    /// per-layer present の有効・無効をランタイムで切り替える（ADR-0138、tiny-skia
-    /// の比較トグル用）。既定（no-op）はコンパイル時にしか対応を決めないバックエンド
-    /// （vello の `layer-present` feature 等）向け——切り替え可能なバックエンドだけが
-    /// override して [`supports_layer_present`](Self::supports_layer_present) が読む
-    /// フィールドを更新する。
-    fn set_layer_present_enabled(&mut self, _enabled: bool) {}
-
-    /// per-layer present（#636・ADR-0125）。既定は全面 `render_scene` にフォールバック
-    /// （未対応バックエンド）。
-    ///
-    /// `layer_raster_bounds` は Core が確定した各レイヤの logical raster extent。root を全面のまま
-    /// 保つ backend や、実寸 texture を未対応の backend は無視してよい。
     /// `scroll_geometry` は `ElementKind::ScrollView` レイヤごとの ADR-0127 overscan 帯ジオメトリ
-    /// （#707）——呼び出し側（`present_frame`）が `ElementTree` から一度だけ計算して渡す。
-    /// `present_layers` は `&SceneGraph` とレイヤ id しか受け取らず `ElementTree` を持たないため、
-    /// scroll offset / viewport / content 高を自分では問い合わせられない（この小さな表がその境界を
-    /// またぐ唯一の橋渡し）。対応しないバックエンド（既定実装含む）は無視してよい。
+    /// （#707）——呼び出し側が committed scroll facts から一度だけ射影して渡す。
     /// `layer_raster_bounds` は同じ commit で Core が導出した layer-local logical extent。
     /// backend は texture の実寸化と raster origin の復元に使い、未対応なら無視してよい。
-    /// `chrome_dirty` は `layer_dirty` に union された互換用 raster trigger とは別に渡し、content と
-    /// texture を分離する backend が固定 chrome だけを gate できるようにする。
-    ///
-    /// ⚠️ ADR-0135 により封印中 — 詳細は [`supports_layer_present`](Self::supports_layer_present)。
     fn present_layers(
         &mut self,
-        scene: &SceneGraph,
-        _layers: &[ElementId],
-        _layer_raster_bounds: &[LayerRasterBounds],
-        _layer_dirty: &HashSet<ElementId>,
-        _chrome_dirty: &HashSet<ElementId>,
-        _scroll_geometry: &HashMap<ElementId, ScrollLayerGeometry>,
+        scene: &SceneSnapshot,
+        topology: &LayerTopology,
+        scroll_geometry: &HashMap<ElementId, ScrollLayerGeometry>,
         clear_color: ClearColor,
-    ) -> Result<(), Error> {
-        self.render_scene(scene, clear_color)
-    }
+    ) -> Result<(), Error>;
 
     /// 描画サーフェスを新しいピクセル寸法に合わせてリサイズする。サイズを持たない
     /// バックエンドは no-op。
@@ -257,44 +225,10 @@ impl<S: Surface, I: RendererInit<S>> SceneRenderer for RenderHost<S, I> {
         renderer.kind()
     }
 
-    fn render_scene(&mut self, scene: &SceneGraph, clear_color: ClearColor) -> Result<(), Error> {
-        if let Some(failure) = &self.terminal_failure {
-            return Err(anyhow::anyhow!(failure.clone()));
-        }
-        let Some(renderer) = self.renderer.as_mut() else {
-            return Err(anyhow::anyhow!("RenderHost has no active scene renderer"));
-        };
-        debug_assert!(self.selection_plan.includes(renderer.kind()));
-        match renderer.render_scene(scene, clear_color) {
-            Ok(()) => Ok(()),
-            Err(error) => self.fallback_after_runtime_failure(error, |renderer| {
-                renderer.render_scene(scene, clear_color)
-            }),
-        }
-    }
-
-    fn supports_layer_present(&self) -> bool {
-        self.renderer
-            .as_ref()
-            .is_some_and(|renderer| renderer.supports_layer_present())
-    }
-
-    fn set_layer_present_enabled(&mut self, enabled: bool) {
-        if self.terminal_failure.is_some() {
-            return;
-        }
-        if let Some(renderer) = self.renderer.as_mut() {
-            renderer.set_layer_present_enabled(enabled);
-        }
-    }
-
     fn present_layers(
         &mut self,
-        scene: &SceneGraph,
-        layers: &[ElementId],
-        layer_raster_bounds: &[LayerRasterBounds],
-        layer_dirty: &HashSet<ElementId>,
-        chrome_dirty: &HashSet<ElementId>,
+        scene: &SceneSnapshot,
+        topology: &LayerTopology,
         scroll_geometry: &HashMap<ElementId, ScrollLayerGeometry>,
         clear_color: ClearColor,
     ) -> Result<(), Error> {
@@ -305,27 +239,11 @@ impl<S: Surface, I: RendererInit<S>> SceneRenderer for RenderHost<S, I> {
             return Err(anyhow::anyhow!("RenderHost has no active scene renderer"));
         };
         debug_assert!(self.selection_plan.includes(renderer.kind()));
-        match renderer.present_layers(
-            scene,
-            layers,
-            layer_raster_bounds,
-            layer_dirty,
-            chrome_dirty,
-            scroll_geometry,
-            clear_color,
-        ) {
+        match renderer.present_layers(scene, topology, scroll_geometry, clear_color) {
             Ok(()) => Ok(()),
             // ランタイムフォールバック時は次バックエンドの present（既定は全面 raster）へ委ねる。
             Err(error) => self.fallback_after_runtime_failure(error, |renderer| {
-                renderer.present_layers(
-                    scene,
-                    layers,
-                    layer_raster_bounds,
-                    layer_dirty,
-                    chrome_dirty,
-                    scroll_geometry,
-                    clear_color,
-                )
+                renderer.present_layers(scene, topology, scroll_geometry, clear_color)
             }),
         }
     }
@@ -384,16 +302,17 @@ mod tests {
         kind: SceneRendererKind,
         fails: Rc<RefCell<HashSet<SceneRendererKind>>>,
         resized: Rc<RefCell<Vec<SceneRendererKind>>>,
-        layer_present_enabled: Rc<RefCell<bool>>,
     }
 
     impl SceneRenderer for FakeRenderer {
         fn kind(&self) -> SceneRendererKind {
             self.kind
         }
-        fn render_scene(
+        fn present_layers(
             &mut self,
-            _scene: &SceneGraph,
+            _scene: &SceneSnapshot,
+            _topology: &LayerTopology,
+            _scroll_geometry: &HashMap<ElementId, ScrollLayerGeometry>,
             _clear_color: ClearColor,
         ) -> Result<(), Error> {
             if self.fails.borrow().contains(&self.kind) {
@@ -412,12 +331,6 @@ mod tests {
         fn resize(&mut self, _width: u32, _height: u32, _content_scale: f32) {
             self.resized.borrow_mut().push(self.kind);
         }
-        fn supports_layer_present(&self) -> bool {
-            *self.layer_present_enabled.borrow()
-        }
-        fn set_layer_present_enabled(&mut self, enabled: bool) {
-            *self.layer_present_enabled.borrow_mut() = enabled;
-        }
     }
 
     /// init 呼び出しを記録し、`unavailable` に含まれる kind の init は失敗するフェイク。
@@ -426,7 +339,6 @@ mod tests {
         unavailable: HashSet<SceneRendererKind>,
         resized: Rc<RefCell<Vec<SceneRendererKind>>>,
         sync_init_calls: Rc<RefCell<Vec<SceneRendererKind>>>,
-        layer_present_enabled: Rc<RefCell<bool>>,
     }
 
     impl RendererInit<FakeSurface> for FakeInit {
@@ -442,7 +354,6 @@ mod tests {
                 kind,
                 fails: self.fails.clone(),
                 resized: self.resized.clone(),
-                layer_present_enabled: self.layer_present_enabled.clone(),
             }))
         }
 
@@ -459,7 +370,6 @@ mod tests {
                 kind,
                 fails: self.fails.clone(),
                 resized: self.resized.clone(),
-                layer_present_enabled: self.layer_present_enabled.clone(),
             }))
         }
 
@@ -494,7 +404,6 @@ mod tests {
                 unavailable: HashSet::new(),
                 resized: Rc::new(RefCell::new(Vec::new())),
                 sync_init_calls: Rc::new(RefCell::new(Vec::new())),
-                layer_present_enabled: Rc::new(RefCell::new(true)),
             };
             let host = RenderHost::init_with_policy(
                 FakeSurface {
@@ -524,7 +433,6 @@ mod tests {
                 unavailable,
                 resized: Rc::new(RefCell::new(Vec::new())),
                 sync_init_calls: Rc::new(RefCell::new(Vec::new())),
-                layer_present_enabled: Rc::new(RefCell::new(true)),
             };
             let host = RenderHost::init_with_policy(
                 FakeSurface {
@@ -555,7 +463,6 @@ mod tests {
                 unavailable,
                 resized: Rc::new(RefCell::new(Vec::new())),
                 sync_init_calls: Rc::new(RefCell::new(Vec::new())),
-                layer_present_enabled: Rc::new(RefCell::new(true)),
             };
             let result = RenderHost::init_with_policy(
                 FakeSurface {
@@ -589,7 +496,6 @@ mod tests {
                 unavailable: HashSet::new(),
                 resized: resized.clone(),
                 sync_init_calls: sync_init_calls.clone(),
-                layer_present_enabled: Rc::new(RefCell::new(true)),
             };
             let mut host = RenderHost::init_with_policy(
                 FakeSurface {
@@ -607,8 +513,7 @@ mod tests {
             assert_eq!(host.kind(), SceneRendererKind::Vello);
 
             // ランタイムで vello が失敗（"surface lost" → フォールバック対象理由）。
-            let scene = SceneGraph::default();
-            host.render_scene(&scene, [0.0, 0.0, 0.0, 1.0])
+            host.clear([0.0, 0.0, 0.0, 1.0])
                 .expect("one-way fallback to tiny-skia must recover the frame");
 
             assert_eq!(host.kind(), SceneRendererKind::TinySkia);
@@ -627,7 +532,6 @@ mod tests {
                 unavailable: HashSet::new(),
                 resized: Rc::new(RefCell::new(Vec::new())),
                 sync_init_calls: sync_init_calls.clone(),
-                layer_present_enabled: Rc::new(RefCell::new(true)),
             };
             let mut host = RenderHost::init_with_policy(
                 FakeSurface {
@@ -673,7 +577,6 @@ mod tests {
                 unavailable: HashSet::new(),
                 resized: Rc::new(RefCell::new(Vec::new())),
                 sync_init_calls: Rc::new(RefCell::new(Vec::new())),
-                layer_present_enabled: Rc::new(RefCell::new(true)),
             };
             let mut host = RenderHost::init_with_policy(
                 FakeSurface {
@@ -692,50 +595,11 @@ mod tests {
             .await
             .expect("tiny-skia selected as the only renderer");
 
-            let scene = SceneGraph::default();
-            let result = host.render_scene(&scene, [0.0, 0.0, 0.0, 1.0]);
+            let result = host.clear([0.0, 0.0, 0.0, 1.0]);
             assert!(
                 result.is_err(),
                 "the last renderer in the plan has nowhere left to fall back to"
             );
-        });
-    }
-
-    #[test]
-    fn set_layer_present_enabled_delegates_to_the_active_renderer() {
-        pollster::block_on(async {
-            let layer_present_enabled = Rc::new(RefCell::new(true));
-            let init = FakeInit {
-                fails: Rc::new(RefCell::new(HashSet::new())),
-                unavailable: HashSet::new(),
-                resized: Rc::new(RefCell::new(Vec::new())),
-                sync_init_calls: Rc::new(RefCell::new(Vec::new())),
-                layer_present_enabled: layer_present_enabled.clone(),
-            };
-            let mut host = RenderHost::init_with_policy(
-                FakeSurface {
-                    width: 800,
-                    height: 600,
-                },
-                policy(),
-                RendererCapabilities {
-                    webgpu_available: true,
-                },
-                init,
-            )
-            .await
-            .expect("a feasible renderer must be selected");
-
-            assert!(host.supports_layer_present());
-
-            host.set_layer_present_enabled(false);
-            assert!(
-                !host.supports_layer_present(),
-                "set_layer_present_enabled(false) must flip supports_layer_present() on the active renderer"
-            );
-
-            host.set_layer_present_enabled(true);
-            assert!(host.supports_layer_present());
         });
     }
 }

@@ -9,10 +9,10 @@
 //! 保持する — raster 直後に `image_snapshot()` でスナップショットを取ることで、tiny-skia の
 //! `Pixmap` 保持と同じ「backend が texture を所有・再利用する」契約を保ったまま `Send` を満たす。
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use hayate_core::element::id::ElementId;
-use hayate_core::{LayerRasterBounds, SceneGraph};
+use hayate_core::{LayerRasterBounds, LayerScene, LayerTopology, SceneRead, SceneSnapshot};
 use hayate_layer_compositor::{
     tunables, CompositeQuad, GpuBudget, LayerCompositor, LayerPresentation,
     LayerPresentationAdapter, LayerPresentationFrame, LayerRasterizer, PlacementPlan, RasterBand,
@@ -117,7 +117,7 @@ impl SkiaLayerRasterizer {
     pub fn rasterize_with_bounds(
         &mut self,
         layer: ElementId,
-        scene: &SceneGraph,
+        scene: &(impl SceneRead + ?Sized),
         bounds: LayerRasterBounds,
         band: Option<RasterBand>,
     ) -> Result<(), String> {
@@ -134,7 +134,7 @@ impl SkiaLayerRasterizer {
         &mut self,
         factory: &mut dyn SkiaLayerSurfaceFactory,
         layer: ElementId,
-        scene: &SceneGraph,
+        scene: &(impl SceneRead + ?Sized),
         mut bounds: LayerRasterBounds,
         band: Option<RasterBand>,
     ) -> Result<(), String> {
@@ -174,7 +174,7 @@ impl SkiaLayerRasterizer {
         &mut self,
         factory: &mut dyn SkiaLayerSurfaceFactory,
         layer: ElementId,
-        scene: &SceneGraph,
+        scene: &(impl SceneRead + ?Sized),
         band: Option<RasterBand>,
     ) -> Result<(), String> {
         let (height, origin_y) = band
@@ -205,7 +205,7 @@ impl LayerRasterizer for SkiaLayerRasterizer {
     fn rasterize(
         &mut self,
         layer: ElementId,
-        scene: &SceneGraph,
+        scene: &LayerScene,
         band: Option<RasterBand>,
     ) -> Result<(), String> {
         self.rasterize_with_layer_surface_factory(
@@ -293,7 +293,7 @@ impl LayerCompositor for SkiaLayerCompositor {
         canvas.clear(Color4f::new(r, g, b, a));
         for quad in quads {
             canvas.save();
-            // placement clip は collect_layer_placements が target/device 空間へ写した矩形。
+            // placement clip は Core Layer Topology が target/device 空間へ写した矩形。
             // quad transform より先に固定しないと、composite-only scroll の平行移動で clip まで
             // 動いてしまい、viewport の途中から内容が欠ける。
             if let Some([x, y, w, h]) = quad.clip {
@@ -385,10 +385,8 @@ impl SkiaLayerPresenter {
     #[allow(clippy::too_many_arguments)]
     pub fn present(
         &mut self,
-        scene: &SceneGraph,
-        layers: &[ElementId],
-        layer_raster_bounds: &[LayerRasterBounds],
-        layer_dirty: &HashSet<ElementId>,
+        snapshot: &SceneSnapshot,
+        topology: &LayerTopology,
         scroll_geometry: &HashMap<ElementId, ScrollLayerGeometry>,
         clear: [f32; 4],
         scene_origin: (f32, f32),
@@ -396,10 +394,8 @@ impl SkiaLayerPresenter {
         surface: Surface,
     ) -> Result<Surface, String> {
         self.present_with_layer_surface_factory(
-            scene,
-            layers,
-            layer_raster_bounds,
-            layer_dirty,
+            snapshot,
+            topology,
             scroll_geometry,
             clear,
             scene_origin,
@@ -412,10 +408,8 @@ impl SkiaLayerPresenter {
     #[allow(clippy::too_many_arguments)]
     pub fn present_with_layer_surface_factory(
         &mut self,
-        scene: &SceneGraph,
-        layers: &[ElementId],
-        layer_raster_bounds: &[LayerRasterBounds],
-        layer_dirty: &HashSet<ElementId>,
+        snapshot: &SceneSnapshot,
+        topology: &LayerTopology,
         scroll_geometry: &HashMap<ElementId, ScrollLayerGeometry>,
         clear: [f32; 4],
         scene_origin: (f32, f32),
@@ -425,10 +419,10 @@ impl SkiaLayerPresenter {
     ) -> Result<Surface, String> {
         self.last_raster_count = 0;
         self.last_raster_pixels = 0;
-        if layers.is_empty() {
+        if topology.paint_order().is_empty() {
             let mut surface = surface;
             SkiaSceneRenderer::new().render_scene_with_offset(
-                scene,
+                snapshot,
                 surface.canvas(),
                 clear,
                 self.content_scale,
@@ -454,14 +448,8 @@ impl SkiaLayerPresenter {
         self.presentation
             .present(
                 LayerPresentationFrame {
-                    scene,
-                    layers,
-                    layer_raster_bounds,
-                    layer_dirty,
-                    // The native presenter historically receives one dirty set. Passing it to
-                    // both planes preserves that public interface while the transaction owns the
-                    // distinct content/chrome jobs and their commit ordering.
-                    chrome_dirty: layer_dirty,
+                    snapshot,
+                    topology,
                     scroll_geometry,
                 },
                 &mut adapter,

@@ -182,10 +182,10 @@ test('npmName/host mapping matches what Hayate/host/src actually imports', () =>
   const byName = Object.fromEntries(manifest.targets.map((t) => [t.name, t]));
 
   assert.equal(byName['pkg'].npmName, '@torimi/hayate-adapter-web');
-  assert.deepEqual(byName['pkg'].host, { backend: 'vello', runtimeLayerPresentArg: 'layerPresent' });
+  assert.deepEqual(byName['pkg'].host, { backend: 'vello' });
 
   assert.equal(byName['pkg-tiny-skia'].npmName, '@torimi/hayate-adapter-web-cpu');
-  assert.deepEqual(byName['pkg-tiny-skia'].host, { backend: 'tiny-skia', runtimeLayerPresentArg: 'cpuLayerPresent' });
+  assert.deepEqual(byName['pkg-tiny-skia'].host, { backend: 'tiny-skia' });
 
   assert.equal(byName['pkg-null'].npmName, 'hayate-adapter-web-null');
   assert.equal(byName['pkg-null'].host, null);
@@ -244,12 +244,12 @@ test('validateManifest accepts host: null (no host-side consumer, e.g. pkg-null)
   assert.doesNotThrow(() => validateManifest(manifest));
 });
 
-test('validateManifest rejects a host object missing backend', () => {
+test('validateManifest rejects the retired runtime layer-present argument', () => {
   const manifest = validManifestFixture({
-    targets: [{ ...validManifestFixture().targets[0], host: { runtimeLayerPresentArg: 'layerPresent' } }],
+    targets: [{ ...validManifestFixture().targets[0], host: { backend: 'vello', runtimeLayerPresentArg: 'layerPresent' } }],
   });
 
-  assert.throws(() => validateManifest(manifest), /host\.backend/);
+  assert.throws(() => validateManifest(manifest), /runtimeLayerPresentArg.*no longer supported/);
 });
 
 test('validateManifest rejects an unknown host bootstrap', () => {

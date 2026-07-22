@@ -8,16 +8,13 @@
 //! 実行: HAYATE_PERF_PROBE=1 cargo test --release -p hayate-scene-renderer-tiny-skia \
 //!        --test perf_probe -- --nocapture
 
-use std::collections::HashSet;
 use std::time::Instant;
 
 use hayate_core::{
-    ElementId, LayerRasterBounds, Node, NodeId, NodeKind, SceneRead, SceneResources, SceneSnapshot,
+    ElementId, LayerRasterBounds, LayerScene, LayerSceneKind, Node, NodeId, NodeKind, SceneRead,
+    SceneResources, SceneSnapshot,
 };
 use hayate_demo_fixtures::{tasks_tree, TASKS_VIEWPORT};
-use hayate_layer_compositor::layer_scene::{
-    collect_layer_placements, extract_layer_scene, extract_root_scene,
-};
 use hayate_layer_compositor::{CompositeQuad, LayerCompositor, LayerRasterizer};
 use hayate_scene_renderer_tiny_skia::{
     premultiplied_to_straight, TinySkiaCompositeTarget, TinySkiaLayerCompositor,
@@ -170,24 +167,26 @@ fn perf_probe() {
     for scale in [1.0f32, 2.0, 3.0] {
         let w = (vw * scale) as u32;
         let h = (vh * scale) as u32;
-        let boundaries: HashSet<ElementId> = tree.frame_layers().iter().copied().collect();
-        let root = tree.frame_layers()[0];
+        let frame = tree.committed_frame();
+        let topology = frame.layer_topology();
+        let root = topology.paint_order()[0];
         let raster_bounds: std::collections::HashMap<ElementId, LayerRasterBounds> = tree
             .committed_frame()
-            .layer_raster_bounds()
+            .layer_topology()
+            .raster_bounds()
             .iter()
             .map(|bounds| (bounds.layer, *bounds))
             .collect();
         // 全レイヤを一度 raster してキャッシュを温める（composite-only フレームの前提）。
         let mut rasterizer = TinySkiaLayerRasterizer::new(w, h, scale);
-        for &layer in tree.frame_layers() {
-            let scene = if layer == root {
-                extract_root_scene(&graph, root, &boundaries)
-            } else {
-                match extract_layer_scene(&graph, layer, &boundaries) {
-                    Some(s) => s,
-                    None => continue,
-                }
+        for &layer in topology.paint_order() {
+            let Some(scene) = LayerScene::new(
+                graph.clone(),
+                topology.clone(),
+                layer,
+                LayerSceneKind::Content,
+            ) else {
+                continue;
             };
             if layer == root {
                 rasterizer.rasterize(layer, &scene, None).unwrap();
@@ -197,7 +196,7 @@ fn perf_probe() {
                     .unwrap();
             }
         }
-        let placements = collect_layer_placements(&graph, root, &boundaries);
+        let placements = topology.placements();
         let cached_source_px: u64 = placements
             .iter()
             .filter_map(|placement| rasterizer.texture(placement.layer))
@@ -208,8 +207,14 @@ fn perf_probe() {
             "tiny-skia layer cache source px: {cached_source_px} / {full_surface_source_px} ({:.1}% reduction)",
             (1.0 - cached_source_px as f64 / full_surface_source_px as f64) * 100.0
         );
-        if let Some(&layer) = tree.frame_layers().iter().find(|&&layer| layer != root) {
-            let layer_scene = extract_layer_scene(&graph, layer, &boundaries).unwrap();
+        if let Some(&layer) = topology.paint_order().iter().find(|&&layer| layer != root) {
+            let layer_scene = LayerScene::new(
+                graph.clone(),
+                topology.clone(),
+                layer,
+                LayerSceneKind::Content,
+            )
+            .unwrap();
             let mut full_rasterizer = TinySkiaLayerRasterizer::new(w, h, scale);
             bench(
                 &format!("tiny-skia RASTER full-surface layer {w}x{h}"),

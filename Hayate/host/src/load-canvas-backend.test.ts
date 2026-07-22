@@ -4,8 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 // web-host.test.ts always injects a fake `loadBackend` and never exercises
 // the real routing here, so this is the one place that actually proves
 // loadCanvasBackend (generated from wasm-build-manifest.json, #700/#703)
-// imports the right bare specifier for each backend, and threads each
-// backend's own runtime layer-present arg into init() (#717/#718).
+// imports the right bare specifier for each backend and initializes the hard-cutover path.
 const velloInit = vi.fn(async () => 'raw:vello');
 vi.mock('@torimi/hayate-adapter-web', () => ({
   default: vi.fn(async () => {}),
@@ -21,33 +20,18 @@ import { loadCanvasBackend } from './load-canvas-backend.generated.js';
 const canvas = {} as HTMLCanvasElement;
 
 describe('loadCanvasBackend (generated from wasm-build-manifest.json, #703)', () => {
-  it('vello always loads @torimi/hayate-adapter-web, regardless of layerPresent (no separate layer-present package, #718)', async () => {
+  it('vello loads @torimi/hayate-adapter-web', async () => {
     await expect(loadCanvasBackend('vello', canvas)).resolves.toBe('raw:vello');
-    await expect(loadCanvasBackend('vello', canvas, false)).resolves.toBe('raw:vello');
-  });
-
-  it('vello forwards layerPresent to init as the 2nd arg (ADR-0140 runtime flag, default ON)', async () => {
-    await loadCanvasBackend('vello', canvas);
-    expect(velloInit).toHaveBeenCalledWith(canvas, true);
-  });
-
-  it('vello forwards layerPresent=false when passed', async () => {
-    await loadCanvasBackend('vello', canvas, false);
-    expect(velloInit).toHaveBeenCalledWith(canvas, false);
+    expect(velloInit).toHaveBeenCalledWith(canvas);
   });
 
   it('tiny-skia loads @torimi/hayate-adapter-web-cpu (not @torimi/hayate-adapter-web-tiny-skia)', async () => {
     await expect(loadCanvasBackend('tiny-skia', canvas)).resolves.toBe('raw:tiny-skia');
   });
 
-  it('tiny-skia forwards cpuLayerPresent to init (ADR-0138 default ON)', async () => {
+  it('tiny-skia initializes without a legacy fallback flag', async () => {
     await loadCanvasBackend('tiny-skia', canvas);
-    expect(tinySkiaInit).toHaveBeenCalledWith(canvas, true);
-  });
-
-  it('tiny-skia forwards cpuLayerPresent=false when passed', async () => {
-    await loadCanvasBackend('tiny-skia', canvas, true, false);
-    expect(tinySkiaInit).toHaveBeenCalledWith(canvas, false);
+    expect(tinySkiaInit).toHaveBeenCalledWith(canvas);
   });
 
 });

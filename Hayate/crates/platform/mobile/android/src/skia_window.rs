@@ -10,10 +10,9 @@
 //! `set_buffers_geometry` で surface 作成時・resize 時にだけ形式/寸法を通知し、毎フレームは
 //! `lock().lines()` で行ごとに書く（stride を気にしない）。
 
-use std::collections::HashSet;
 use std::mem::MaybeUninit;
 
-use hayate_core::{ElementId, LayerRasterBounds, SceneGraph, ScrollCompositorInput};
+use hayate_core::{LayerTopology, SceneSnapshot, ScrollCompositorInput};
 use hayate_layer_compositor::{scroll_layer_geometry_from_inputs, tunables, GpuBudget};
 use hayate_scene_renderer_skia::{new_raster_surface, read_rgba, SkiaLayerPresenter};
 use ndk::hardware_buffer_format::HardwareBufferFormat;
@@ -68,16 +67,10 @@ impl SkiaGpuSurface {
     /// skia-safe image cache から合成する。safe-area offset は vello 経路と同じ値を使う。
     pub(crate) fn render_frame(
         &mut self,
-        scene: &SceneGraph,
-        layers: &[ElementId],
-        layer_raster_bounds: &[LayerRasterBounds],
-        layer_dirty: &HashSet<ElementId>,
-        _transform_dirty: &HashSet<ElementId>,
-        chrome_dirty: &HashSet<ElementId>,
+        scene: &SceneSnapshot,
+        topology: &LayerTopology,
         scroll_inputs: &[ScrollCompositorInput],
     ) -> Result<(), String> {
-        let mut present_dirty = layer_dirty.clone();
-        present_dirty.extend(chrome_dirty.iter().copied());
         let scroll_geometry = scroll_layer_geometry_from_inputs(scroll_inputs);
 
         // b2（edge-to-edge, issue #794・ADR-0144）: vello 経路（`GpuSurface::render_frame`）と
@@ -90,9 +83,7 @@ impl SkiaGpuSurface {
             .ok_or_else(|| format!("skia present surface {}x{}", self.width, self.height))?;
         let mut target = self.presenter.present(
             scene,
-            layers,
-            layer_raster_bounds,
-            &present_dirty,
+            topology,
             &scroll_geometry,
             crate::app::CLEAR_COLOR,
             (origin_x, origin_y),

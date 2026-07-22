@@ -30,13 +30,13 @@
 use std::collections::HashMap;
 
 use hayate_core::element::id::ElementId;
-use hayate_core::{LayerRasterBounds, SceneGraph};
+use hayate_core::{LayerRasterBounds, LayerScene, SceneRead};
 use hayate_layer_compositor::{
     tunables, warmup_variants, BlendMode, CompositeQuad, LayerCompositor, LayerRasterizer,
     PipelineVariant, RasterBand, ScrollLayerExtent, SurfaceFormat,
 };
 
-use crate::{VelloRenderTarget, VelloSceneRenderer};
+use crate::{VelloAaMethod, VelloRenderTarget, VelloSceneRenderer, DEFAULT_AA_METHOD};
 
 /// レイヤキャッシュ面は透明クリアで raster する（背景は合成パスの clear color が持つ）。
 const TRANSPARENT: [f32; 4] = [0.0, 0.0, 0.0, 0.0];
@@ -89,7 +89,7 @@ pub struct VelloLayerRasterizer {
     width: u32,
     height: u32,
     /// 論理座標（layout ビューポート単位）を物理バッファへ引き伸ばす倍率（DPI 対応）。
-    /// Web の `hayate-adapter-web` と同じ `VelloSceneRenderer::render_scene` 契約を使う
+    /// `LayerScene` を描く内部 Vello renderer と同じ logical-to-device 契約を使う
     /// （tiny-skia 側は `LayerCompositor::content_scale` で同型に持つ）。
     content_scale: f32,
 }
@@ -102,7 +102,57 @@ impl VelloLayerRasterizer {
         height: u32,
         content_scale: f32,
     ) -> Result<Self, String> {
-        let renderer = VelloSceneRenderer::new(&device)?;
+        Self::new_with_options_and_cache(
+            device,
+            queue,
+            width,
+            height,
+            content_scale,
+            DEFAULT_AA_METHOD,
+            None,
+        )
+    }
+
+    pub fn new_with_pipeline_cache(
+        device: wgpu::Device,
+        queue: wgpu::Queue,
+        width: u32,
+        height: u32,
+        content_scale: f32,
+        cache: Option<&wgpu::PipelineCache>,
+    ) -> Result<Self, String> {
+        Self::new_with_options_and_cache(
+            device,
+            queue,
+            width,
+            height,
+            content_scale,
+            DEFAULT_AA_METHOD,
+            cache,
+        )
+    }
+
+    pub fn new_with_options(
+        device: wgpu::Device,
+        queue: wgpu::Queue,
+        width: u32,
+        height: u32,
+        content_scale: f32,
+        aa: VelloAaMethod,
+    ) -> Result<Self, String> {
+        Self::new_with_options_and_cache(device, queue, width, height, content_scale, aa, None)
+    }
+
+    fn new_with_options_and_cache(
+        device: wgpu::Device,
+        queue: wgpu::Queue,
+        width: u32,
+        height: u32,
+        content_scale: f32,
+        aa: VelloAaMethod,
+        cache: Option<&wgpu::PipelineCache>,
+    ) -> Result<Self, String> {
+        let renderer = VelloSceneRenderer::new_with_options(&device, cache, aa)?;
         Ok(Self {
             device,
             queue,
@@ -173,7 +223,7 @@ impl VelloLayerRasterizer {
     pub fn rasterize_in_bounds(
         &mut self,
         layer: ElementId,
-        scene: &SceneGraph,
+        scene: &(impl SceneRead + ?Sized),
         bounds: LayerRasterBounds,
         band: Option<RasterBand>,
     ) -> Result<(), String> {
@@ -262,7 +312,7 @@ impl VelloLayerRasterizer {
     pub fn update_scroll_chrome(
         &mut self,
         layer: ElementId,
-        scene: &SceneGraph,
+        scene: &(impl SceneRead + ?Sized),
         chrome_dirty: bool,
     ) -> Result<bool, String> {
         let needs_new_texture = self
@@ -296,7 +346,7 @@ impl VelloLayerRasterizer {
     pub fn update_scroll_chrome_in_bounds(
         &mut self,
         layer: ElementId,
-        scene: &SceneGraph,
+        scene: &(impl SceneRead + ?Sized),
         bounds: LayerRasterBounds,
         chrome_dirty: bool,
     ) -> Result<bool, String> {
@@ -353,7 +403,7 @@ impl LayerRasterizer for VelloLayerRasterizer {
     fn rasterize(
         &mut self,
         layer: ElementId,
-        scene: &SceneGraph,
+        scene: &LayerScene,
         band: Option<RasterBand>,
     ) -> Result<(), String> {
         let (texture_width, texture_height, origin_y) = match band {

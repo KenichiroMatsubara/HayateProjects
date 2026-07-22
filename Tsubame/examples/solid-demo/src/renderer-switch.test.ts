@@ -18,8 +18,8 @@ describe('Web renderer switch', () => {
     }
   });
 
-  it('renders a single optimization row', () => {
-    expect(html.match(/class="rsw-optimize-label"/g)).toHaveLength(1);
-    expect(html).not.toContain('id="cpu-layer-present-options"');
+  it('does not expose the retired layer-presentation escape hatch', () => {
+    expect(html).not.toContain('rsw-optimize-label');
+    expect(html).not.toContain('data-optimization');
   });
 });

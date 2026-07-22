@@ -43,28 +43,3 @@ WSL2 / 素の Linux では `libnss3 libnspr4 libasound2` 等が無いと Chromiu
 - canvas レンダラーは DOM を覗けないので、`expect(page).toHaveScreenshot()` で確認する。
   Accessibility Mirror（ADR-0124、`[data-hayate-a11y]`）経由で `getByRole` 照会 →
   `boundingBox()` の座標で canvas をクリックする駆動パターンは `canvas-a11y-mirror.spec.ts` 参照。
-
-## `layer-present` の実 Chromium 検証（#697）
-
-`layer-present`（#690・ADR-0125/0127/0140）は同じ WASM を `?layerPresent=0/1` で切り替える。
-`layer-present-webgpu.spec.ts` は両経路を実
-Chromium（Playwright、`--enable-unsafe-webgpu --ignore-gpu-blocklist --use-angle=vulkan`）で
-起動し、`navigator.gpu.requestAdapter()` の成否・`selected scene renderer` ログ・scroll
-compositor の panic/device loss・優先度セグメントの interaction・フレーム遅延を検証する。
-WebGPU canvas の画素パリティは `hayate-scene-renderer-vello` の GPU readback tests が担当する。
-
-**本番の `pnpm test:e2e` には含まれない**（既定ビルド `wasm-pkgs/pkg` しか無い環境でも他の
-スモークを止めずに走らせるため、専用の config/script に分離してある）。
-
-```bash
-# Tsubame/examples/solid-demo で（標準 pkg の再ビルド込み）
-pnpm test:e2e:layer-present
-```
-
-- 標準ビルド `Hayate/wasm-pkgs/pkg` を1つの dev server で配信する（既定ポート 5185、
-  `E2E_LAYER_PRESENT_PORT` で変更可）。
-- WebGPU アダプタが取れない環境では `test.skip` で理由を明示してテスト出力に残す
-  （黙って green にはしない）。
-- Playwright 管理の chromium が未インストールの環境では `/opt/pw-browsers/chromium` →
-  システムの `google-chrome`（`/usr/bin/google-chrome`）の順にフォールバックする
-  （`playwright.config.layer-present.ts`）。

@@ -33,9 +33,9 @@ fn frame_commit_returns_one_renderer_ready_view() {
 
     let frame = tree.commit_rendered_frame(0.0);
 
-    assert!(!frame.scene().is_empty());
-    assert_eq!(frame.layers().first(), Some(&root));
-    assert!(frame.content_dirty_layers().contains(&root));
+    assert!(!frame.snapshot().is_empty());
+    assert_eq!(frame.layer_topology().paint_order().first(), Some(&root));
+    assert!(frame.layer_topology().content_changed().contains(&root));
     assert!(frame
         .scroll_inputs()
         .iter()
@@ -60,7 +60,8 @@ fn committed_frame_exposes_finite_logical_raster_bounds_for_each_layer() {
 
     let frame = tree.commit_rendered_frame(0.0);
     let bounds = frame
-        .layer_raster_bounds()
+        .layer_topology()
+        .raster_bounds()
         .iter()
         .find(|bounds| bounds.layer == root)
         .expect("each committed layer has raster bounds");
@@ -98,12 +99,14 @@ fn nested_compositing_layer_is_raster_local_and_excluded_from_parent() {
 
     let frame = tree.commit_rendered_frame(0.0);
     let root_bounds = frame
-        .layer_raster_bounds()
+        .layer_topology()
+        .raster_bounds()
         .iter()
         .find(|bounds| bounds.layer == root)
         .unwrap();
     let moving_bounds = frame
-        .layer_raster_bounds()
+        .layer_topology()
+        .raster_bounds()
         .iter()
         .find(|bounds| bounds.layer == moving)
         .unwrap();
@@ -164,7 +167,7 @@ fn blurred_drop_and_inset_shadows_have_conservative_raster_reach() {
     );
 
     let frame = tree.commit_rendered_frame(0.0);
-    let bounds = frame.layer_raster_bounds().first().unwrap();
+    let bounds = frame.layer_topology().raster_bounds().first().unwrap();
 
     assert!(bounds.origin_x <= -0.1 && bounds.origin_y <= -0.1);
     assert!(bounds.origin_x + bounds.width >= 66.1);
@@ -200,7 +203,7 @@ fn draw_path_bounds_are_clipped_by_the_committed_scene_clip() {
     );
 
     let frame = tree.commit_rendered_frame(0.0);
-    let bounds = frame.layer_raster_bounds().first().unwrap();
+    let bounds = frame.layer_topology().raster_bounds().first().unwrap();
 
     assert_eq!(
         (
@@ -243,7 +246,7 @@ fn draw_path_coordinate_transforms_contribute_to_raster_bounds() {
     );
 
     let frame = tree.commit_rendered_frame(0.0);
-    let bounds = frame.layer_raster_bounds().first().unwrap();
+    let bounds = frame.layer_topology().raster_bounds().first().unwrap();
 
     assert_eq!(
         (
@@ -281,7 +284,7 @@ fn image_pixels_contribute_their_logical_destination_rect() {
     );
 
     let frame = tree.commit_rendered_frame(0.0);
-    let bounds = frame.layer_raster_bounds().first().unwrap();
+    let bounds = frame.layer_topology().raster_bounds().first().unwrap();
 
     assert_eq!(
         (
@@ -304,7 +307,7 @@ fn text_glyphs_contribute_finite_conservative_bounds() {
     tree.element_set_style(root, &[StyleProp::FontSize(20.0)]);
 
     let frame = tree.commit_rendered_frame(0.0);
-    let bounds = frame.layer_raster_bounds().first().unwrap();
+    let bounds = frame.layer_topology().raster_bounds().first().unwrap();
 
     assert!(
         bounds.width > 0.0,
@@ -354,12 +357,14 @@ fn root_and_scroll_layer_bounds_cover_clipped_content_and_fixed_chrome() {
 
     let frame = tree.commit_rendered_frame(0.0);
     let root_bounds = frame
-        .layer_raster_bounds()
+        .layer_topology()
+        .raster_bounds()
         .iter()
         .find(|bounds| bounds.layer == root)
         .unwrap();
     let scroll_bounds = frame
-        .layer_raster_bounds()
+        .layer_topology()
+        .raster_bounds()
         .iter()
         .find(|bounds| bounds.layer == scroll)
         .unwrap();

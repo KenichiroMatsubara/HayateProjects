@@ -1,4 +1,4 @@
-//! web Canvas Mode present 経路の FramePlan 駆動配線契約（#632）。
+//! web Canvas Mode retained Layer Presentation wiring contract.
 //!
 //! raster gating 判定と work-count 契約は `hayate-layer-compositor` のホストテストで緑。
 //! `canvas.rs` は wasm 専用でホストにはコンパイルされないため、Android アダプタの
@@ -18,64 +18,48 @@ fn vello_backend_src() -> String {
 }
 
 #[test]
-fn render_gates_raster_behind_a_frame_plan() {
+fn render_submits_the_owned_snapshot_and_topology() {
     let src = canvas_src();
     assert!(
-        src.contains("PresentPlanner"),
-        "HayateElementRenderer must own a hayate_layer_compositor::PresentPlanner (#632)"
+        src.contains("frame.snapshot()") && src.contains("frame.layer_topology()"),
+        "the present seam must consume one committed snapshot and topology"
     );
     assert!(
-        src.contains(".plan(") && src.contains("needs_raster"),
-        "render() must consult plan(...).needs_raster before backend.render_scene"
+        src.contains(".present_layers(") && !src.contains("supports_layer_present"),
+        "Layer Presentation must be unconditional"
     );
     assert!(
-        src.contains("note_full_raster"),
-        "a completed raster must be recorded so clean frames become composite-only"
-    );
-    assert!(
-        src.contains("frame.layers()")
-            && src.contains("frame.layer_raster_bounds()")
-            && src.contains("frame.content_dirty_layers()"),
-        "the present path must consume the CommittedFrame layer view (#824)"
-    );
-    // 単一 root 経路は per-layer quad 合成を持たないので、transform 係数だけの変化（#633 で
-    // content dirty から分離された）も保守的に raster トリガへ含めないと stale frame になる。
-    assert!(
-        src.contains("frame.transform_dirty_layers()"),
-        "the single-root present path must union committed transform dirty into its raster trigger (#633)"
+        !src.contains("PresentPlanner") && !src.contains("note_full_raster"),
+        "the retired full-frame planner path must be absent"
     );
 }
 
 #[test]
-fn resize_invalidates_the_cached_surface() {
+fn resize_is_owned_by_the_backend_presentation() {
     let src = canvas_src();
     assert!(
-        src.contains("invalidate()"),
-        "apply_resize must invalidate the present planner cache (#632)"
+        !src.contains("planner.invalidate()"),
+        "canvas must not retain a second logical cache ledger"
     );
 }
 
 #[test]
-fn no_unconditional_render_scene_remains() {
+fn no_full_scene_fallback_remains() {
     let src = canvas_src();
-    let calls = src.matches(".render_scene(").count();
-    assert_eq!(
-        calls, 1,
-        "canvas.rs must call backend.render_scene exactly once (inside the needs_raster branch)"
-    );
+    assert_eq!(src.matches("backend.render_scene(").count(), 0);
 }
 
 #[test]
 fn web_vello_gates_scroll_chrome_with_the_committed_dirty_fact() {
     let canvas = canvas_src();
     assert!(
-        canvas.contains("frame.chrome_dirty_layers(),"),
-        "CommittedFrame chrome dirty must cross the layer-present seam separately"
+        canvas.contains("frame.layer_topology()"),
+        "CommittedFrame topology must carry chrome dirty across the seam"
     );
 
     let vello = vello_backend_src();
     assert!(
-        vello.contains("chrome_dirty.contains(&layer)") && vello.contains(".update_scroll_chrome("),
+        vello.contains("topology") && vello.contains("ScrollChrome"),
         "Web Vello must gate chrome raster by committed dirty state and cache state"
     );
     assert!(
@@ -88,8 +72,8 @@ fn web_vello_gates_scroll_chrome_with_the_committed_dirty_fact() {
 fn web_vello_consumes_committed_layer_raster_bounds() {
     let canvas = canvas_src();
     assert!(
-        canvas.contains("frame.layer_raster_bounds(),"),
-        "CommittedFrame LayerRasterBounds must cross the layer-present seam"
+        canvas.contains("frame.layer_topology()"),
+        "CommittedFrame topology must carry raster bounds across the seam"
     );
 
     let vello = vello_backend_src();

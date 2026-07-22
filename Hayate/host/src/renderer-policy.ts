@@ -5,10 +5,4 @@ export {
   RENDERER_VALUE_VELLO,
   RENDERER_VALUE_TINY_SKIA,
   WEB_RENDERER_QUERY_VALUES,
-  rendererOptimizationQueryParam,
-  parseRendererOptimizationOptions,
-} from './resolve-backend.js';
-export type {
-  WebRendererOptimizationQueryParam,
-  RendererOptimizationOptions,
 } from './resolve-backend.js';

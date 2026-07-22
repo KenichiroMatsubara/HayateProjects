@@ -32,7 +32,7 @@ fn committed_frames_expose_text_payloads_only_through_the_id_lookup_snapshot() {
 
     let frame = tree.commit_rendered_frame(0.0);
     let text_run = frame
-        .scene()
+        .snapshot()
         .iter()
         .find_map(|(_, node)| match node.kind {
             NodeKind::TextRun { text_run, .. } => Some(text_run),

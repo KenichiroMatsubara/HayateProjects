@@ -19,10 +19,8 @@ fn bounded_layer_probe_observes_fewer_raster_pixels_and_cache_bytes() {
     let target = new_raster_surface(width as i32, height as i32).unwrap();
     let _target = presenter
         .present(
-            frame.scene(),
-            frame.layers(),
-            frame.layer_raster_bounds(),
-            frame.content_dirty_layers(),
+            frame.snapshot(),
+            frame.layer_topology(),
             &Default::default(),
             [1.0, 1.0, 1.0, 1.0],
             (0.0, 0.0),
@@ -31,10 +29,14 @@ fn bounded_layer_probe_observes_fewer_raster_pixels_and_cache_bytes() {
         )
         .unwrap();
 
-    let full_surface_pixels = u64::from(width) * u64::from(height) * frame.layers().len() as u64;
+    let full_surface_pixels =
+        u64::from(width) * u64::from(height) * frame.layer_topology().paint_order().len() as u64;
     let raster_pixels = presenter.last_raster_pixels();
     let cache_bytes = presenter.cached_texture_bytes();
-    assert!(frame.layers().len() > 1, "probe needs a non-root layer");
+    assert!(
+        frame.layer_topology().paint_order().len() > 1,
+        "probe needs a non-root layer"
+    );
     assert!(
         raster_pixels < full_surface_pixels,
         "bounded caches must raster fewer pixels than one full surface per layer"

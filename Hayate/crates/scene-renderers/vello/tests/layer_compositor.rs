@@ -5,14 +5,11 @@
 //! 持たない（未 warmup はエラー）こと、(3) レイヤ分解 raster + quad 合成が全面 raster と一致する
 //! ことを実行検証する。分解自体の正しさは CPU パリティ（compositor crate）でも常時固定済み。
 
-use std::collections::HashSet;
-
 use hayate_core::element::style::{Dimension, StyleProp};
-use hayate_core::{Color, ElementKind, ElementTree, LayerRasterBounds, Shadow};
-use hayate_layer_compositor::{
-    collect_layer_placements, extract_layer_scene, extract_root_scene, warmup_variants,
-    CompositeQuad, LayerCompositor, LayerRasterizer,
+use hayate_core::{
+    Color, ElementKind, ElementTree, LayerRasterBounds, LayerScene, LayerSceneKind, Shadow,
 };
+use hayate_layer_compositor::{warmup_variants, CompositeQuad, LayerCompositor, LayerRasterizer};
 use hayate_scene_renderer_vello::layer_compositor::{
     CompositeTarget, VelloLayerRasterizer, WgpuQuadCompositor,
 };
@@ -148,7 +145,7 @@ fn wgpu_layered_composite_matches_full_raster() {
     // 全面 raster（従来経路）。
     let full = hayate_scene_test_support::vello::render_scene_to_pixels_scaled(
         &mut harness,
-        tree.scene_graph(),
+        tree.committed_frame().snapshot(),
         W,
         H,
         1.0,
@@ -156,17 +153,29 @@ fn wgpu_layered_composite_matches_full_raster() {
     .expect("full raster");
 
     // レイヤ分解 raster + 合成。
-    let graph = tree.scene_graph();
-    let boundaries: HashSet<_> = tree.frame_layers().iter().copied().collect();
+    let frame = tree.committed_frame();
+    let graph = frame.snapshot();
+    let topology = frame.layer_topology();
     let mut rasterizer =
         VelloLayerRasterizer::new(harness.device.clone(), harness.queue.clone(), W, H, 1.0)
             .unwrap();
-    let root_scene = extract_root_scene(graph, root, &boundaries);
+    let root_scene = LayerScene::new(
+        graph.clone(),
+        topology.clone(),
+        root,
+        LayerSceneKind::Content,
+    )
+    .unwrap();
     rasterizer.rasterize(root, &root_scene, None).unwrap();
-    let boxed_scene = extract_layer_scene(graph, boxed, &boundaries).unwrap();
-    let boxed_bounds = tree
-        .committed_frame()
-        .layer_raster_bounds()
+    let boxed_scene = LayerScene::new(
+        graph.clone(),
+        topology.clone(),
+        boxed,
+        LayerSceneKind::Content,
+    )
+    .unwrap();
+    let boxed_bounds = topology
+        .raster_bounds()
         .iter()
         .find(|bounds| bounds.layer == boxed)
         .copied()
@@ -200,7 +209,7 @@ fn wgpu_layered_composite_matches_full_raster() {
         format: wgpu::TextureFormat::Rgba8Unorm,
         clear: CLEAR,
     };
-    let placements = collect_layer_placements(graph, root, &boundaries);
+    let placements = topology.placements();
     let quads: Vec<CompositeQuad<'_, _>> = placements
         .iter()
         .filter_map(|p| {

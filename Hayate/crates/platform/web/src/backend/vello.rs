@@ -1,10 +1,7 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
-use wasm_bindgen::prelude::*;
-use web_sys::HtmlCanvasElement;
-use wgpu::util::TextureBlitter;
-
-use hayate_core::{ElementId, LayerRasterBounds, SceneGraph};
+use super::{js_to_anyhow, CanvasBackend, ClearColor, SceneRendererKind};
+use hayate_core::{ElementId, LayerTopology, SceneSnapshot};
 use hayate_layer_compositor::{
     tunables, CompositeQuad, GpuBudget, LayerCompositor, LayerPresentation,
     LayerPresentationAdapter, LayerPresentationFrame, LayerRasterizer, PlacementPlan, RasterJob,
@@ -13,17 +10,10 @@ use hayate_layer_compositor::{
 use hayate_scene_renderer_vello::layer_compositor::{
     CompositeTarget, LayerTexture, VelloLayerRasterizer, WgpuQuadCompositor,
 };
-use hayate_scene_renderer_vello::{
-    create_blitter, create_target_view, VelloRenderTarget, VelloSceneRenderer,
-};
+use wasm_bindgen::prelude::*;
+use web_sys::HtmlCanvasElement;
 
-use super::{js_to_anyhow, CanvasBackend, ClearColor, SceneRendererKind};
-
-/// per-layer present（#690・ADR-0125/0127）の GPU リソース。`VelloLayerRasterizer`（GPU
-/// device/queue を握る）・`WgpuQuadCompositor`（`warmup()` で GPU パイプラインを前倒しコンパイル
-/// する、ADR-0130a）という実 GPU リソースを伴うため、`SelectedBackend::ensure_layer_present_resources`
-/// が `set_layer_present_enabled(true)` の初回呼び出しでのみ construct・warmup する
-/// （ADR-0140・#718 の遅延初期化）。
+/// Vello resources owned by the retained Layer Presentation path and initialized at boot.
 struct LayerPresentState {
     presentation: LayerPresentation,
     rasterizer: VelloLayerRasterizer,
@@ -55,20 +45,8 @@ impl LayerPresentState {
 
 pub(crate) struct SelectedBackend {
     surface_host: VelloSurfaceHost,
-    scene_renderer: VelloSceneRenderer,
     content_scale: f32,
-    /// ADR-0138/ADR-0140 比較用トグル。既定 ON（#690 の per-layer 経路を維持）——
-    /// `HayateElementRenderer::init` の `layer_present_enabled` 引数で OFF にすると
-    /// `supports_layer_present()` が false を返し、呼び出し側（`canvas.rs`）が全面
-    /// `render_scene` にフォールバックする。「製品としては有効化しない」という ADR-0135 の
-    /// 封印意図は、以後この既定値と本コメント・ADR-0140 に記録される（cargo feature という
-    /// 物理的な仕組みではなく運用上の取り決め）。
-    layer_present_enabled: bool,
-    /// per-layer present（#690・ADR-0125/0127）の GPU リソース。`layer_present_enabled` が
-    /// true でも、`set_layer_present_enabled(true)` が一度も呼ばれていなければ `None` のまま
-    /// （ADR-0140 の遅延初期化 — `?layerPresent=0` を選ぶユーザーに不要な GPU 初期化コストを
-    /// 払わせない）。
-    layer_present: Option<LayerPresentState>,
+    layer_present: LayerPresentState,
 }
 
 struct VelloSurfaceHost {
@@ -76,8 +54,6 @@ struct VelloSurfaceHost {
     queue: wgpu::Queue,
     surface: wgpu::Surface<'static>,
     surface_config: wgpu::SurfaceConfiguration,
-    target_view: wgpu::TextureView,
-    blitter: TextureBlitter,
     width: u32,
     height: u32,
 }
@@ -85,51 +61,19 @@ struct VelloSurfaceHost {
 impl SelectedBackend {
     pub(crate) async fn init(canvas: HtmlCanvasElement) -> Result<Self, JsValue> {
         let surface_host = VelloSurfaceHost::init(canvas).await?;
-        let mut scene_renderer =
-            VelloSceneRenderer::new(surface_host.device()).map_err(|e| JsValue::from_str(&e))?;
-        // init 直後・最初の実アプリフレーム前に vello パイプラインを warmup する（#644）。ブラウザ
-        // （Dawn）は非同期にパイプラインをコンパイルするため、warmup が無いと初回タップ/スクロールの
-        // フレームにコンパイル遅延が乗る。warmup の失敗は boot を落とさず、警告のみで続行する
-        // （初回フレームで従来どおりコンパイル遅延が出るだけで、描画は壊れない）。
-        if let Err(e) = scene_renderer.warmup(surface_host.device(), surface_host.queue()) {
-            web_sys::console::warn_1(&JsValue::from_str(&format!("vello warmup skipped: {e}")));
-        }
+        let layer_present = LayerPresentState::new(
+            surface_host.device().clone(),
+            surface_host.queue().clone(),
+            surface_host.width,
+            surface_host.height,
+            1.0,
+        )
+        .map_err(|error| JsValue::from_str(&format!("vello layer presentation: {error}")))?;
         Ok(Self {
             surface_host,
-            scene_renderer,
             content_scale: 1.0,
-            layer_present_enabled: true,
-            // ADR-0140: GPU リソースは construct しない——`set_layer_present_enabled(true)`
-            // （production では `HayateElementRenderer::init` が既定引数で必ずすぐ呼ぶ）が
-            // 最初に呼ばれたとき・または `present_layers` が最初に実際に呼ばれたときに、
-            // `ensure_layer_present_resources` が construct する。
-            layer_present: None,
+            layer_present,
         })
-    }
-
-    /// per-layer 経路の GPU リソースを必要になった時点で construct・warmup する（ADR-0140）。
-    /// construct 済みなら何もしない（再 construct・再 warmup しない）。construct 失敗時は
-    /// vello scene warmup 失敗時と同じ「boot/フレームを落とさず警告ログのみで続行する」
-    /// パターンに倣い、`layer_present_enabled` を false にして全面 raster にフォールバックする。
-    fn ensure_layer_present_resources(&mut self) {
-        if self.layer_present.is_some() {
-            return;
-        }
-        match LayerPresentState::new(
-            self.surface_host.device().clone(),
-            self.surface_host.queue().clone(),
-            self.surface_host.width,
-            self.surface_host.height,
-            self.content_scale,
-        ) {
-            Ok(state) => self.layer_present = Some(state),
-            Err(e) => {
-                web_sys::console::warn_1(&JsValue::from_str(&format!(
-                    "vello layer-present init skipped, falling back to full-surface raster: {e}"
-                )));
-                self.layer_present_enabled = false;
-            }
-        }
     }
 }
 
@@ -169,17 +113,11 @@ impl VelloSurfaceHost {
         surface_config.usage |= wgpu::TextureUsages::RENDER_ATTACHMENT;
         surface.configure(&device, &surface_config);
 
-        let surface_format = surface_config.format;
-        let target_view = create_target_view(&device, width, height);
-        let blitter = create_blitter(&device, surface_format);
-
         Ok(Self {
             device,
             queue,
             surface,
             surface_config,
-            target_view,
-            blitter,
             width,
             height,
         })
@@ -191,21 +129,6 @@ impl VelloSurfaceHost {
 
     fn queue(&self) -> &wgpu::Queue {
         &self.queue
-    }
-
-    #[allow(dead_code)]
-    fn target_view(&self) -> &wgpu::TextureView {
-        &self.target_view
-    }
-
-    fn render_target(&self) -> VelloRenderTarget<'_> {
-        VelloRenderTarget {
-            device: &self.device,
-            queue: &self.queue,
-            target_view: &self.target_view,
-            width: self.width,
-            height: self.height,
-        }
     }
 
     /// 次に present するサーフェス texture とその view を取得する。`Occluded` は「今フレームは
@@ -234,22 +157,6 @@ impl VelloSurfaceHost {
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
         Ok(Some((surface_texture, surface_view)))
-    }
-
-    fn present_target(&mut self) -> Result<(), JsValue> {
-        let Some((surface_texture, surface_view)) = self.acquire_surface_view()? else {
-            return Ok(());
-        };
-        let mut encoder = self
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("hayate_blit"),
-            });
-        self.blitter
-            .copy(&self.device, &mut encoder, &self.target_view, &surface_view);
-        self.queue.submit(std::iter::once(encoder.finish()));
-        surface_texture.present();
-        Ok(())
     }
 
     /// per-layer present（#690）: レイヤ texture quad を専用 wgpu compositor でサーフェスへ直接
@@ -286,7 +193,6 @@ impl VelloSurfaceHost {
         self.surface_config.width = width;
         self.surface_config.height = height;
         self.surface.configure(&self.device, &self.surface_config);
-        self.target_view = create_target_view(&self.device, width, height);
     }
 }
 
@@ -363,31 +269,11 @@ impl CanvasBackend for SelectedBackend {
         SceneRendererKind::Vello
     }
 
-    fn render_scene(
-        &mut self,
-        scene: &SceneGraph,
-        clear_color: ClearColor,
-    ) -> Result<(), anyhow::Error> {
-        let target = self.surface_host.render_target();
-        self.scene_renderer
-            .render_scene(scene, &target, clear_color, self.content_scale)
-            .map_err(|e| anyhow::anyhow!(e))?;
-        self.surface_host.present_target().map_err(js_to_anyhow)
-    }
-
     fn clear(&mut self, clear_color: ClearColor) -> Result<(), anyhow::Error> {
-        self.render_scene(&SceneGraph::new(), clear_color)
-    }
-
-    fn supports_layer_present(&self) -> bool {
-        self.layer_present_enabled
-    }
-
-    fn set_layer_present_enabled(&mut self, enabled: bool) {
-        self.layer_present_enabled = enabled;
-        if enabled {
-            self.ensure_layer_present_resources();
-        }
+        let (surface_host, state) = (&mut self.surface_host, &mut self.layer_present);
+        surface_host
+            .present_composite(&mut state.compositor, &[], clear_color)
+            .map_err(js_to_anyhow)
     }
 
     /// per-layer present（#690・ADR-0125/0127、scroll overscan サイジング配線 #707）。Android の旧
@@ -402,24 +288,13 @@ impl CanvasBackend for SelectedBackend {
     /// 持つ (4) GPU 予算超過分を LRU 退避（scroll レイヤは帯サイズのバイト数で計上、#707）。
     fn present_layers(
         &mut self,
-        scene: &SceneGraph,
-        layers: &[ElementId],
-        layer_raster_bounds: &[LayerRasterBounds],
-        layer_dirty: &HashSet<ElementId>,
-        chrome_dirty: &HashSet<ElementId>,
+        scene: &SceneSnapshot,
+        topology: &LayerTopology,
         scroll_geometry: &HashMap<ElementId, ScrollLayerGeometry>,
         clear_color: ClearColor,
     ) -> Result<(), anyhow::Error> {
-        self.ensure_layer_present_resources();
-        if self.layer_present.is_none() {
-            // construct が失敗した直後（ensure_layer_present_resources が layer_present_enabled
-            // を false に落とした）。このフレームは全面 raster にフォールバックする。
-            return self.render_scene(scene, clear_color);
-        }
         let (surface_host, layer_present) = (&mut self.surface_host, &mut self.layer_present);
-        let state = layer_present
-            .as_mut()
-            .expect("layer-present resources were checked above");
+        let state = layer_present;
         let mut adapter = VelloLayerPresentationAdapter {
             rasterizer: &mut state.rasterizer,
             compositor: &mut state.compositor,
@@ -430,11 +305,8 @@ impl CanvasBackend for SelectedBackend {
             .presentation
             .present(
                 LayerPresentationFrame {
-                    scene,
-                    layers,
-                    layer_raster_bounds,
-                    layer_dirty,
-                    chrome_dirty,
+                    snapshot: scene,
+                    topology,
                     scroll_geometry,
                 },
                 &mut adapter,
@@ -452,16 +324,13 @@ impl CanvasBackend for SelectedBackend {
     fn resize(&mut self, width: u32, height: u32, content_scale: f32) {
         self.content_scale = content_scale.max(1.0);
         self.surface_host.resize(width, height);
-        if let Some(state) = self.layer_present.as_mut() {
-            // root surface と content scale が変わると、Core bounds 由来の device-px texture 寸法も
-            // 作り直しになるため台帳ごと invalidate する。
-            state.rasterizer.resize(
-                self.surface_host.width,
-                self.surface_host.height,
-                self.content_scale,
-            );
-            state.compositor.set_content_scale(self.content_scale);
-            state.presentation.invalidate();
-        }
+        let state = &mut self.layer_present;
+        state.rasterizer.resize(
+            self.surface_host.width,
+            self.surface_host.height,
+            self.content_scale,
+        );
+        state.compositor.set_content_scale(self.content_scale);
+        state.presentation.invalidate();
     }
 }

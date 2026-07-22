@@ -1,10 +1,8 @@
-//! レイヤ texture キャッシュと専用 compositor の backend 非依存シーム（ADR-0125 backend 半分 /
-//! ADR-0128 の `Send` seam / ADR-0130a パイプライン warmup）。
+//! Retained Layer Presentation と backend 非依存 adapter seam（ADR-0152 / ADR-0153）。
 //!
-//! `render_scene` を「全面描画」から「`layer_dirty` のレイヤだけ raster、残りはキャッシュ面を再利用」
-//! へ変えるための **GPU 非依存の planning** をここに置く。実 raster（Vello = wgpu texture /
-//! tiny-skia = `Pixmap`）と実 composite（専用 wgpu compositor）は platform backend が
-//! [`LayerRasterizer`] / [`LayerCompositor`] trait 越しに差す。これにより以下をホストで固定する:
+//! Core の immutable Scene Snapshot / Layer Topology を入力に、prepare → execute → commit を
+//! [`LayerPresentation`] が一括管理する。実 raster（Vello / skia-safe / tiny-skia）と composite は
+//! adapter が所有し、logical cache ledger・placement・pending dirty は共通 transaction に留める。
 //!
 //! - clean フレームでレイヤ再 raster がゼロ、変化フレームで dirty レイヤだけ raster（measurable
 //!   work-count・ADR-0086 方式の拡張）。
@@ -12,23 +10,16 @@
 //! - init で全パイプライン variant（surface format × blend）を warmup（初回遅延生成なし・ADR-0130a）。
 //! - cache/compositor が `Send` クリーンな seam の裏に隔離される（ADR-0128 の Raster スレッド分離の布石）。
 //!
-//! 同一 `layer_dirty`（ADR-0125 コア・#609）を入力にするため、tiny-skia(CPU) 経路も同じ planning で
-//! 同じレイヤ化の恩恵を受ける（backend は trait 実装だけ差し替える）。
-//!
-//! ⚠️ **ADR-0135 により封印中** — この crate が支える per-layer 経路（web `layer-present`
-//! feature）を有効化しないこと。#697 で実 Chromium 実行時に描画バグが確認され、実用段階に
-//! ないと判定された。性能上の実害が具体的に発生するまで再開しない。
+//! 全 platform/backend はこの単一 production path を使い、runtime toggle や copied subscene の
+//! fallback は持たない。
 
 use std::collections::{HashMap, HashSet};
 
 use hayate_core::element::id::ElementId;
-use hayate_core::SceneGraph;
+use hayate_core::LayerScene;
 
 pub mod layer_scene;
-pub use layer_scene::{
-    collect_layer_placements, extract_layer_scene, extract_root_scene, extract_scroll_chrome_scene,
-    extract_scroll_layer_scene, LayerPlacement,
-};
+pub use layer_scene::LayerPlacement;
 pub mod pipeline_cache;
 pub use pipeline_cache::PipelineCacheKey;
 pub mod present;
@@ -399,7 +390,7 @@ pub fn warmup_variants() -> Vec<PipelineVariant> {
 }
 
 /// native では `Send`、wasm では無条件で満たされる境界（ADR-0128）。native の raster seam は
-/// Raster スレッドへ移せるよう `Send` クリーンを要求するが、web は SceneGraph がスレッドを
+/// Raster スレッドへ移せるよう `Send` クリーンを要求するが、web は Scene Snapshot がスレッドを
 /// 跨がない（エンジン丸ごと単一 Worker の近似形）ため wgpu の `!Send` 型をそのまま使える。
 #[cfg(not(target_arch = "wasm32"))]
 pub trait MaybeSend: Send {}
@@ -417,8 +408,7 @@ impl<T> MaybeSend for T {}
 pub trait LayerRasterizer: MaybeSend {
     /// backend ごとのキャッシュ面型（wgpu texture / `Pixmap`）。
     type Texture;
-    /// `layer` の抽出済み sub-scene（[`layer_scene::extract_layer_scene`] /
-    /// [`layer_scene::extract_root_scene`]）を透明クリアのキャッシュ面へ raster する。`band` が
+    /// `layer` の owned zero-copy projection を透明クリアのキャッシュ面へ raster する。`band` が
     /// `Some` なら scroll 内容レイヤの overscan 帯サイジング（ADR-0127・#707）: 実装は
     /// キャッシュ面をフルサーフェスではなく `band.height` に合わせて確保し、`band.origin_y` が
     /// texture 行 0 に来るよう内容を平行移動して raster してよい（対応しない実装は無視して
@@ -426,7 +416,7 @@ pub trait LayerRasterizer: MaybeSend {
     fn rasterize(
         &mut self,
         layer: ElementId,
-        scene: &SceneGraph,
+        scene: &LayerScene,
         band: Option<RasterBand>,
     ) -> Result<(), String>;
     /// raster 済みキャッシュ面（合成入力）。未 raster / 破棄済みなら `None`。
@@ -457,7 +447,7 @@ pub trait LayerCompositor: MaybeSend {
 }
 
 /// compositor が 1 枚のキャッシュ texture を合成するための quad（transform/opacity/clip 付き）。
-/// `transform` / `clip` は [`layer_scene::collect_layer_placements`] の placement をそのまま渡す。
+/// `transform` / `clip` は Core の [`hayate_core::LayerTopology::placements`] をそのまま渡す。
 #[derive(Debug, Clone, Copy)]
 pub struct CompositeQuad<'a, T> {
     pub layer: ElementId,

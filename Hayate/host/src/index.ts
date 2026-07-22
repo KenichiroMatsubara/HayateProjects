@@ -1,6 +1,5 @@
 import manifest from '@torimi/hayate-protocol-spec/manifest' with { type: 'json' };
 import {
-  parseRendererOptimizationOptions,
   resolveCanvasBackendAttemptOrder,
   type CanvasBackend,
 } from './resolve-backend.js';
@@ -82,20 +81,6 @@ export interface WebHost {
 export interface CreateHayateWebHostOptions {
   /** WebGPU プローブ結果に関わらずロードする WASM バックエンド。 */
   backend?: CanvasBackend;
-  /**
-   * `backend === 'vello'` の時に効く、layer-present（per-layer 経路、
-   * ADR-0125/0127・ADR-0140）のランタイムトグル。既定 `true`（ADR-0137）。
-   *
-   * `false` を渡すと全面 raster にフォールバックできる、比較用の逃げ道として残している。
-   * native（Android/iOS）は本パスを経由しないため既定 OFF のまま変更なし。
-   */
-  layerPresent?: boolean;
-  /**
-   * `backend === 'tiny-skia'` の時だけ効く、per-layer 経路の比較用トグル
-   * （ADR-0138）。既定 `true`。vello の `layerPresent`（上記）とは別物の意味を持つ、
-   * 独立したランタイムフラグ。`false` で全面 raster にフォールバックする。
-   */
-  cpuLayerPresent?: boolean;
   /** 開発時専用の `tuning.json` テキスト。指定すると WASM レンダラに渡して味付け
    * 定数のデフォルトを上書きする。不正な JSON は無視され、ビルド時のデフォルトが
    * 維持される。未指定なら上書きしない。 */
@@ -211,12 +196,7 @@ export async function createHayateWebHost(
   const search =
     options?.locationSearch ??
     (typeof location !== 'undefined' ? location.search : undefined);
-  const queryOptimization = parseRendererOptimizationOptions(search ?? '');
-  const effectiveOptions: CreateHayateWebHostOptions = {
-    ...options,
-    layerPresent: options?.layerPresent ?? queryOptimization.layerPresent,
-    cpuLayerPresent: options?.cpuLayerPresent ?? queryOptimization.cpuLayerPresent,
-  };
+  const effectiveOptions: CreateHayateWebHostOptions = { ...options };
   if (shouldUseWorkerEngine(effectiveOptions.workerEngine, search)) {
     const worker = tryCreateWorkerEngineHost(canvas, effectiveOptions);
     if (worker) return worker;
@@ -228,12 +208,7 @@ export async function createHayateWebHost(
   const load =
     effectiveOptions.loadBackend ??
     ((backend: CanvasBackend, canvas: HTMLCanvasElement) =>
-      loadCanvasBackend(
-        backend,
-        canvas,
-        effectiveOptions.layerPresent,
-        effectiveOptions.cpuLayerPresent,
-      ));
+      loadCanvasBackend(backend, canvas));
   const attachMirror = effectiveOptions.attachMirror ?? attachAccessibilityMirror;
 
   const webgpuAvailable = await probe();

@@ -8,17 +8,22 @@
 //! fallback として RenderHost が拾う。`backend-vello` feature（default on）でビルドから
 //! 外せる（ADR-0146 §5）。
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 
 use anyhow::{anyhow, Error};
 use hayate_app_host::render_host::{ClearColor, SceneRenderer};
 use hayate_app_host::renderer_selection::SceneRendererKind;
-use hayate_core::SceneGraph;
-use hayate_scene_renderer_vello::{
-    create_blitter, create_target_view, VelloRenderTarget, VelloSceneRenderer,
+use hayate_core::{ElementId, LayerTopology, SceneSnapshot};
+use hayate_layer_compositor::{
+    tunables, CompositeQuad, GpuBudget, LayerCompositor, LayerPresentation,
+    LayerPresentationAdapter, LayerPresentationFrame, LayerRasterizer, PlacementPlan, RasterJob,
+    RasterJobKind, ScrollLayerGeometry,
 };
-use wgpu::util::TextureBlitter;
+use hayate_scene_renderer_vello::layer_compositor::{
+    CompositeTarget, VelloLayerRasterizer, WgpuQuadCompositor,
+};
 use winit::window::Window;
 
 use crate::pipeline_disk_cache;
@@ -27,15 +32,46 @@ use crate::pipeline_disk_cache;
 pub struct VelloWindowRenderer {
     window: Arc<Window>,
     device: wgpu::Device,
-    queue: wgpu::Queue,
     surface: wgpu::Surface<'static>,
     surface_config: wgpu::SurfaceConfiguration,
-    target_view: wgpu::TextureView,
-    blitter: TextureBlitter,
-    renderer: VelloSceneRenderer,
+    layer_present: LayerPresentState,
     /// バッキングストア寸法（物理 px）。
     width: u32,
     height: u32,
+}
+
+struct LayerPresentState {
+    presentation: LayerPresentation,
+    rasterizer: VelloLayerRasterizer,
+    compositor: WgpuQuadCompositor,
+}
+
+impl LayerPresentState {
+    fn new(
+        device: wgpu::Device,
+        queue: wgpu::Queue,
+        width: u32,
+        height: u32,
+        content_scale: f32,
+        cache: Option<&wgpu::PipelineCache>,
+    ) -> Result<Self, String> {
+        let rasterizer = VelloLayerRasterizer::new_with_pipeline_cache(
+            device.clone(),
+            queue.clone(),
+            width,
+            height,
+            content_scale,
+            cache,
+        )?;
+        let mut compositor = WgpuQuadCompositor::new(device, queue);
+        compositor.set_content_scale(content_scale);
+        compositor.warmup();
+        Ok(Self {
+            presentation: LayerPresentation::new(),
+            rasterizer,
+            compositor,
+        })
+    }
 }
 
 impl VelloWindowRenderer {
@@ -92,9 +128,6 @@ impl VelloWindowRenderer {
         surface_config.format = surface_config.format.remove_srgb_suffix();
         surface.configure(&device, &surface_config);
 
-        let target_view = create_target_view(&device, width, height);
-        let blitter = create_blitter(&device, surface_config.format);
-
         let disk_cache = supports_pipeline_cache
             .then(|| {
                 pipeline_disk_cache::DiskPipelineCache::discover(
@@ -125,8 +158,16 @@ impl VelloWindowRenderer {
         });
 
         let init_start = Instant::now();
-        let renderer = VelloSceneRenderer::new_with_pipeline_cache(&device, gpu_cache.as_ref())
-            .map_err(|e| anyhow!("vello renderer init: {e}"))?;
+        let content_scale = window.scale_factor() as f32;
+        let layer_present = LayerPresentState::new(
+            device.clone(),
+            queue.clone(),
+            width,
+            height,
+            content_scale,
+            gpu_cache.as_ref(),
+        )
+        .map_err(|e| anyhow!("vello layer presentation init: {e}"))?;
         log::info!(
             "vello renderer init: {:.0}ms (pipeline cache: {})",
             init_start.elapsed().as_secs_f64() * 1000.0,
@@ -147,12 +188,9 @@ impl VelloWindowRenderer {
         Ok(Self {
             window,
             device,
-            queue,
             surface,
             surface_config,
-            target_view,
-            blitter,
-            renderer,
+            layer_present,
             width,
             height,
         })
@@ -173,7 +211,101 @@ impl VelloWindowRenderer {
         self.surface_config.width = width;
         self.surface_config.height = height;
         self.surface.configure(&self.device, &self.surface_config);
-        self.target_view = create_target_view(&self.device, width, height);
+        let content_scale = self.window.scale_factor() as f32;
+        self.layer_present
+            .rasterizer
+            .resize(width, height, content_scale);
+        self.layer_present
+            .compositor
+            .set_content_scale(content_scale);
+        self.layer_present.presentation.invalidate();
+    }
+}
+
+struct DesktopVelloLayerPresentationAdapter<'a> {
+    rasterizer: &'a mut VelloLayerRasterizer,
+    compositor: &'a mut WgpuQuadCompositor,
+    device: &'a wgpu::Device,
+    surface: &'a wgpu::Surface<'static>,
+    surface_config: &'a wgpu::SurfaceConfiguration,
+    clear: ClearColor,
+}
+
+impl LayerPresentationAdapter for DesktopVelloLayerPresentationAdapter<'_> {
+    type Error = String;
+
+    fn rasterize(&mut self, job: &RasterJob<'_>) -> Result<u64, Self::Error> {
+        match job.kind {
+            RasterJobKind::Content => match job.bounds {
+                Some(bounds) => self
+                    .rasterizer
+                    .rasterize_in_bounds(job.layer, job.scene, bounds, job.band)?,
+                None => self.rasterizer.rasterize(job.layer, job.scene, job.band)?,
+            },
+            RasterJobKind::ScrollChrome => {
+                match job.bounds {
+                    Some(bounds) => self.rasterizer.update_scroll_chrome_in_bounds(
+                        job.layer,
+                        job.scene,
+                        bounds,
+                        job.repaint,
+                    )?,
+                    None => {
+                        self.rasterizer
+                            .update_scroll_chrome(job.layer, job.scene, job.repaint)?
+                    }
+                };
+            }
+        }
+        Ok(self.rasterizer.cache_bytes(job.layer))
+    }
+
+    fn composite(&mut self, plan: &PlacementPlan) -> Result<(), Self::Error> {
+        let surface_texture = match self.surface.get_current_texture() {
+            wgpu::CurrentSurfaceTexture::Success(texture)
+            | wgpu::CurrentSurfaceTexture::Suboptimal(texture) => texture,
+            wgpu::CurrentSurfaceTexture::Outdated => {
+                self.surface.configure(self.device, self.surface_config);
+                return Ok(());
+            }
+            wgpu::CurrentSurfaceTexture::Occluded => return Ok(()),
+            other => return Err(format!("get_current_texture: {other:?}")),
+        };
+        let surface_view = surface_texture
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+        let mut quads = Vec::with_capacity(plan.planes.len());
+        for plane in &plan.planes {
+            let texture = match plane.kind {
+                RasterJobKind::Content => self.rasterizer.texture(plane.layer),
+                RasterJobKind::ScrollChrome => self.rasterizer.scroll_chrome_texture(plane.layer),
+            };
+            if let Some(texture) = texture {
+                quads.push(CompositeQuad {
+                    layer: plane.layer,
+                    transform: plane.transform,
+                    opacity: 1.0,
+                    clip: plane.clip,
+                    texture,
+                });
+            }
+        }
+        let mut target = CompositeTarget {
+            view: surface_view,
+            width: self.surface_config.width,
+            height: self.surface_config.height,
+            format: self.surface_config.format,
+            clear: self.clear,
+        };
+        self.compositor.composite(&mut target, &quads)?;
+        surface_texture.present();
+        Ok(())
+    }
+
+    fn discard(&mut self, layers: &[ElementId]) {
+        for &layer in layers {
+            self.rasterizer.discard(layer);
+        }
     }
 }
 
@@ -182,58 +314,55 @@ impl SceneRenderer for VelloWindowRenderer {
         SceneRendererKind::Vello
     }
 
-    fn render_scene(&mut self, scene: &SceneGraph, clear_color: ClearColor) -> Result<(), Error> {
-        // 論理→物理の変換係数（HiDPI）は window から毎フレーム導く。fallback 直後の
-        // `RenderHost` からの resize は scale を運ばないため、ここで自給するのが安全。
-        let content_scale = self.window.scale_factor() as f32;
-
-        self.renderer
-            .render_scene(
-                scene,
-                &VelloRenderTarget {
-                    device: &self.device,
-                    queue: &self.queue,
-                    target_view: &self.target_view,
-                    width: self.width,
-                    height: self.height,
-                },
-                clear_color,
-                content_scale,
-            )
-            .map_err(|e| anyhow!("vello render_scene failed: {e}"))?;
-
-        let surface_texture = match self.surface.get_current_texture() {
-            wgpu::CurrentSurfaceTexture::Success(t)
-            | wgpu::CurrentSurfaceTexture::Suboptimal(t) => t,
-            // surface が陳腐化したら次フレームで再 configure に委ねる。
-            wgpu::CurrentSurfaceTexture::Outdated => {
-                self.surface.configure(&self.device, &self.surface_config);
-                return Ok(());
-            }
-            wgpu::CurrentSurfaceTexture::Occluded => return Ok(()),
-            other => {
-                log::warn!("get_current_texture: {other:?}");
-                return Ok(());
-            }
+    fn present_layers(
+        &mut self,
+        scene: &SceneSnapshot,
+        topology: &LayerTopology,
+        scroll_geometry: &HashMap<ElementId, ScrollLayerGeometry>,
+        clear_color: ClearColor,
+    ) -> Result<(), Error> {
+        let state = &mut self.layer_present;
+        let mut adapter = DesktopVelloLayerPresentationAdapter {
+            rasterizer: &mut state.rasterizer,
+            compositor: &mut state.compositor,
+            device: &self.device,
+            surface: &self.surface,
+            surface_config: &self.surface_config,
+            clear: clear_color,
         };
-
-        let surface_view = surface_texture
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
-        let mut encoder = self
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("hayate-desktop-blit"),
-            });
-        self.blitter
-            .copy(&self.device, &mut encoder, &self.target_view, &surface_view);
-        self.queue.submit(std::iter::once(encoder.finish()));
-        surface_texture.present();
+        state
+            .presentation
+            .present(
+                LayerPresentationFrame {
+                    snapshot: scene,
+                    topology,
+                    scroll_geometry,
+                },
+                &mut adapter,
+            )
+            .map_err(|error| anyhow!("vello layer presentation: {error:?}"))?;
+        let budget = GpuBudget::from_viewports(
+            self.surface_config.width,
+            self.surface_config.height,
+            tunables::GPU_BUDGET_VIEWPORTS_DESKTOP,
+        );
+        state.presentation.enforce_budget(budget, &mut adapter);
         Ok(())
     }
 
     fn clear(&mut self, clear_color: ClearColor) -> Result<(), Error> {
-        self.render_scene(&SceneGraph::default(), clear_color)
+        let state = &mut self.layer_present;
+        let mut adapter = DesktopVelloLayerPresentationAdapter {
+            rasterizer: &mut state.rasterizer,
+            compositor: &mut state.compositor,
+            device: &self.device,
+            surface: &self.surface,
+            surface_config: &self.surface_config,
+            clear: clear_color,
+        };
+        adapter
+            .composite(&PlacementPlan::default())
+            .map_err(|error| anyhow!("vello clear: {error}"))
     }
 
     fn resize(&mut self, width: u32, height: u32, _content_scale: f32) {

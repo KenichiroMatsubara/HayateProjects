@@ -234,24 +234,15 @@ impl RenderHostSurface {
 impl PresentTarget for RenderHostSurface {
     type Error = anyhow::Error;
 
-    fn present(&mut self, frame: &hayate_core::CommittedFrame<'_>) -> Result<(), Self::Error> {
-        if self.host.supports_layer_present() {
-            let mut layer_dirty = frame.content_dirty_layers().clone();
-            layer_dirty.extend(frame.chrome_dirty_layers().iter().copied());
-            let scroll_geometry =
-                hayate_layer_compositor::scroll_layer_geometry_from_inputs(frame.scroll_inputs());
-            self.host.present_layers(
-                frame.scene(),
-                frame.layers(),
-                frame.layer_raster_bounds(),
-                &layer_dirty,
-                frame.chrome_dirty_layers(),
-                &scroll_geometry,
-                CLEAR_COLOR,
-            )
-        } else {
-            self.host.render_scene(frame.scene(), CLEAR_COLOR)
-        }
+    fn present(&mut self, frame: &hayate_core::CommittedFrame) -> Result<(), Self::Error> {
+        let scroll_geometry =
+            hayate_layer_compositor::scroll_layer_geometry_from_inputs(frame.scroll_inputs());
+        self.host.present_layers(
+            frame.snapshot(),
+            frame.layer_topology(),
+            &scroll_geometry,
+            CLEAR_COLOR,
+        )
     }
 }
 

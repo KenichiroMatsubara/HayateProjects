@@ -1,4 +1,4 @@
-//! tiny-skia の per-layer 比較用トグル配線契約（ADR-0138・#710）。
+//! Retained Layer Presentation is a hard cutover: no runtime escape hatch remains.
 //!
 //! `canvas.rs`・`backend/tiny_skia_backend.rs` は wasm 専用で
 //! ホストにはコンパイルされないため、`compositor_wiring.rs` と同じくソースを読んで配線を
@@ -13,33 +13,25 @@ fn read(rel: &str) -> String {
 }
 
 #[test]
-fn canvas_init_takes_and_forwards_the_runtime_toggle() {
+fn canvas_init_has_no_runtime_layer_present_toggle() {
     let src = read("src/canvas.rs");
     assert!(
-        src.contains("layer_present_enabled: Option<bool>"),
-        "HayateElementRenderer::init must accept an Option<bool> layer_present_enabled param"
-    );
-    assert!(
-        src.contains("backend.set_layer_present_enabled(layer_present_enabled.unwrap_or(true))"),
-        "init must forward the flag to the backend, defaulting to ON when unset (ADR-0138)"
+        !src.contains("layer_present_enabled") && !src.contains("set_layer_present_enabled"),
+        "the production canvas API must not expose a legacy layer-present toggle"
     );
 }
 
 #[test]
-fn tiny_skia_backend_reads_a_runtime_field_instead_of_a_hardcoded_true() {
-    let src = read("src/backend/tiny_skia_backend.rs");
+fn production_web_backends_have_only_the_retained_present_path() {
+    let canvas = read("src/canvas.rs");
     assert!(
-        src.contains("layer_present_enabled: bool"),
-        "SelectedBackend must own a settable layer_present_enabled field"
+        canvas.contains(".present_layers(") && !canvas.contains("supports_layer_present"),
+        "canvas must unconditionally submit the committed snapshot and topology"
     );
-    assert!(
-        src.contains(
-            "fn supports_layer_present(&self) -> bool {\n        self.layer_present_enabled\n    }"
-        ),
-        "supports_layer_present must read the runtime field, not return a hardcoded true"
-    );
-    assert!(
-        src.contains("fn set_layer_present_enabled(&mut self, enabled: bool) {\n        self.layer_present_enabled = enabled;\n    }"),
-        "SelectedBackend must implement the SceneRenderer::set_layer_present_enabled setter"
-    );
+    for backend in ["src/backend/vello.rs", "src/backend/tiny_skia_backend.rs"] {
+        let src = read(backend);
+        assert!(!src.contains("supports_layer_present"));
+        assert!(!src.contains("layer_present_enabled"));
+        assert!(src.contains("fn present_layers("));
+    }
 }

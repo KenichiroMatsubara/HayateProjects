@@ -11,12 +11,9 @@
 use std::collections::HashSet;
 use std::time::Instant;
 
-use hayate_core::{ElementId, LayerRasterBounds, SceneRead};
+use hayate_core::{ElementId, LayerScene, LayerSceneKind, LayerTopology, SceneSnapshot};
 use hayate_demo_fixtures::{
     dual_transition_tree, tasks_tree, DUAL_TRANSITION_VIEWPORT, TASKS_VIEWPORT,
-};
-use hayate_layer_compositor::layer_scene::{
-    collect_layer_placements, extract_layer_scene, extract_root_scene,
 };
 use hayate_layer_compositor::{CompositeQuad, LayerCompositor, LayerRasterizer};
 use hayate_scene_renderer_vello::debug_encode_scene;
@@ -35,30 +32,29 @@ fn layered_gpu_frame(
     rasterizer: &mut VelloLayerRasterizer,
     compositor: &mut WgpuQuadCompositor,
     cached: &mut HashSet<ElementId>,
-    graph: &(impl SceneRead + ?Sized),
-    layers: &[ElementId],
-    layer_raster_bounds: &[LayerRasterBounds],
-    layer_dirty: &HashSet<ElementId>,
+    snapshot: &SceneSnapshot,
+    topology: &LayerTopology,
     w: u32,
     hgt: u32,
 ) -> Option<Vec<u8>> {
-    let Some(&root) = layers.first() else {
+    let Some(&root) = topology.paint_order().first() else {
         return None;
     };
-    let boundaries: HashSet<ElementId> = layers.iter().copied().collect();
-    for &layer in layers {
-        if cached.contains(&layer) && !layer_dirty.contains(&layer) {
+    for &layer in topology.paint_order() {
+        if cached.contains(&layer) && !topology.content_changed().contains(&layer) {
             continue;
         }
-        let extracted = if layer == root {
-            Some(extract_root_scene(graph, root, &boundaries))
-        } else {
-            extract_layer_scene(graph, layer, &boundaries)
-        };
+        let extracted = LayerScene::new(
+            snapshot.clone(),
+            topology.clone(),
+            layer,
+            LayerSceneKind::Content,
+        );
         if let Some(extracted) = extracted {
             if layer == root {
                 rasterizer.rasterize(layer, &extracted, None).ok()?;
-            } else if let Some(&bounds) = layer_raster_bounds
+            } else if let Some(&bounds) = topology
+                .raster_bounds()
                 .iter()
                 .find(|bounds| bounds.layer == layer)
             {
@@ -71,7 +67,7 @@ fn layered_gpu_frame(
             cached.insert(layer);
         }
     }
-    let placements = collect_layer_placements(graph, root, &boundaries);
+    let placements = topology.placements();
     let quads: Vec<CompositeQuad<'_, _>> = placements
         .iter()
         .filter_map(|p| {
@@ -177,23 +173,29 @@ fn perf_probe() {
     // 配線前は上の full encode が毎フレーム走る（present ごと）。配線後、キャッシュ texture を
     // 再利用する composite-only フレームでは vello エンコードは走らず、CPU 仕事は placement 収集
     // （保持シーンから quad 配置を導出）だけ。差がスクロール/transform フレームの短縮分。
-    let boundaries: HashSet<ElementId> = tree.frame_layers().iter().copied().collect();
-    let root = tree.frame_layers()[0];
+    let frame = tree.committed_frame();
+    let topology = frame.layer_topology().clone();
     bench(
         "layer placements collect (composite-only frame CPU)",
         200,
         || {
-            let p = collect_layer_placements(&graph, root, &boundaries);
+            let p = topology.placements();
             std::hint::black_box(&p);
         },
     );
     // dirty レイヤ 1 枚だけを再 raster するフレームのエンコードコスト（full encode との対比）。
-    let layer_scene = if tree.frame_layers().len() > 1 {
-        extract_layer_scene(&graph, tree.frame_layers()[1], &boundaries)
-    } else {
-        Some(extract_root_scene(&graph, root, &boundaries))
-    }
-    .unwrap_or_else(|| extract_root_scene(&graph, root, &boundaries));
+    let layer = topology
+        .paint_order()
+        .get(1)
+        .copied()
+        .unwrap_or_else(|| topology.paint_order()[0]);
+    let layer_scene = LayerScene::new(
+        graph.clone(),
+        topology.clone(),
+        layer,
+        LayerSceneKind::Content,
+    )
+    .expect("committed layer has a zero-copy scene");
     bench(
         "vello single-layer encode scale=1.0 (dirty-layer reraster)",
         100,
@@ -244,9 +246,7 @@ fn perf_probe() {
             //    オーバーヘッドが単一レイヤの度数分布としてそのまま出る。
             let w = vw as u32;
             let hgt = vh as u32;
-            let layers = tree.frame_layers().to_vec();
-            let layer_raster_bounds = tree.committed_frame().layer_raster_bounds().to_vec();
-            let dirty: HashSet<ElementId> = HashSet::new();
+            let committed = tree.committed_frame();
             let mut rasterizer =
                 VelloLayerRasterizer::new(h.device.clone(), h.queue.clone(), w, hgt, 1.0).unwrap();
             let mut compositor = WgpuQuadCompositor::new(h.device.clone(), h.queue.clone());
@@ -267,9 +267,7 @@ fn perf_probe() {
                     &mut compositor,
                     &mut cached,
                     &graph,
-                    &layers,
-                    &layer_raster_bounds,
-                    &dirty,
+                    committed.layer_topology(),
                     w,
                     hgt,
                 );
@@ -314,9 +312,9 @@ fn perf_probe() {
             while dtree.has_pending_visual_work() && frames < 60 {
                 dtree.render(t);
                 let graph = dtree.committed_frame().snapshot().clone();
-                let layers = dtree.frame_layers().to_vec();
-                let layer_raster_bounds = dtree.committed_frame().layer_raster_bounds().to_vec();
-                let dirty = dtree.frame_layer_dirty().clone();
+                let committed = dtree.committed_frame();
+                let layers = committed.layer_topology().paint_order().to_vec();
+                let dirty = committed.layer_topology().content_changed().clone();
 
                 let bt = Instant::now();
                 let px = render_scene_to_pixels_scaled(&mut h, &graph, w, hgt, 1.0);
@@ -330,9 +328,7 @@ fn perf_probe() {
                     &mut compositor,
                     &mut cached,
                     &graph,
-                    &layers,
-                    &layer_raster_bounds,
-                    &dirty,
+                    committed.layer_topology(),
                     w,
                     hgt,
                 );

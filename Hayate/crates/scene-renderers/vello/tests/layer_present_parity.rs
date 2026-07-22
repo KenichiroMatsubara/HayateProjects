@@ -7,14 +7,9 @@
 //! raster + wgpu quad 合成（layer-present ON 相当）」が画素単位で一致することを固定する。wgpu
 //! アダプタが無い環境（CI ホスト）では skip する。
 
-use std::collections::HashSet;
-
 use hayate_core::element::style::{Dimension, Shadow, StyleProp};
-use hayate_core::{Color, ElementId, ElementKind, ElementTree};
-use hayate_layer_compositor::{
-    collect_layer_placements, extract_layer_scene, extract_root_scene, CompositeQuad,
-    LayerCompositor, LayerRasterizer,
-};
+use hayate_core::{Color, ElementId, ElementKind, ElementTree, LayerScene, LayerSceneKind};
+use hayate_layer_compositor::{CompositeQuad, LayerCompositor, LayerRasterizer};
 use hayate_scene_renderer_vello::layer_compositor::{
     CompositeTarget, VelloLayerRasterizer, WgpuQuadCompositor,
 };
@@ -39,26 +34,27 @@ fn assert_layered_matches_full(
     root: ElementId,
     label: &str,
 ) {
-    let graph = tree.scene_graph();
+    let frame = tree.committed_frame();
+    let graph = frame.snapshot();
+    let topology = frame.layer_topology();
     let full = render_scene_to_pixels_scaled(harness, graph, W, H, 1.0).expect("full raster");
 
-    let boundaries: HashSet<ElementId> = tree.frame_layers().iter().copied().collect();
     let mut rasterizer =
         VelloLayerRasterizer::new(harness.device.clone(), harness.queue.clone(), W, H, 1.0)
             .unwrap();
-    for &layer in tree.frame_layers() {
-        let extracted = if layer == root {
-            Some(extract_root_scene(graph, root, &boundaries))
-        } else {
-            extract_layer_scene(graph, layer, &boundaries)
-        };
+    for &layer in topology.paint_order() {
+        let extracted = LayerScene::new(
+            graph.clone(),
+            topology.clone(),
+            layer,
+            LayerSceneKind::Content,
+        );
         if let Some(extracted) = extracted {
             if layer == root {
                 rasterizer.rasterize(layer, &extracted, None).unwrap();
             } else {
-                let bounds = tree
-                    .committed_frame()
-                    .layer_raster_bounds()
+                let bounds = topology
+                    .raster_bounds()
                     .iter()
                     .find(|bounds| bounds.layer == layer)
                     .copied()
@@ -94,7 +90,7 @@ fn assert_layered_matches_full(
         format: wgpu::TextureFormat::Rgba8Unorm,
         clear: CLEAR,
     };
-    let placements = collect_layer_placements(graph, root, &boundaries);
+    let placements = topology.placements();
     let quads: Vec<CompositeQuad<'_, _>> = placements
         .iter()
         .filter_map(|p| {

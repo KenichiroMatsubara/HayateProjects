@@ -4,14 +4,14 @@
 //! スレッド」**に留め、#610 で `Send` クリーンな seam の裏に隔離したレイヤキャッシュ＋compositor
 //! （Vello raster + wgpu compositor）だけを専用 **Raster スレッド**へ移す（Flutter 同型）。
 //!
-//! **スレッド境界＝[`RasterHandoff`]（lower 済み SceneGraph ＋ `layer_dirty`）の受け渡し**で、
+//! **スレッド境界＝[`RasterHandoff`]（immutable Scene Snapshot ＋ Layer Topology）の受け渡し**で、
 //! UI スレッドが produce、Raster スレッドが consume する。`Send + Sync` 境界はこのハンドオフに引く。
 //! ハンドオフは非ブロッキング channel なので、重い raster が UI スレッドの入力処理を止めない。
 //!
 //! Raster 側が実行中の 1 frame に加え、連続する frame の未処理 slot は最大 1 件。
 //! [`Coalesce`] が最新スナップショットへの置き換えと正しさの引き継ぎを決める。`Frame` は
-//! 最新の SceneGraph / layer topology / bounds / scroll input へ差し替えつつ、
-//! `layer_dirty`/`chrome_dirty` は union で畳む（古いスクロールオフセットを積み上げて後から
+//! 最新の snapshot / topology / scroll input へ差し替えつつ、topology の change sets は union で
+//! 畳む（古いスクロールオフセットを積み上げて後から
 //! 秒単位で「再生」しない一方、合成で消えた古いフレームが持っていた「このレイヤは要 raster」
 //! という情報は失わない——上書きにすると #680 と同系統の「穴あきキャッシュが直らず要素が
 //! 消えたまま」を raster バックログ側でも再現してしまう）。Resize/SurfaceLost/RebuildSurface は
@@ -24,54 +24,38 @@
 //! cache+compositor を所有して Raster スレッド上だけで触る）。本モジュールはスレッドモデルと境界型を
 //! host で固定し、出力がシングルスレッド時と同値であることをテストする。
 
-use std::collections::{HashSet, VecDeque};
+use std::collections::VecDeque;
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread::{self, JoinHandle};
 
-use hayate_core::element::id::ElementId;
-use hayate_core::{CommittedFrame, LayerRasterBounds, SceneSnapshot, ScrollCompositorInput};
+use hayate_core::{CommittedFrame, LayerTopology, SceneSnapshot, ScrollCompositorInput};
 
 /// UI スレッド → Raster スレッドのハンドオフ（ADR-0128）。スレッド境界はこれ 1 つで、lower 済み
-/// SceneGraph と全レイヤ（描画順）・`layer_dirty`・`chrome_dirty` を owned で渡す。`Send + Sync` 境界。
+/// Scene Snapshot・Layer Topology・scroll facts を owned で渡す。`Send + Sync` 境界。
+#[derive(Debug, Clone)]
 pub struct RasterHandoff {
     /// 本フレームの immutable Scene Snapshot（O(1) handle を境界越しに move する）。
     pub scene: SceneSnapshot,
-    /// 全 compositing layer（描画順 = ADR-0021）。
-    pub layers: Vec<ElementId>,
-    /// Core が同じ commit で導出した layer-local logical raster extent。
-    pub layer_raster_bounds: Vec<LayerRasterBounds>,
-    /// 本フレームで再 raster すべきレイヤ（#609 の `layer_dirty`）。
-    pub layer_dirty: HashSet<ElementId>,
-    /// transform 係数だけが変わったレイヤ（#633）。単一 root 経路は per-layer quad 合成を
-    /// 持たないため、content dirty と union して保守的に raster トリガへ含める（#687）。
-    pub transform_dirty: HashSet<ElementId>,
-    /// scroll フレームの chrome dirty（#634）。単一 texture 経路では content と union して扱う。
-    pub chrome_dirty: HashSet<ElementId>,
+    pub topology: LayerTopology,
     /// Core が commit 時に捕捉した scroll facts。Raster スレッド側で overscan geometry へ射影する。
     pub scroll_inputs: Vec<ScrollCompositorInput>,
 }
 
 impl RasterHandoff {
     /// Freeze every renderer-visible fact from one Core commit into the single owned value sent
-    /// across the native raster seam. The mutable SceneGraph and its allocator never cross.
-    pub fn from_committed_frame(frame: &CommittedFrame<'_>) -> Self {
+    /// across the native raster seam. The mutable scene builder and its allocator never cross.
+    pub fn from_committed_frame(frame: &CommittedFrame) -> Self {
         Self {
             scene: frame.snapshot().clone(),
-            layers: frame.layers().to_vec(),
-            layer_raster_bounds: frame.layer_raster_bounds().to_vec(),
-            layer_dirty: frame.content_dirty_layers().clone(),
-            transform_dirty: frame.transform_dirty_layers().clone(),
-            chrome_dirty: frame.chrome_dirty_layers().clone(),
+            topology: frame.layer_topology().clone(),
             scroll_inputs: frame.scroll_inputs().to_vec(),
         }
     }
 
     fn absorb_dirty_from(&mut self, older: RasterHandoff) {
-        self.layer_dirty.extend(older.layer_dirty);
-        self.transform_dirty.extend(older.transform_dirty);
-        self.chrome_dirty.extend(older.chrome_dirty);
+        self.topology.absorb_changes_from(&older.topology);
         for input in &mut self.scroll_inputs {
-            input.content_dirty |= self.layer_dirty.contains(&input.layer);
+            input.content_dirty |= self.topology.content_changed().contains(&input.layer);
         }
     }
 }
@@ -101,8 +85,8 @@ pub enum RasterCommand {
 impl Coalesce for RasterCommand {
     fn merge(&mut self, incoming: Self) -> Result<(), Self> {
         // Frame が連続するときだけ合成してよい（Resize/SurfaceLost/RebuildSurface を跨いだ
-        // 相対順序は壊せない——surface ライフサイクルの正しさが崩れる）。SceneGraph/layers は
-        // 最新のものに差し替えるが、`layer_dirty`/`chrome_dirty` は union する——上書きすると、
+        // 相対順序は壊せない——surface ライフサイクルの正しさが崩れる）。snapshot/topology は
+        // 最新のものに差し替えるが、change sets は union する——上書きすると、
         // 合成されて消えた古い方が持っていた「このレイヤは穴あきキャッシュを直すため要
         // raster」という情報が失われ、raster が詰まっている間にマークされた dirty が
         // そのまま失われて要素が画面から消えたまま戻らなくなる（#680 と同系統の退行）。
@@ -133,8 +117,8 @@ pub enum RasterHandoffError {
 /// 合成できないときは `incoming` をそのまま `Err` で返す（呼び出し側がキューへ積む）。
 ///
 /// **正しさの要件**: 合成後の 1 件は、合成前の 2 件を順番に処理したのと観測可能な結果が
-/// 一致しなければならない。例えば [`RasterCommand::Frame`] は最新の SceneGraph へ差し替える
-/// だけでなく、`layer_dirty`/`chrome_dirty` を union する——ここを上書きにすると、消えた古い
+/// 一致しなければならない。例えば [`RasterCommand::Frame`] は最新の snapshot へ差し替える
+/// だけでなく、topology change sets を union する——ここを上書きにすると、消えた古い
 /// 方が持っていた「このレイヤは要 raster」という情報が失われ、詰まっている間にマークされた
 /// dirty がそのまま失われて要素が画面から消えたまま戻らなくなる（#680 と同系統の退行）。
 pub trait Coalesce: Sized {
@@ -321,7 +305,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use hayate_core::{ElementKind, ElementTree, SceneSnapshot};
+    use hayate_core::element::style::{Dimension, StyleProp};
+    use hayate_core::{Color, ElementId, ElementKind, ElementTree, SceneSnapshot};
     use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
     use std::sync::{mpsc, Arc};
 
@@ -330,21 +315,42 @@ mod tests {
     }
 
     fn handoff(dirty: &[u64]) -> RasterHandoff {
-        let mut scene = hayate_core::SceneGraph::new();
-        RasterHandoff {
-            scene: scene.snapshot(),
-            layers: dirty.iter().map(|&r| id(r)).collect(),
-            layer_raster_bounds: Vec::new(),
-            layer_dirty: dirty.iter().map(|&r| id(r)).collect(),
-            transform_dirty: HashSet::new(),
-            chrome_dirty: HashSet::new(),
-            scroll_inputs: Vec::new(),
+        let mut tree = ElementTree::new();
+        let root = tree.element_create(u64::MAX, ElementKind::View);
+        tree.set_root(root);
+        tree.element_set_style(
+            root,
+            &[
+                StyleProp::Width(Dimension::px(100.0)),
+                StyleProp::Height(Dimension::px(100.0)),
+            ],
+        );
+        let mut layers = dirty.to_vec();
+        layers.sort_unstable();
+        layers.dedup();
+        for &raw in &layers {
+            let layer = tree.element_create(raw, ElementKind::View);
+            tree.element_append_child(root, layer);
+            tree.element_set_transform(layer, Some([1.0, 0.0, 0.0, 1.0, 0.0, 0.0]));
         }
+        let _initial = tree.commit_rendered_frame(0.0);
+        for &raw in &layers {
+            tree.element_set_style(
+                id(raw),
+                &[StyleProp::BackgroundColor(Color::new(1.0, 0.0, 0.0, 1.0))],
+            );
+        }
+        RasterHandoff::from_committed_frame(&tree.commit_rendered_frame(16.0))
     }
 
     /// 決定的な「描画結果」：dirty レイヤ id を昇順に。シングル/マルチスレッドの parity 比較に使う。
     fn rasterize(h: &RasterHandoff) -> Vec<u64> {
-        let mut v: Vec<u64> = h.layer_dirty.iter().map(|i| i.to_u64()).collect();
+        let mut v: Vec<u64> = h
+            .topology
+            .content_changed()
+            .iter()
+            .map(|i| i.to_u64())
+            .collect();
         v.sort_unstable();
         v
     }
@@ -423,10 +429,7 @@ mod tests {
             out_tx.send(rasterize(&h)).unwrap();
         });
         for f in &frames {
-            rt.send(handoff(
-                &f.layer_dirty.iter().map(|i| i.to_u64()).collect::<Vec<_>>(),
-            ))
-            .unwrap();
+            rt.send(f.clone()).unwrap();
         }
         let mut threaded = Vec::new();
         for _ in 0..frames.len() {
@@ -459,7 +462,12 @@ mod tests {
             match cmd {
                 RasterCommand::Frame(h) => {
                     let dirty = {
-                        let mut v: Vec<u64> = h.layer_dirty.iter().map(|i| i.to_u64()).collect();
+                        let mut v: Vec<u64> = h
+                            .topology
+                            .content_changed()
+                            .iter()
+                            .map(|i| i.to_u64())
+                            .collect();
                         v.sort_unstable();
                         v
                     };
@@ -605,11 +613,26 @@ mod tests {
 
         let frame = tree.commit_rendered_frame(0.0);
         let snapshot = RasterHandoff::from_committed_frame(&frame);
-        assert_eq!(snapshot.layers, frame.layers());
-        assert_eq!(snapshot.layer_raster_bounds, frame.layer_raster_bounds());
-        assert_eq!(snapshot.layer_dirty, *frame.content_dirty_layers());
-        assert_eq!(snapshot.chrome_dirty, *frame.chrome_dirty_layers());
-        assert_eq!(snapshot.transform_dirty, *frame.transform_dirty_layers());
+        assert_eq!(
+            snapshot.topology.paint_order(),
+            frame.layer_topology().paint_order()
+        );
+        assert_eq!(
+            snapshot.topology.raster_bounds(),
+            frame.layer_topology().raster_bounds()
+        );
+        assert_eq!(
+            snapshot.topology.content_changed(),
+            frame.layer_topology().content_changed()
+        );
+        assert_eq!(
+            snapshot.topology.chrome_changed(),
+            frame.layer_topology().chrome_changed()
+        );
+        assert_eq!(
+            snapshot.topology.transform_changed(),
+            frame.layer_topology().transform_changed()
+        );
         assert_eq!(snapshot.scroll_inputs, frame.scroll_inputs());
         let committed_node_count = snapshot.scene.len();
         drop(frame);
@@ -640,7 +663,12 @@ mod tests {
         let RasterCommand::Frame(merged) = a else {
             panic!("merge must keep the command a Frame");
         };
-        let mut ids: Vec<u64> = merged.transform_dirty.iter().map(|i| i.to_u64()).collect();
+        let mut ids: Vec<u64> = merged
+            .topology
+            .transform_changed()
+            .iter()
+            .map(|i| i.to_u64())
+            .collect();
         ids.sort_unstable();
         assert_eq!(
             ids,
@@ -650,9 +678,22 @@ mod tests {
     }
 
     fn handoff_with_transform_dirty(dirty: &[u64]) -> RasterHandoff {
-        let mut h = handoff(&[]);
-        h.transform_dirty = dirty.iter().map(|&r| id(r)).collect();
-        h
+        let mut tree = ElementTree::new();
+        let root = tree.element_create(u64::MAX, ElementKind::View);
+        tree.set_root(root);
+        let mut layers = dirty.to_vec();
+        layers.sort_unstable();
+        layers.dedup();
+        for &raw in &layers {
+            let layer = tree.element_create(raw, ElementKind::View);
+            tree.element_append_child(root, layer);
+            tree.element_set_transform(layer, Some([1.0, 0.0, 0.0, 1.0, 0.0, 0.0]));
+        }
+        let _initial = tree.commit_rendered_frame(0.0);
+        for &raw in &layers {
+            tree.element_set_transform(id(raw), Some([1.0, 0.0, 0.0, 1.0, raw as f64, 0.0]));
+        }
+        RasterHandoff::from_committed_frame(&tree.commit_rendered_frame(16.0))
     }
 
     #[test]
@@ -697,8 +738,8 @@ mod tests {
         // （単純な mpsc）だとこのテストは 52 件（gate 分 1 + 送信 51 件）を全部 present し、表示が
         // 実入力から数秒分遅れて「追いつく」形で見える不具合を再現してしまう。
         //
-        // 一本化は SceneGraph/layers を最新のものへ差し替えるだけでなく、`layer_dirty` を
-        // union しなければならない——合成で消えた古いフレームの dirty を単純上書きで捨てると、
+        // 一本化は snapshot/topology を最新のものへ差し替えるだけでなく、change sets を
+        // union しなければならない——合成で消えた古いフレームの dirty facts を単純上書きで捨てると、
         // そのフレームでしかマークされなかった「このレイヤは穴あきキャッシュを直すため要
         // raster」という情報が失われ、#680 と同系統の「要素が消えたまま戻らない」を raster
         // バックログ側で再現してしまう。

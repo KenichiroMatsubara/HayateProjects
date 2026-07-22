@@ -19,11 +19,10 @@
 //! `DirectContext` は初回フレームで Raster スレッドに bind / 生成され、以後そのスレッドに
 //! 束縛される（EGL コンテキストは「どこかのスレッドで current でない限り」スレッド間 move 可）。
 
-use std::collections::HashSet;
 use std::ffi::{c_char, c_void, CStr, CString};
 use std::ptr;
 
-use hayate_core::{ElementId, LayerRasterBounds, SceneGraph, ScrollCompositorInput};
+use hayate_core::{LayerTopology, SceneSnapshot, ScrollCompositorInput};
 use hayate_layer_compositor::{scroll_layer_geometry_from_inputs, tunables, GpuBudget};
 use hayate_scene_renderer_skia::{SkiaLayerPresenter, SkiaLayerSurfaceFactory};
 use ndk::native_window::NativeWindow;
@@ -402,16 +401,10 @@ impl SkiaGlSurface {
     /// present が `eglSwapBuffers`」なことだけ（ADR-0146 §3）。
     pub(crate) fn render_frame(
         &mut self,
-        scene: &SceneGraph,
-        layers: &[ElementId],
-        layer_raster_bounds: &[LayerRasterBounds],
-        layer_dirty: &HashSet<ElementId>,
-        _transform_dirty: &HashSet<ElementId>,
-        chrome_dirty: &HashSet<ElementId>,
+        scene: &SceneSnapshot,
+        topology: &LayerTopology,
         scroll_inputs: &[ScrollCompositorInput],
     ) -> Result<(), String> {
-        let mut present_dirty = layer_dirty.clone();
-        present_dirty.extend(chrome_dirty.iter().copied());
         let scroll_geometry = scroll_layer_geometry_from_inputs(scroll_inputs);
 
         if !self.bound {
@@ -464,9 +457,7 @@ impl SkiaGlSurface {
             };
             self.presenter.present_with_layer_surface_factory(
                 scene,
-                layers,
-                layer_raster_bounds,
-                &present_dirty,
+                topology,
                 &scroll_geometry,
                 crate::app::CLEAR_COLOR,
                 (origin_x, origin_y),
