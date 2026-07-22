@@ -12,7 +12,10 @@ use anyhow::{anyhow, Error};
 use hayate_app_host::render_host::{ClearColor, SceneRenderer};
 use hayate_app_host::renderer_selection::SceneRendererKind;
 use hayate_core::{ElementId, LayerTopology, SceneSnapshot};
-use hayate_layer_compositor::{tunables, GpuBudget, ScrollLayerGeometry};
+use hayate_layer_compositor::{
+    DeviceMemoryClass, GpuBudget, MemoryPressure, RenderResourceBudgetPolicy, ResidencyEvent,
+    ResourceBudgetInputs, ScrollLayerGeometry,
+};
 use hayate_scene_renderer_skia::{new_raster_surface, read_rgba, SkiaLayerPresenter};
 use winit::window::Window;
 
@@ -25,6 +28,7 @@ pub struct SkiaWindowRenderer {
     _context: softbuffer::Context<Arc<Window>>,
     soft_surface: softbuffer::Surface<Arc<Window>, Arc<Window>>,
     presenter: SkiaLayerPresenter,
+    resource_policy: RenderResourceBudgetPolicy,
 }
 
 impl SkiaWindowRenderer {
@@ -45,6 +49,11 @@ impl SkiaWindowRenderer {
             _context: context,
             soft_surface,
             presenter,
+            resource_policy: RenderResourceBudgetPolicy::for_device(ResourceBudgetInputs::new(
+                DeviceMemoryClass::Expanded,
+                size.width,
+                size.height,
+            )),
         })
     }
 
@@ -73,6 +82,22 @@ impl SceneRenderer for SkiaWindowRenderer {
         SceneRendererKind::Skia
     }
 
+    fn configure_resource_residency(&mut self, policy: RenderResourceBudgetPolicy) {
+        self.resource_policy = policy;
+        self.presenter.configure_resource_residency(policy);
+    }
+
+    fn handle_resource_lifecycle(&mut self, event: ResidencyEvent) {
+        if matches!(
+            event,
+            ResidencyEvent::MemoryPressure(MemoryPressure::Moderate)
+        ) {
+            // LayerPresentation applies the low watermark on the next present; CPU paint
+            // resources are trimmed immediately by the shared residency.
+        }
+        self.presenter.handle_resource_lifecycle(event);
+    }
+
     fn present_layers(
         &mut self,
         scene: &SceneSnapshot,
@@ -99,11 +124,7 @@ impl SceneRenderer for SkiaWindowRenderer {
                 scroll_geometry,
                 clear_color,
                 (0.0, 0.0),
-                GpuBudget::from_viewports(
-                    width.get(),
-                    height.get(),
-                    tunables::GPU_BUDGET_VIEWPORTS_DESKTOP,
-                ),
+                GpuBudget::from_bytes(self.resource_policy.cpu.max_bytes),
                 target,
             )
             .map_err(|e| anyhow!("skia layer present: {e}"))?;

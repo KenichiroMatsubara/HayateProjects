@@ -49,6 +49,10 @@ pub struct FrameCounters {
     pub cache_hits: u32,
     pub cache_misses: u32,
     pub allocations: u32,
+    pub cpu_resident_bytes: u64,
+    pub gpu_resident_bytes: u64,
+    pub resource_evictions: u64,
+    pub resource_rebuild_cost: u64,
 }
 
 /// One refresh interval, in nanoseconds.
@@ -77,6 +81,17 @@ impl FrameDeadline {
 pub struct FrameReport {
     pub deadline_ns: u64,
     pub phase_ns: [u64; PerformancePhase::COUNT],
+    pub counters: FrameCounters,
+}
+
+/// Fixed-size aggregate emitted at the bounded report interval. It carries the distribution facts
+/// needed by the performance matrix without turning logging into a per-frame hot path.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct PerformanceWindowSummary {
+    pub sample_count: u64,
+    pub total_p95_ns: u64,
+    pub phase_p95_ns: [u64; PerformancePhase::COUNT],
+    pub frames_over_two_intervals: u64,
     pub counters: FrameCounters,
 }
 
@@ -129,6 +144,54 @@ impl ReportRing {
         .then(|| self.latest())
         .flatten()
     }
+
+    fn periodic_summary(&self) -> Option<PerformanceWindowSummary> {
+        if self.completed_frames == 0
+            || !self
+                .completed_frames
+                .is_multiple_of(DEFAULT_REPORT_INTERVAL_FRAMES)
+        {
+            return None;
+        }
+        let mut totals = [0_u64; DEFAULT_RING_CAPACITY];
+        let mut phases = [[0_u64; DEFAULT_RING_CAPACITY]; PerformancePhase::COUNT];
+        let mut frames_over_two_intervals = 0;
+        for (index, report) in self.reports[..self.len].iter().enumerate() {
+            let total = report.total_phase_ns();
+            totals[index] = total;
+            if total > report.deadline_ns.saturating_mul(2) {
+                frames_over_two_intervals += 1;
+            }
+            for (phase, samples) in phases.iter_mut().enumerate() {
+                samples[index] = report.phase_ns[phase];
+            }
+        }
+        let mut phase_p95_ns = [0; PerformancePhase::COUNT];
+        for (phase, samples) in phases.iter_mut().enumerate() {
+            phase_p95_ns[phase] = percentile95(&mut samples[..self.len]);
+        }
+        Some(PerformanceWindowSummary {
+            sample_count: self.len as u64,
+            total_p95_ns: percentile95(&mut totals[..self.len]),
+            phase_p95_ns,
+            frames_over_two_intervals,
+            counters: self.latest().unwrap_or_default().counters,
+        })
+    }
+}
+
+const P95_NUMERATOR: usize = 95;
+const P95_DENOMINATOR: usize = 100;
+
+fn percentile95(samples: &mut [u64]) -> u64 {
+    if samples.is_empty() {
+        return 0;
+    }
+    samples.sort_unstable();
+    let rank = (samples.len() * P95_NUMERATOR)
+        .div_ceil(P95_DENOMINATOR)
+        .saturating_sub(1);
+    samples[rank]
 }
 
 struct Inner {
@@ -196,6 +259,16 @@ impl PerformanceObservability {
                 .lock()
                 .expect("observability mutex poisoned")
                 .periodic_latest()
+        })
+    }
+
+    pub fn periodic_summary(&self) -> Option<PerformanceWindowSummary> {
+        self.inner.as_ref().and_then(|inner| {
+            inner
+                .reports
+                .lock()
+                .expect("observability mutex poisoned")
+                .periodic_summary()
         })
     }
 }

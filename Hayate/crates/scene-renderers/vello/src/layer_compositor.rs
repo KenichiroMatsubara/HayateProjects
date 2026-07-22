@@ -32,8 +32,10 @@ use std::collections::HashMap;
 use hayate_core::element::id::ElementId;
 use hayate_core::{LayerRasterBounds, LayerScene, SceneRead};
 use hayate_layer_compositor::{
-    tunables, warmup_variants, BlendMode, CompositeQuad, LayerCompositor, LayerRasterizer,
-    PipelineVariant, RasterBand, ScrollLayerExtent, SurfaceFormat,
+    tunables, warmup_variants, BlendMode, CompositeQuad, DeviceMemoryClass, LayerCompositor,
+    LayerRasterizer, LayerResourceId, LayerResourcePlane, PipelineVariant, RasterBand,
+    RenderResourceBudgetPolicy, RenderResourceKey, RenderResourceResidency, ResidencyEvent,
+    ResidencyStats, ResourceBudgetInputs, ResourceDomain, ScrollLayerExtent, SurfaceFormat,
 };
 
 use crate::{VelloAaMethod, VelloRenderTarget, VelloSceneRenderer, DEFAULT_AA_METHOD};
@@ -82,9 +84,8 @@ pub struct VelloLayerRasterizer {
     device: wgpu::Device,
     queue: wgpu::Queue,
     renderer: VelloSceneRenderer,
-    textures: HashMap<ElementId, LayerTexture>,
-    /// Scrollbar など viewport 固定 chrome。content band とは別 texture に保持する。
-    scroll_chrome_textures: HashMap<ElementId, LayerTexture>,
+    /// Content and scroll-chrome textures share one renderer-scoped GPU residency owner.
+    resources: RenderResourceResidency<LayerTexture>,
     next_texture_cache_key: u64,
     width: u32,
     height: u32,
@@ -157,8 +158,9 @@ impl VelloLayerRasterizer {
             device,
             queue,
             renderer,
-            textures: HashMap::new(),
-            scroll_chrome_textures: HashMap::new(),
+            resources: RenderResourceResidency::new(RenderResourceBudgetPolicy::for_device(
+                ResourceBudgetInputs::new(DeviceMemoryClass::Balanced, width, height),
+            )),
             next_texture_cache_key: 1,
             width,
             height,
@@ -171,8 +173,44 @@ impl VelloLayerRasterizer {
         self.width = width;
         self.height = height;
         self.content_scale = content_scale.max(1.0);
-        self.textures.clear();
-        self.scroll_chrome_textures.clear();
+        self.resources.clear_domain(ResourceDomain::Gpu);
+    }
+
+    fn resource_key(layer: ElementId, plane: LayerResourcePlane) -> RenderResourceKey {
+        RenderResourceKey::Layer(LayerResourceId::new(layer, plane))
+    }
+
+    fn resource(&self, layer: ElementId, plane: LayerResourcePlane) -> Option<&LayerTexture> {
+        self.resources
+            .peek(ResourceDomain::Gpu, Self::resource_key(layer, plane))
+    }
+
+    fn retain_resource(
+        &mut self,
+        layer: ElementId,
+        plane: LayerResourcePlane,
+        texture: LayerTexture,
+    ) {
+        let pixels = u64::from(texture.width) * u64::from(texture.height);
+        self.resources.insert_retained(
+            ResourceDomain::Gpu,
+            Self::resource_key(layer, plane),
+            texture,
+            pixels * tunables::BYTES_PER_PIXEL,
+            pixels,
+        );
+    }
+
+    pub fn configure_resource_residency(&mut self, policy: RenderResourceBudgetPolicy) {
+        self.resources.set_policy(policy);
+    }
+
+    pub fn handle_resource_lifecycle(&mut self, event: ResidencyEvent) {
+        self.resources.handle_lifecycle(event);
+    }
+
+    pub fn residency_stats(&self) -> ResidencyStats {
+        self.resources.stats()
     }
 
     /// `width`×`height`（device px）のキャッシュ texture を logical origin 付きで確保する。
@@ -233,17 +271,26 @@ impl VelloLayerRasterizer {
             .unwrap_or((bounds.origin_y, bounds.height));
         let (origin_x, texture_width) = self.device_axis(bounds.origin_x, bounds.width);
         let (origin_y, texture_height) = self.device_axis(requested_origin_y, logical_height);
-        let needs_new_texture = self.textures.get(&layer).is_none_or(|existing| {
-            existing.width != texture_width
-                || existing.height != texture_height
-                || existing.origin_x != origin_x
-                || existing.origin_y != origin_y
-        });
+        let needs_new_texture = self
+            .resource(layer, LayerResourcePlane::Content)
+            .is_none_or(|existing| {
+                existing.width != texture_width
+                    || existing.height != texture_height
+                    || existing.origin_x != origin_x
+                    || existing.origin_y != origin_y
+            });
         if needs_new_texture {
             let texture = self.create_texture(texture_width, texture_height, origin_x, origin_y);
-            self.textures.insert(layer, texture);
+            self.retain_resource(layer, LayerResourcePlane::Content, texture);
         }
-        let target_view = &self.textures[&layer].view;
+        let target_view = &self
+            .resources
+            .peek(
+                ResourceDomain::Gpu,
+                Self::resource_key(layer, LayerResourcePlane::Content),
+            )
+            .expect("content texture was retained")
+            .view;
         self.renderer.render_scene_with_offset(
             scene,
             &VelloRenderTarget {
@@ -262,17 +309,17 @@ impl VelloLayerRasterizer {
 
     /// Actual bytes held by the content texture for `layer`.
     pub fn texture_bytes(&self, layer: ElementId) -> Option<u64> {
-        self.textures.get(&layer).map(|texture| {
-            u64::from(texture.width) * u64::from(texture.height) * tunables::BYTES_PER_PIXEL
-        })
+        self.resource(layer, LayerResourcePlane::Content)
+            .map(|texture| {
+                u64::from(texture.width) * u64::from(texture.height) * tunables::BYTES_PER_PIXEL
+            })
     }
 
     /// Actual bytes held by all content/chrome textures associated with `layer`.
     pub fn cache_bytes(&self, layer: ElementId) -> u64 {
-        self.textures
-            .get(&layer)
+        self.resource(layer, LayerResourcePlane::Content)
             .into_iter()
-            .chain(self.scroll_chrome_textures.get(&layer))
+            .chain(self.resource(layer, LayerResourcePlane::ScrollChrome))
             .map(|texture| {
                 u64::from(texture.width) * u64::from(texture.height) * tunables::BYTES_PER_PIXEL
             })
@@ -316,17 +363,23 @@ impl VelloLayerRasterizer {
         chrome_dirty: bool,
     ) -> Result<bool, String> {
         let needs_new_texture = self
-            .scroll_chrome_textures
-            .get(&layer)
+            .resource(layer, LayerResourcePlane::ScrollChrome)
             .is_none_or(|existing| existing.width != self.width || existing.height != self.height);
         if !chrome_dirty && !needs_new_texture {
             return Ok(false);
         }
         if needs_new_texture {
             let texture = self.create_texture(self.width, self.height, 0.0, 0.0);
-            self.scroll_chrome_textures.insert(layer, texture);
+            self.retain_resource(layer, LayerResourcePlane::ScrollChrome, texture);
         }
-        let target_view = &self.scroll_chrome_textures[&layer].view;
+        let target_view = &self
+            .resources
+            .peek(
+                ResourceDomain::Gpu,
+                Self::resource_key(layer, LayerResourcePlane::ScrollChrome),
+            )
+            .expect("scroll chrome texture was retained")
+            .view;
         self.renderer.render_scene(
             scene,
             &VelloRenderTarget {
@@ -354,8 +407,7 @@ impl VelloLayerRasterizer {
         let (origin_x, width) = self.device_axis(bounds.origin_x, bounds.width);
         let (origin_y, height) = self.device_axis(bounds.origin_y, bounds.height);
         let needs_new_texture = self
-            .scroll_chrome_textures
-            .get(&layer)
+            .resource(layer, LayerResourcePlane::ScrollChrome)
             .is_none_or(|existing| {
                 existing.width != width
                     || existing.height != height
@@ -367,9 +419,16 @@ impl VelloLayerRasterizer {
         }
         if needs_new_texture {
             let texture = self.create_texture(width, height, origin_x, origin_y);
-            self.scroll_chrome_textures.insert(layer, texture);
+            self.retain_resource(layer, LayerResourcePlane::ScrollChrome, texture);
         }
-        let target_view = &self.scroll_chrome_textures[&layer].view;
+        let target_view = &self
+            .resources
+            .peek(
+                ResourceDomain::Gpu,
+                Self::resource_key(layer, LayerResourcePlane::ScrollChrome),
+            )
+            .expect("scroll chrome texture was retained")
+            .view;
         self.renderer.render_scene_with_offset(
             scene,
             &VelloRenderTarget {
@@ -388,7 +447,7 @@ impl VelloLayerRasterizer {
     }
 
     pub fn scroll_chrome_texture(&self, layer: ElementId) -> Option<&LayerTexture> {
-        self.scroll_chrome_textures.get(&layer)
+        self.resource(layer, LayerResourcePlane::ScrollChrome)
     }
 }
 
@@ -414,14 +473,23 @@ impl LayerRasterizer for VelloLayerRasterizer {
             ),
             None => (self.width, self.height, 0.0),
         };
-        let needs_new_texture = self.textures.get(&layer).is_none_or(|existing| {
-            existing.width != texture_width || existing.height != texture_height
-        });
+        let needs_new_texture = self
+            .resource(layer, LayerResourcePlane::Content)
+            .is_none_or(|existing| {
+                existing.width != texture_width || existing.height != texture_height
+            });
         if needs_new_texture {
             let texture = self.create_texture(texture_width, texture_height, 0.0, origin_y);
-            self.textures.insert(layer, texture);
+            self.retain_resource(layer, LayerResourcePlane::Content, texture);
         }
-        let target_view = &self.textures[&layer].view;
+        let target_view = &self
+            .resources
+            .peek(
+                ResourceDomain::Gpu,
+                Self::resource_key(layer, LayerResourcePlane::Content),
+            )
+            .expect("content texture was retained")
+            .view;
         self.renderer.render_scene_at(
             scene,
             &VelloRenderTarget {
@@ -438,7 +506,7 @@ impl LayerRasterizer for VelloLayerRasterizer {
     }
 
     fn texture(&self, layer: ElementId) -> Option<&LayerTexture> {
-        self.textures.get(&layer)
+        self.resource(layer, LayerResourcePlane::Content)
     }
 
     fn texture_bytes_per_layer(&self) -> u64 {
@@ -446,13 +514,18 @@ impl LayerRasterizer for VelloLayerRasterizer {
     }
 
     fn discard(&mut self, layer: ElementId) {
-        self.textures.remove(&layer);
-        self.scroll_chrome_textures.remove(&layer);
+        self.resources.remove(
+            ResourceDomain::Gpu,
+            Self::resource_key(layer, LayerResourcePlane::Content),
+        );
+        self.resources.remove(
+            ResourceDomain::Gpu,
+            Self::resource_key(layer, LayerResourcePlane::ScrollChrome),
+        );
     }
 
     fn discard_all(&mut self) {
-        self.textures.clear();
-        self.scroll_chrome_textures.clear();
+        self.resources.clear_domain(ResourceDomain::Gpu);
     }
 }
 

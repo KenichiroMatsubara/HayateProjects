@@ -302,6 +302,7 @@ impl<S: PresentTarget> AppHost<S> {
             cache_hits: 0,
             cache_misses: 0,
             allocations: 0,
+            ..FrameCounters::default()
         });
         let present = observation.measure(PerformancePhase::RendererPresent, || {
             self.surface.present(&frame)

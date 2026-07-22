@@ -13,7 +13,10 @@
 use std::mem::MaybeUninit;
 
 use hayate_core::{LayerTopology, SceneSnapshot, ScrollCompositorInput};
-use hayate_layer_compositor::{scroll_layer_geometry_from_inputs, tunables, GpuBudget};
+use hayate_layer_compositor::{
+    scroll_layer_geometry_from_inputs, DeviceMemoryClass, GpuBudget, RenderResourceBudgetPolicy,
+    ResourceBudgetInputs,
+};
 use hayate_scene_renderer_skia::{new_raster_surface, read_rgba, SkiaLayerPresenter};
 use ndk::hardware_buffer_format::HardwareBufferFormat;
 use ndk::native_window::NativeWindow;
@@ -30,6 +33,7 @@ pub(crate) struct SkiaGpuSurface {
     height: u32,
     content_scale: f32,
     presenter: SkiaLayerPresenter,
+    resource_policy: RenderResourceBudgetPolicy,
 }
 
 /// `window` を skia raster 用の CPU present 面として立てる（RGBX_8888、フルウィンドウ）。
@@ -53,12 +57,21 @@ pub(crate) fn init_skia_surface(
         )
         .map_err(|e| format!("ANativeWindow_setBuffersGeometry: {e}"))?;
 
+    let resource_policy = RenderResourceBudgetPolicy::for_device(ResourceBudgetInputs::new(
+        DeviceMemoryClass::Constrained,
+        width,
+        height,
+    ));
+    let mut presenter = SkiaLayerPresenter::new(width, height, content_scale);
+    presenter.configure_resource_residency(resource_policy);
+
     Ok(SkiaGpuSurface {
         window,
         width,
         height,
         content_scale,
-        presenter: SkiaLayerPresenter::new(width, height, content_scale),
+        presenter,
+        resource_policy,
     })
 }
 
@@ -87,11 +100,7 @@ impl SkiaGpuSurface {
             &scroll_geometry,
             crate::app::CLEAR_COLOR,
             (origin_x, origin_y),
-            GpuBudget::from_viewports(
-                self.width,
-                self.height,
-                tunables::GPU_BUDGET_VIEWPORTS_MOBILE,
-            ),
+            GpuBudget::from_bytes(self.resource_policy.cpu.max_bytes),
             target,
         )?;
         let rgba = read_rgba(&mut target);
@@ -117,6 +126,13 @@ impl SkiaGpuSurface {
         self.width = width;
         self.height = height;
         self.content_scale = content_scale;
+        self.resource_policy = RenderResourceBudgetPolicy::for_device(ResourceBudgetInputs::new(
+            DeviceMemoryClass::Constrained,
+            width,
+            height,
+        ));
+        self.presenter
+            .configure_resource_residency(self.resource_policy);
         self.window
             .set_buffers_geometry(
                 width as i32,

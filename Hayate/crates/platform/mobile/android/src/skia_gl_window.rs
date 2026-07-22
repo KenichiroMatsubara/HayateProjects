@@ -23,7 +23,10 @@ use std::ffi::{c_char, c_void, CStr, CString};
 use std::ptr;
 
 use hayate_core::{LayerTopology, SceneSnapshot, ScrollCompositorInput};
-use hayate_layer_compositor::{scroll_layer_geometry_from_inputs, tunables, GpuBudget};
+use hayate_layer_compositor::{
+    scroll_layer_geometry_from_inputs, DeviceMemoryClass, GpuBudget, RenderResourceBudgetPolicy,
+    ResourceBudgetInputs,
+};
 use hayate_scene_renderer_skia::{SkiaLayerPresenter, SkiaLayerSurfaceFactory};
 use ndk::native_window::NativeWindow;
 use skia_safe::gpu;
@@ -269,6 +272,7 @@ pub(crate) struct SkiaGlSurface {
     width: u32,
     height: u32,
     content_scale: f32,
+    resource_policy: RenderResourceBudgetPolicy,
     /// この Raster スレッドで EGL コンテキストを bind 済みか（初回フレームで bind）。
     bound: bool,
 }
@@ -382,14 +386,23 @@ pub(crate) fn init_skia_gl_surface(
         );
         egl.unbind();
 
+        let resource_policy = RenderResourceBudgetPolicy::for_device(ResourceBudgetInputs::new(
+            DeviceMemoryClass::Constrained,
+            width,
+            height,
+        ));
+        let mut presenter = SkiaLayerPresenter::new(width, height, content_scale);
+        presenter.configure_resource_residency(resource_policy);
+
         Ok(SkiaGlSurface {
-            presenter: SkiaLayerPresenter::new(width, height, content_scale),
+            presenter,
             ganesh: None,
             egl,
             _window: window,
             width,
             height,
             content_scale,
+            resource_policy,
             bound: false,
         })
     }
@@ -461,11 +474,7 @@ impl SkiaGlSurface {
                 &scroll_geometry,
                 crate::app::CLEAR_COLOR,
                 (origin_x, origin_y),
-                GpuBudget::from_viewports(
-                    surface_w as u32,
-                    surface_h as u32,
-                    tunables::GPU_BUDGET_VIEWPORTS_MOBILE,
-                ),
+                GpuBudget::from_bytes(self.resource_policy.gpu.max_bytes),
                 &mut layer_surfaces,
                 surface,
             )?
@@ -488,6 +497,13 @@ impl SkiaGlSurface {
         self.width = width;
         self.height = height;
         self.content_scale = content_scale;
+        self.resource_policy = RenderResourceBudgetPolicy::for_device(ResourceBudgetInputs::new(
+            DeviceMemoryClass::Constrained,
+            width,
+            height,
+        ));
+        self.presenter
+            .configure_resource_residency(self.resource_policy);
         // EGL window surface は ANativeWindow の resize に自動追随する（毎フレーム
         // `surface_size()` で実サイズを取る）ので、ここではレイヤキャッシュを resize する。
         self.presenter.resize(width, height, content_scale);

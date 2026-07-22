@@ -15,6 +15,7 @@ mod painter;
 mod resource_cache;
 
 use hayate_core::{render_scene_graph, SceneRead};
+use hayate_layer_compositor::{RenderResourceBudgetPolicy, ResidencyEvent, ResidencyStats};
 use skia_safe::{surfaces, Canvas, Color4f, ColorType, ISize, ImageInfo, Surface};
 
 use painter::SkiaPainter;
@@ -46,6 +47,18 @@ impl SkiaSceneRenderer {
 
     pub fn resource_work_counts(&self) -> SkiaResourceWorkCounts {
         self.resources.work_counts()
+    }
+
+    pub fn configure_resource_residency(&mut self, policy: RenderResourceBudgetPolicy) {
+        self.resources.configure(policy);
+    }
+
+    pub fn handle_resource_lifecycle(&mut self, event: ResidencyEvent) {
+        self.resources.handle_lifecycle(event);
+    }
+
+    pub fn resource_residency_stats(&self) -> ResidencyStats {
+        self.resources.stats()
     }
 
     /// `canvas` へ `graph` を描く。`canvas` の出自（CPU raster surface / 将来の GPU
