@@ -83,7 +83,7 @@ fn dispatch_pointer_down(canvas: &HtmlCanvasElement, client_x: f64, client_y: f6
 /// レイアウト済みの全面 text-input をフォーカスしたレンダラを用意する。
 async fn focused_text_input() -> (HayateElementRenderer, HtmlCanvasElement) {
     let canvas = make_canvas(200);
-    let mut renderer = HayateElementRenderer::init(canvas.clone(), None)
+    let mut renderer = HayateElementRenderer::init(canvas.clone())
         .await
         .expect("renderer init");
 
