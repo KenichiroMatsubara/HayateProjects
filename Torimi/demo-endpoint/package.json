@@ -17,9 +17,9 @@
     "@torimi/dev-server-contract": "workspace:*"
   },
   "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "^0.12.21",
-    "@cloudflare/workers-types": "^5.20260705.1",
-    "vitest": "^3.2.0",
-    "wrangler": "^4.107.0"
+    "@cloudflare/vitest-pool-workers": "^0.18.7",
+    "@cloudflare/workers-types": "^5.20260722.1",
+    "vitest": "^4.1.10",
+    "wrangler": "^4.113.0"
   }
 }

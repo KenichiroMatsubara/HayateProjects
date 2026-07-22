@@ -16,6 +16,7 @@ import {
   EXPECTED_PUBLIC_PACKAGES,
   SMOKE_IMPORTS,
   buildSmokeProjectManifest,
+  buildSmokeWorkspaceConfig,
   publicPackages,
   tarballName,
 } from './pack-smoke.lib.mjs';
@@ -59,6 +60,7 @@ log(`packed ${Object.keys(tarballs).length} tarballs`);
 // 3. Install the whole closure offline in a throwaway project outside the monorepo.
 const project = mkdtempSync(join(tmpdir(), 'pack-smoke-proj-'));
 writeFileSync(join(project, 'package.json'), `${JSON.stringify(buildSmokeProjectManifest(tarballs), null, 2)}\n`);
+writeFileSync(join(project, 'pnpm-workspace.yaml'), buildSmokeWorkspaceConfig(tarballs));
 // Verify each entry point's export map RESOLVES from outside the monorepo — the
 // packaging guarantee (files/exports/deps are whole). We use import.meta.resolve
 // rather than executing the module: @torimi/hayate-host is a bundler-consumed package
@@ -74,8 +76,8 @@ writeFileSync(
     `}\n`,
 );
 
-log('installing packed closure (offline, --ignore-workspace)…');
-run('pnpm', ['install', '--ignore-workspace', '--config.confirmModulesPurge=false'], { cwd: project, stdio: 'inherit' });
+log('installing packed closure from local tarball overrides…');
+run('pnpm', ['install', '--config.confirmModulesPurge=false'], { cwd: project, stdio: 'inherit' });
 
 log('resolving smoke entry points…');
 run('node', ['smoke.mjs'], { cwd: project, stdio: 'inherit' });

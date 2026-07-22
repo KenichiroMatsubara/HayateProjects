@@ -38,9 +38,9 @@
     "@torimi/tsubame-renderer-protocol": "workspace:*"
   },
   "peerDependencies": {
-    "solid-js": "^1.9.0",
-    "vite": "^8.0.0",
-    "vite-plugin-solid": "^2.11.0"
+    "solid-js": "^1.9.14",
+    "vite": "^8.1.5",
+    "vite-plugin-solid": "^2.11.13"
   },
   "peerDependenciesMeta": {
     "vite": {
@@ -54,9 +54,9 @@
     "@torimi/tsubame-protocol-generated": "workspace:*",
     "@torimi/tsubame-renderer-hayate": "workspace:*",
     "rimraf": "^6.1.3",
-    "solid-js": "^1.9.13",
-    "vite": "^8.0.14",
-    "vite-plugin-solid": "^2.11.12",
-    "vitest": "^3.2.6"
+    "solid-js": "^1.9.14",
+    "vite": "^8.1.5",
+    "vite-plugin-solid": "^2.11.13",
+    "vitest": "^4.1.10"
   }
 }

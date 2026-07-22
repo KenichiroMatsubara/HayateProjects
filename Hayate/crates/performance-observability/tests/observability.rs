@@ -4,6 +4,7 @@ use hayate_performance_observability::{
 };
 
 #[test]
+#[cfg(feature = "enabled")]
 fn records_one_fixed_size_frame_report_for_the_shared_pipeline_vocabulary() {
     let observability = PerformanceObservability::new();
     let mut frame = observability.begin_frame(FrameDeadline::from_refresh_rate_hz(60));
@@ -78,4 +79,16 @@ fn periodic_summary_exposes_window_p95_long_frames_and_residency_for_matrix_runs
     assert_eq!(summary.counters.gpu_resident_bytes, 79);
     assert_eq!(summary.counters.resource_evictions, 59);
     assert_eq!(summary.counters.resource_rebuild_cost, 118);
+}
+
+#[test]
+#[cfg(not(feature = "enabled"))]
+fn production_default_does_not_retain_frame_reports() {
+    let observability = PerformanceObservability::new();
+    let mut frame = observability.begin_frame(FrameDeadline::from_refresh_rate_hz(60));
+    frame.record_phase(PerformancePhase::AppHost, 100);
+    frame.finish();
+
+    assert!(!observability.is_enabled());
+    assert_eq!(observability.latest_report(), None);
 }

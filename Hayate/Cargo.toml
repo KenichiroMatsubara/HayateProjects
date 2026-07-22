@@ -28,28 +28,28 @@ repository = "https://github.com/KenichiroMatsubara/HayateProjects"
 
 [workspace.dependencies]
 # GPU / rendering
-wgpu = { version = "29", features = ["wgsl"] }
-vello = "0.9"
+wgpu = { version = "29.0.3", features = ["wgsl"] }
+vello = "0.9.0"
 
 # Desktop windowing (ADR-0118) — winit が desktop family の windowing 層を畳む。
-winit = "0.30"
+winit = "0.30.13"
 # skia raster フレームの wgpu 非依存 CPU present（issue #801・ADR-0146 §3）。
-softbuffer = "0.4"
-tiny-skia = { version = "0.11", default-features = false, features = ["std"] }
+softbuffer = "0.4.8"
+tiny-skia = { version = "0.12.0", default-features = false, features = ["std"] }
 
 # Layout
-taffy = "0.12"
+taffy = "0.12.2"
 
 # Text stack
-parley = "0.9"
+parley = { version = "0.11.0", features = ["complex-scripts"] }
 fontique = { path = "crates/vendor/fontique", features = ["fontconfig-dlopen"] }
-skrifa = "0.42"
+skrifa = "0.45.0"
 
 # WASM
-wasm-bindgen = "0.2"
-wasm-bindgen-futures = "0.4"
-js-sys = "0.3"
-web-sys = { version = "0.3", features = [
+wasm-bindgen = "0.2.126"
+wasm-bindgen-futures = "0.4.76"
+js-sys = "0.3.103"
+web-sys = { version = "0.3.103", features = [
     "HtmlCanvasElement",
     "Window",
     "Navigator",
@@ -59,15 +59,15 @@ web-sys = { version = "0.3", features = [
 ] }
 
 # Utilities
-slotmap = "1"
-imbl = "6"
-anyhow = "1"
-log = "0.4"
+slotmap = "1.1.1"
+imbl = "7.0.1"
+anyhow = "1.0.104"
+log = "0.4.33"
 # desktop demo バイナリのログ出力（RUST_LOG を実際に効かせる・#777）
-env_logger = "0.11"
-pollster = "0.4"
-bytemuck = { version = "1.25", features = ["derive"] }
-accesskit = { version = "0.24.0", features = ["serde"] }
+env_logger = "0.11.11"
+pollster = "1.0.1"
+bytemuck = { version = "1.25.2", features = ["derive"] }
+accesskit = { version = "0.24.1", features = ["serde"] }
 
 [patch.crates-io]
 # Vendored crates — upstream は切断し workspace path 依存に切り替え (ADR-0007)

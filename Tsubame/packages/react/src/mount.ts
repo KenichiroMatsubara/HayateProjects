@@ -47,10 +47,9 @@ export function createTsubameRoot(target: IRenderer): TsubameRoot {
     logError,
     logError,
     noop,
-    null,
   );
 
-  // react-reconciler 0.32 のランタイムは旧 `flushSync(fn)` を `flushSyncFromReconciler`
+  // react-reconciler 0.33 のランタイムは旧 `flushSync(fn)` を `flushSyncFromReconciler`
   // として公開する（@types は古い名前のまま）。同期コミットして、flush 後すぐに
   // `IRenderer` 境界を読めるようにする。
   const flushSync = (reconciler as unknown as {

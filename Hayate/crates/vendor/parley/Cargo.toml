@@ -13,7 +13,7 @@
 edition = "2021"
 rust-version = "1.88"
 name = "parley"
-version = "0.9.0"
+version = "0.11.0"
 build = false
 exclude = ["/tests"]
 autolib = false
@@ -39,9 +39,11 @@ all-features = true
 
 [features]
 accesskit = ["dep:accesskit"]
+complex-scripts = []
 default = ["system"]
 libm = [
     "fontique/libm",
+    "harfrust/libm",
     "peniko/libm",
     "skrifa/libm",
     "dep:core_maths",
@@ -63,7 +65,7 @@ name = "parley"
 path = "src/lib.rs"
 
 [dependencies.accesskit]
-version = "0.24.0"
+version = "0.24.1"
 optional = true
 
 [dependencies.core_maths]
@@ -71,15 +73,15 @@ version = "0.1.1"
 optional = true
 
 [dependencies.fontique]
-version = "0.9.0"
+version = "0.11.0"
 default-features = false
 
 [dependencies.harfrust]
-version = "0.6.0"
+version = "0.12.0"
 default-features = false
 
 [dependencies.hashbrown]
-version = "0.17.0"
+version = "0.17.1"
 features = [
     "default-hasher",
     "raw-entry",
@@ -87,18 +89,18 @@ features = [
 default-features = false
 
 [dependencies.icu_normalizer]
-version = "2.1.1"
+version = "2.2.0"
 features = ["compiled_data"]
 default-features = false
 
 [dependencies.icu_properties]
-version = "2.1.2"
+version = "2.2.0"
 features = ["compiled_data"]
 default-features = false
 
 [dependencies.icu_segmenter]
-version = "2.1.2"
-features = ["compiled_data", "auto"]
+version = "2.2.0"
+features = ["compiled_data"]
 default-features = false
 
 [dependencies.linebender_resource_handle]
@@ -110,20 +112,20 @@ version = "0.1.0"
 default-features = false
 
 [dependencies.parley_data]
-version = "0.9.0"
+version = "0.11.0"
 features = ["baked"]
 default-features = false
 
 [dependencies.skrifa]
-version = "0.42.0"
+version = "0.45.0"
 default-features = false
 
 [dev-dependencies.peniko]
-version = "0.6.0"
+version = "0.6.1"
 default-features = false
 
 [target.'cfg(not(target_os = "android"))'.dev-dependencies.oxipng]
-version = "9.1.5"
+version = "10.1.1"
 features = ["freestanding"]
 default-features = false
 
@@ -169,4 +171,3 @@ unused_import_braces = "warn"
 unused_lifetimes = "warn"
 unused_macro_rules = "warn"
 unused_qualifications = "warn"
-

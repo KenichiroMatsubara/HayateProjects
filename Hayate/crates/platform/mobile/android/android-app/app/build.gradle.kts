@@ -1,4 +1,5 @@
 import java.nio.file.Files
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     id("com.android.application")
@@ -8,9 +9,9 @@ plugins {
 
 android {
     namespace = "com.hayateprojects.hayate.adapter_android_demo"
-    // Play は targetSdk 35 以上を要求する（内部テストでも必須）。targetSdk ≤ compileSdk なので
-    // compileSdk も 35 に上げる（AGP 8.13 対応・SDK Platform 35 が必要）。
-    compileSdk = 35
+    // OkHttp 5.4 と AndroidX Core 1.17 が要求し、AGP 8.13 が対応する API 36 でコンパイルする。
+    // targetSdk はランタイム挙動を変えないよう 35 のまま維持する。
+    compileSdk = 36
     // 既定はこれまで動作実績のあるバージョン。マシンによって異なる場合は
     // Gradle プロパティ `hayate.ndkVersion` か環境変数 `HAYATE_NDK_VERSION` で
     // 上書きできる（ADR-0112）。未指定でもこの既定で従来どおりビルドできる。
@@ -112,19 +113,23 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_17)
     }
 }
 
 dependencies {
     // GameActivity + GameTextInput: the soft-keyboard InputConnection path that
     // android-activity's game-activity backend reads for the stage C IME bridge.
-    implementation("androidx.games:games-activity:3.0.5")
+    implementation("androidx.games:games-activity:4.4.2")
     // GameActivity extends AppCompatActivity and implements OnApplyWindowInsetsListener;
     // games-activity does not bring these transitively, so declare them explicitly.
-    implementation("androidx.appcompat:appcompat:1.7.0")
-    implementation("androidx.core:core:1.13.1")
+    implementation("androidx.appcompat:appcompat:1.7.1")
+    // 1.18+ は API 36.1、1.19 は AGP 9.1 / API 37 が必要。AGP 8.13 互換の最新版。
+    implementation("androidx.core:core:1.17.0")
     // embedded Hermes（ADR-0112）は実行時に libhermesvm/libjsi/libfbjni/libc++_shared を
     // 要する。libjsi は react-android AAR にしか無く、依存すると不要な libreactnative.so で
     // APK が肥大化するため react-android には依存せず、libhermesvm/libjsi だけを
@@ -141,7 +146,7 @@ dependencies {
     // Torimi: reload 購読 WS の OS スタック実装（ADR-0002 後半・#742）。HttpURLConnection と
     // 違い WebSocket はプラットフォーム標準 API に無いので、OkHttp を明示依存する（ADR-0002 の
     // 「Android は OkHttp 系」）。TLS（wss）は OS の信頼ストアから得る。
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:okhttp:5.4.0")
 
     // Torimi: DevServerSetupActivity の「QR スキャン」で dev-server の LAN URL を読む。
     // Google Code Scanner は Play services のスキャナ UI を使うので、CameraX も独自カメラ権限も

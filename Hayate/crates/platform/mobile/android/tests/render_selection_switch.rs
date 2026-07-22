@@ -164,7 +164,7 @@ fn skia_present_uses_the_color_glyph_capable_renderer() {
     assert!(
         skia_raster.contains("hayate_scene_renderer_skia")
             && skia_gl.contains("hayate_scene_renderer_skia"),
-        "raster / GL present 経路は hayate-scene-renderer-skia（paints_color_glyphs=true）を使う"
+        "raster/GL の両 present 経路は hayate-scene-renderer-skia（paints_color_glyphs=true）を使う"
     );
 }
 

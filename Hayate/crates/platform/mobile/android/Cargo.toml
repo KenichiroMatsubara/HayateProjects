@@ -35,8 +35,8 @@ log.workspace = true
 pollster.workspace = true
 # Demo Manifest（`/demos.json`）の wire JSON を解釈する（Torimi ADR-0003 / #743）。
 # 手書きパーサではなく、Web ホストと同じ純 Rust JSON（`serde_json`）で wire を読む。
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
 
 [target.'cfg(target_os = "android")'.dependencies]
 # skia GL（Ganesh/EGL）surface（issue #803・ADR-0146 §3）。`gl` feature は Ganesh の GL
@@ -48,22 +48,22 @@ skia-safe = { version = "=0.99.0", features = ["gl"] }
 # GameActivity backend (ADR-0094): GameTextInput surfaces the soft-keyboard
 # InputConnection to native code for the stage C IME bridge. Packaging is the
 # Gradle project under `android-app/`, not cargo-apk.
-android-activity = { version = "0.6", features = ["game-activity"] }
-android_logger = "0.14"
-ndk = "0.9"
-ndk-sys = "0.6"
+android-activity = { version = "0.6.1", features = ["game-activity"] }
+android_logger = "0.15.1"
+ndk = "0.9.0"
+ndk-sys = "0.6.0"
 # QR スキャナ leaf（ADR-0125）の Rust↔Kotlin JNI seam。Code Scanner は Play services の
 # Kotlin/Java API しか無いため、本 leaf だけ JNI で Kotlin（QrScannerBridge）を呼ぶ。
 # JavaVM / Activity(Context) は android-activity が設定する ndk-context から受け取る。
-jni = "0.21"
-ndk-context = "0.1"
+jni = "0.21.1"
+ndk-context = "0.1.1"
 # Tsubame JS 駆動経路（ADR-0112）の C++/JSI ブリッジ。Hermes は JSI(C++)なので
 # cxx で flat-C ABI を張る。device ビルド（Gradle + NDK + libhermes）専用で、
 # ホスト `cargo check` には載らない（build.rs が target_os=android のときだけ
 # C++ をコンパイルする）。
-cxx = "1"
+cxx = "1.0.198"
 
 [build-dependencies]
 # cxx ブリッジの C++ 側コンパイル（ADR-0112）。Android ターゲットかつ
 # `tsubame-js` feature 有効時のみ呼ぶ（build.rs 参照）。
-cxx-build = "1"
+cxx-build = "1.0.198"

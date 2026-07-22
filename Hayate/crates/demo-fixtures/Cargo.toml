@@ -10,4 +10,4 @@ publish = false
 hayate-core = { path = "../core" }
 
 [dev-dependencies]
-serde_json = "1"
+serde_json = "1.0.151"

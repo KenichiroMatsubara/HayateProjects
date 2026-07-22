@@ -12,7 +12,12 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { EXPECTED_PUBLIC_PACKAGES, publicPackages, tarballName } from './pack-smoke.lib.mjs';
+import {
+  EXPECTED_PUBLIC_PACKAGES,
+  buildSmokeWorkspaceConfig,
+  publicPackages,
+  tarballName,
+} from './pack-smoke.lib.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -51,14 +56,15 @@ run('node', [join(createDir, 'dist', 'cli.js'), projectName], { cwd: work, stdio
 const projectDir = join(work, projectName);
 log(`scaffolded ${projectName}`);
 
-// 3. Pin every public package to its local tarball via pnpm overrides so the whole
-//    closure installs offline — exactly what a registry install would resolve.
+// 3. Pin every public package to its local tarball via workspace-root pnpm
+//    overrides so the whole closure installs offline — exactly what a registry
+//    install would resolve. pnpm 11 no longer reads `pnpm.overrides` from package.json.
 const pkg = JSON.parse(readFileSync(join(projectDir, 'package.json'), 'utf8'));
-pkg.pnpm = { ...(pkg.pnpm ?? {}), overrides: Object.fromEntries(Object.entries(tarballs).map(([n, p]) => [n, `file:${p}`])) };
 writeFileSync(join(projectDir, 'package.json'), `${JSON.stringify(pkg, null, 2)}\n`);
+writeFileSync(join(projectDir, 'pnpm-workspace.yaml'), buildSmokeWorkspaceConfig(tarballs));
 
 log('installing scaffolded project (offline, packed tarballs only)…');
-run('pnpm', ['install', '--ignore-workspace', '--config.confirmModulesPurge=false'], { cwd: projectDir, stdio: 'inherit' });
+run('pnpm', ['install', '--config.confirmModulesPurge=false'], { cwd: projectDir, stdio: 'inherit' });
 
 for (const target of ['web', 'native']) {
   log(`torimi build ${target}…`);

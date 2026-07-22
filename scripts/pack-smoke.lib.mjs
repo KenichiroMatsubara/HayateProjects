@@ -55,14 +55,9 @@ export function publicPackages(rows) {
 }
 
 // The throwaway consumer's package.json. The three SMOKE_IMPORTS are direct file:
-// deps; every public tarball is pinned through pnpm `overrides` so the inter-package
-// deps (e.g. @torimi/hayate-host → @torimi/hayate-adapter-web) resolve to the LOCAL tarballs and
-// never touch the network — the whole closure installs offline, exactly as an
-// external consumer would get it from a registry after a real release.
+// deps. Inter-package dependency overrides live in pnpm-workspace.yaml because
+// pnpm 11 no longer reads `pnpm.overrides` from package.json.
 export function buildSmokeProjectManifest(tarballs) {
-  const overrides = {};
-  for (const [name, tgz] of Object.entries(tarballs)) overrides[name] = `file:${tgz}`;
-
   const dependencies = {};
   for (const name of SMOKE_IMPORTS) {
     if (!tarballs[name]) throw new Error(`pack-smoke: no packed tarball for smoke import "${name}"`);
@@ -75,6 +70,17 @@ export function buildSmokeProjectManifest(tarballs) {
     private: true,
     type: 'module',
     dependencies,
-    pnpm: { overrides },
   };
+}
+
+// pnpm 11 reads root-only settings such as overrides from pnpm-workspace.yaml.
+// JSON string literals are valid YAML scalars and safely preserve scoped package
+// names and temporary paths without a YAML dependency in this smoke harness.
+export function buildSmokeWorkspaceConfig(tarballs) {
+  const overrides = Object.entries(tarballs)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([name, tgz]) => `  ${JSON.stringify(name)}: ${JSON.stringify(`file:${tgz}`)}`)
+    .join('\n');
+
+  return `packages:\n  - "."\noverrides:\n${overrides}\n`;
 }

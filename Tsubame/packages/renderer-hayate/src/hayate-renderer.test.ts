@@ -489,6 +489,8 @@ describe('HayateRenderer delivery poll (ADR-0053)', () => {
         expect(batch.ops[at + 2]).toBe(expected.disabled ? 1 : 0);
       } else if (expected.kind === 'user-select') {
         expect(batch.ops[at + 2]).toBe(USER_SELECT[expected.value]);
+      } else if (expected.kind === 'multiline') {
+        expect(batch.ops[at + 2]).toBe(expected.multiline ? 1 : 0);
       } else {
         expect(batch.texts[batch.ops[at + 2]!]).toBe(expected.text);
       }

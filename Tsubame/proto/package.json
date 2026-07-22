@@ -48,6 +48,10 @@
         "types": "./dist/delivery.d.ts",
         "import": "./dist/delivery.js"
       },
+      "./edit-intent": {
+        "types": "./dist/edit-intent.d.ts",
+        "import": "./dist/edit-intent.js"
+      },
       "./recorder": {
         "types": "./dist/recorder.d.ts",
         "import": "./dist/recorder.js"
@@ -69,6 +73,6 @@
   "devDependencies": {
     "rimraf": "^6.1.3",
     "tsup": "^8.5.1",
-    "vitest": "^3.2.0"
+    "vitest": "^4.1.10"
   }
 }
