@@ -10,6 +10,7 @@ import {
   EXPECTED_PUBLIC_PACKAGES,
   SMOKE_IMPORTS,
   buildSmokeProjectManifest,
+  buildSmokeWorkspaceConfig,
   publicPackages,
   tarballName,
 } from './pack-smoke.lib.mjs';
@@ -41,7 +42,7 @@ test('the SMOKE_IMPORTS are all inside the public closure', () => {
   }
 });
 
-test('buildSmokeProjectManifest pins every tarball via overrides and depends on the smoke imports', () => {
+test('smoke project uses package dependencies and workspace overrides for every tarball', () => {
   const tarballs = {
     '@torimi/tsubame-solid': '/tmp/a.tgz',
     '@torimi/hayate-host': '/tmp/b.tgz',
@@ -49,22 +50,28 @@ test('buildSmokeProjectManifest pins every tarball via overrides and depends on 
     '@torimi/hayate-adapter-web': '/tmp/d.tgz',
   };
   const manifest = buildSmokeProjectManifest(tarballs);
+  const workspace = buildSmokeWorkspaceConfig(tarballs);
 
   assert.equal(manifest.private, true);
-  // Every tarball is pinned as an override so inter-package deps resolve to the
-  // local tarballs, never the network.
-  assert.deepEqual(manifest.pnpm.overrides, {
-    '@torimi/tsubame-solid': 'file:/tmp/a.tgz',
-    '@torimi/hayate-host': 'file:/tmp/b.tgz',
-    '@torimi/dev-server': 'file:/tmp/c.tgz',
-    '@torimi/hayate-adapter-web': 'file:/tmp/d.tgz',
-  });
+  assert.equal(manifest.pnpm, undefined);
   // The three smoke imports are direct file: deps.
   assert.deepEqual(manifest.dependencies, {
     '@torimi/tsubame-solid': 'file:/tmp/a.tgz',
     '@torimi/hayate-host': 'file:/tmp/b.tgz',
     '@torimi/dev-server': 'file:/tmp/c.tgz',
   });
+  // pnpm 11 only honors overrides from pnpm-workspace.yaml. Every tarball is
+  // pinned there so transitive workspace dependencies never hit the registry.
+  assert.equal(
+    workspace,
+    'packages:\n' +
+      '  - "."\n' +
+      'overrides:\n' +
+      '  "@torimi/dev-server": "file:/tmp/c.tgz"\n' +
+      '  "@torimi/hayate-adapter-web": "file:/tmp/d.tgz"\n' +
+      '  "@torimi/hayate-host": "file:/tmp/b.tgz"\n' +
+      '  "@torimi/tsubame-solid": "file:/tmp/a.tgz"\n',
+  );
 });
 
 test('buildSmokeProjectManifest throws if a smoke import was not packed', () => {
