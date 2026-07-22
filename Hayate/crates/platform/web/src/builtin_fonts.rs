@@ -129,15 +129,8 @@ mod tests {
         // マニフェストはそれをモノクロビルドに解決せねばならない（tiny-skia は
         // COLR/CBDT のカラーグリフを描けない）。
         let url = builtin_font_url("Noto Emoji").expect("Noto Emoji missing from fonts.json");
-        let lower = url.to_lowercase().replace('-', "");
-        assert!(
-            lower.contains("notoemoji"),
-            "expected a Noto Emoji url, got {url}"
-        );
-        assert!(
-            !lower.contains("color"),
-            "fallback must be monochrome Noto Emoji, not a colour build: {url}"
-        );
+        assert_eq!(url, "https://hayate-fonts.pinara.workers.dev/noto-emoji.ttf");
+        assert_ne!(url, builtin_font_url("Noto Color Emoji").unwrap());
     }
 
     #[test]
@@ -148,10 +141,7 @@ mod tests {
         // ファミリ表は不変。
         let url = font_url_for_renderer("Noto Emoji", SceneRendererKind::Vello)
             .expect("emoji family must resolve on Vello");
-        assert!(
-            url.to_lowercase().replace('-', "").contains("notocoloremoji"),
-            "Vello must fetch the colour Noto Color Emoji build, got {url}"
-        );
+        assert_eq!(url, builtin_font_url("Noto Color Emoji").unwrap());
     }
 
     #[test]
@@ -160,15 +150,7 @@ mod tests {
         // ビルドに留めねばならない（カラー emoji への退行を防ぐ。ADR-0101）。
         let url = font_url_for_renderer("Noto Emoji", SceneRendererKind::TinySkia)
             .expect("emoji family must resolve on tiny-skia");
-        let lower = url.to_lowercase().replace('-', "");
-        assert!(
-            lower.contains("notoemoji"),
-            "expected Noto Emoji, got {url}"
-        );
-        assert!(
-            !lower.contains("color"),
-            "tiny-skia must stay monochrome, not a colour build: {url}"
-        );
+        assert_eq!(url, builtin_font_url("Noto Emoji").unwrap());
         // レンダラ非依存のルックアップと同一: CPU レンダラは何も加えない。
         assert_eq!(
             font_url_for_renderer("Noto Emoji", SceneRendererKind::TinySkia),
@@ -198,13 +180,7 @@ mod tests {
         let color =
             builtin_font_url("Noto Color Emoji").expect("color build missing from manifest");
         let mono = builtin_font_url("Noto Emoji").expect("mono build missing from manifest");
-        assert!(
-            color
-                .to_lowercase()
-                .replace('-', "")
-                .contains("notocoloremoji"),
-            "expected a Noto Color Emoji url, got {color}"
-        );
+        assert_eq!(color, "https://hayate-fonts.pinara.workers.dev/noto-color-emoji.ttf");
         assert_ne!(
             color, mono,
             "color and monochrome builds must be distinct urls"
