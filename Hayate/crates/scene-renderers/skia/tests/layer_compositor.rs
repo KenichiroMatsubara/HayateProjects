@@ -841,7 +841,7 @@ fn pump(
     ts: f64,
 ) -> usize {
     let _ = tree.render(ts);
-    let graph = tree.scene_graph().clone();
+    let graph = tree.committed_frame().snapshot().clone();
     let boundaries: HashSet<ElementId> = tree.frame_layers().iter().copied().collect();
     let root = tree.frame_layers()[0];
     let plan = planner.plan_layers(tree.frame_layers(), tree.frame_layer_dirty());

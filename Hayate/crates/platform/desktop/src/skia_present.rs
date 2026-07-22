@@ -5,7 +5,7 @@
 //! blit する。GPU アダプタが一切無い環境でも desktop が起動する経路の芯。ここは window
 //! にも softbuffer にも触れない純関数だけを置き、headless（CI）でそのままテストする。
 
-use hayate_core::SceneGraph;
+use hayate_core::SceneRead;
 use hayate_scene_renderer_skia::{new_raster_surface, read_rgba, SkiaSceneRenderer};
 
 /// RGBA8888（premultiplied、skia raster surface の読み戻し形式）を softbuffer の
@@ -25,7 +25,7 @@ pub fn copy_rgba_to_xrgb(rgba: &[u8], out: &mut [u32]) {
 /// 返す。`width`/`height` は物理 px、`content_scale` は論理→物理の変換係数（HiDPI）。
 /// window present（`SkiaWindowRenderer`）と headless テストが同一経路を共有する。
 pub fn raster_frame_xrgb(
-    graph: &SceneGraph,
+    graph: &(impl SceneRead + ?Sized),
     width: u32,
     height: u32,
     content_scale: f32,

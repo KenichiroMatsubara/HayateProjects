@@ -20,7 +20,8 @@ fn golden_path(name: &str) -> PathBuf {
 fn tasks_screen_matches_golden() {
     let (vw, vh) = TASKS_VIEWPORT;
     let mut tree = tasks_tree("skia");
-    let graph = tree.render(0.0).clone();
+    tree.render(0.0);
+    let graph = tree.committed_frame().snapshot().clone();
     let pixels = support::render_scene_to_pixels_scaled(&graph, vw as u32, vh as u32, 1.0);
     assert_pixels_match_golden(&golden_path("tasks_screen"), &pixels, vw as u32, vh as u32);
 }

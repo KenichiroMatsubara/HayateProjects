@@ -1,7 +1,9 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use slotmap::{DefaultKey, SlotMap};
+use imbl::HashMap as PersistentHashMap;
+use imbl::Vector as PersistentVector;
+use slotmap::{DefaultKey, Key, SlotMap};
 
 use crate::render::{RenderFont, RenderGlyph, RenderImage};
 use crate::text_resources::{
@@ -241,22 +243,169 @@ pub struct Node {
 
 #[derive(Debug, Clone)]
 struct SceneGraphData {
-    // Retained nodes are structurally shared by committed snapshots. When the UI detaches the
-    // scene index for its next frame, these Arc handles keep unchanged nodes shared.
-    nodes: SlotMap<NodeId, Arc<Node>>,
+    // HAMT-backed indexes detach only paths touched by a mutation. Snapshot creation and the
+    // first mutation after a commit never clone the complete retained graph.
+    nodes: PersistentHashMap<NodeId, Arc<Node>>,
+    order: PersistentVector<NodeId>,
     /// 描画順のトップレベルノード（親なし）。Group/Clip の子はここに載らない。
-    roots: Vec<NodeId>,
+    roots: Arc<Vec<NodeId>>,
+    parents: PersistentHashMap<NodeId, NodeId>,
+    anchors: PersistentHashMap<crate::element::id::ElementId, NodeId>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct SceneGraph {
-    // A handoff clone is O(1). The first subsequent UI mutation detaches this small index, while
-    // individual retained nodes remain shared until that specific node changes.
+    ids: SlotMap<NodeId, ()>,
     data: Arc<SceneGraphData>,
+    committed_data: Arc<SceneGraphData>,
     resources: SceneResources,
     resource_interner: TextResourceInterner,
     resource_policy: TextResourcePolicy,
     retired_text_nodes_since_sweep: usize,
+    revision: u64,
+    pending_changed: HashSet<NodeId>,
+    pending_structural: HashSet<NodeId>,
+    pending_geometry: HashSet<NodeId>,
+    pending_deleted: HashSet<NodeId>,
+}
+
+/// Observable facts produced by one scene commit.
+#[derive(Debug, Clone, Default)]
+pub struct SceneChangeJournal {
+    revision: u64,
+    changed_nodes: Arc<[NodeId]>,
+    structural_nodes: Arc<[NodeId]>,
+    geometry_nodes: Arc<[NodeId]>,
+    deleted_nodes: Arc<[NodeId]>,
+}
+
+impl SceneChangeJournal {
+    pub fn revision(&self) -> u64 {
+        self.revision
+    }
+
+    pub fn changed_nodes(&self) -> &[NodeId] {
+        &self.changed_nodes
+    }
+
+    pub fn structural_nodes(&self) -> &[NodeId] {
+        &self.structural_nodes
+    }
+
+    pub fn geometry_nodes(&self) -> &[NodeId] {
+        &self.geometry_nodes
+    }
+
+    pub fn deleted_nodes(&self) -> &[NodeId] {
+        &self.deleted_nodes
+    }
+}
+
+/// Work performed while freezing one immutable snapshot.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct SceneCommitStats {
+    changed_nodes: usize,
+    storage_entries_written: usize,
+}
+
+impl SceneCommitStats {
+    pub fn changed_nodes(self) -> usize {
+        self.changed_nodes
+    }
+
+    pub fn storage_entries_written(self) -> usize {
+        self.storage_entries_written
+    }
+}
+
+/// Immutable, owned value produced by one scene commit.
+#[derive(Debug, Clone)]
+pub struct SceneSnapshot {
+    data: Arc<SceneGraphData>,
+    resources: SceneResources,
+    journal: SceneChangeJournal,
+    commit_stats: SceneCommitStats,
+}
+
+/// Read-only scene interface shared by mutable retained graphs, committed snapshots and layer
+/// projections. Renderers only need this seam; mutation and storage lifetime stay private.
+pub trait SceneRead {
+    fn get(&self, id: NodeId) -> Option<&Node>;
+    fn roots(&self) -> &[NodeId];
+    fn resources(&self) -> &SceneResources;
+}
+
+impl<T: SceneRead + ?Sized> SceneRead for &T {
+    fn get(&self, id: NodeId) -> Option<&Node> {
+        (**self).get(id)
+    }
+
+    fn roots(&self) -> &[NodeId] {
+        (**self).roots()
+    }
+
+    fn resources(&self) -> &SceneResources {
+        (**self).resources()
+    }
+}
+
+impl SceneSnapshot {
+    pub fn get(&self, id: NodeId) -> Option<&Node> {
+        self.data.nodes.get(&id).map(Arc::as_ref)
+    }
+
+    pub fn resources(&self) -> &SceneResources {
+        &self.resources
+    }
+
+    pub fn roots(&self) -> &[NodeId] {
+        &self.data.roots
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (NodeId, &Node)> {
+        self.data
+            .order
+            .iter()
+            .filter_map(|id| self.data.nodes.get(id).map(|node| (*id, node.as_ref())))
+    }
+
+    pub fn parent_of(&self, id: NodeId) -> Option<NodeId> {
+        self.data.parents.get(&id).copied()
+    }
+
+    pub fn anchor_of(&self, element: crate::element::id::ElementId) -> Option<NodeId> {
+        self.data.anchors.get(&element).copied()
+    }
+
+    pub fn len(&self) -> usize {
+        self.data.nodes.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.data.nodes.is_empty()
+    }
+
+    pub fn changes(&self) -> &SceneChangeJournal {
+        &self.journal
+    }
+
+    pub fn commit_stats(&self) -> SceneCommitStats {
+        self.commit_stats
+    }
+}
+
+impl SceneRead for SceneSnapshot {
+    fn get(&self, id: NodeId) -> Option<&Node> {
+        self.get(id)
+    }
+
+    fn roots(&self) -> &[NodeId] {
+        self.roots()
+    }
+
+    fn resources(&self) -> &SceneResources {
+        self.resources()
+    }
 }
 
 impl SceneGraph {
@@ -265,30 +414,61 @@ impl SceneGraph {
     }
 
     pub fn with_text_resource_policy(resource_policy: TextResourcePolicy) -> Self {
+        let data = Arc::new(SceneGraphData {
+            nodes: PersistentHashMap::new(),
+            order: PersistentVector::new(),
+            roots: Arc::new(Vec::new()),
+            parents: PersistentHashMap::new(),
+            anchors: PersistentHashMap::new(),
+        });
         Self {
-            data: Arc::new(SceneGraphData {
-                nodes: SlotMap::new(),
-                roots: Vec::new(),
-            }),
+            ids: SlotMap::with_key(),
+            data: Arc::clone(&data),
+            committed_data: data,
             resources: SceneResources::default(),
             resource_interner: TextResourceInterner::new(),
             resource_policy,
             retired_text_nodes_since_sweep: 0,
+            revision: 0,
+            pending_changed: HashSet::new(),
+            pending_structural: HashSet::new(),
+            pending_geometry: HashSet::new(),
+            pending_deleted: HashSet::new(),
         }
     }
 
     /// Start an empty structural projection that shares this snapshot's immutable resources.
     /// Layer projection code can copy only node IDs while renderer lookups remain valid.
     pub fn empty_projection(&self) -> Self {
+        let mut projection = Self::empty_projection_from(self);
+        projection.resource_interner = self.resource_interner.clone();
+        projection.resource_policy = self.resource_policy;
+        projection
+    }
+
+    /// Start an empty projection whose text/image handles refer to the same immutable resources
+    /// as `source`. The projection owns only its newly inserted nodes.
+    pub fn empty_projection_from(source: &(impl SceneRead + ?Sized)) -> Self {
+        let data = Arc::new(SceneGraphData {
+            nodes: PersistentHashMap::new(),
+            order: PersistentVector::new(),
+            roots: Arc::new(Vec::new()),
+            parents: PersistentHashMap::new(),
+            anchors: PersistentHashMap::new(),
+        });
         Self {
-            data: Arc::new(SceneGraphData {
-                nodes: SlotMap::new(),
-                roots: Vec::new(),
-            }),
-            resources: self.resources.clone(),
-            resource_interner: self.resource_interner.clone(),
-            resource_policy: self.resource_policy,
+            ids: SlotMap::with_key(),
+            data: Arc::clone(&data),
+            committed_data: data,
+            resources: source.resources().clone(),
+            resource_interner: TextResourceInterner::new(),
+            resource_policy: TextResourcePolicy::default(),
             retired_text_nodes_since_sweep: 0,
+            revision: 0,
+            pending_changed: HashSet::new(),
+            pending_structural: HashSet::new(),
+            pending_geometry: HashSet::new(),
+            pending_deleted: HashSet::new(),
         }
     }
 
@@ -302,6 +482,36 @@ impl SceneGraph {
 
     pub fn resources(&self) -> &SceneResources {
         &self.resources
+    }
+
+    /// Freeze the current retained scene into an owned immutable value. Persistent indexes make
+    /// the freeze O(changes), while the returned snapshot itself is an O(1) shared handle.
+    pub fn snapshot(&mut self) -> SceneSnapshot {
+        self.refresh_indexes();
+        self.revision = self.revision.wrapping_add(1);
+        let changed_nodes = sorted_nodes(&self.pending_changed);
+        let journal = SceneChangeJournal {
+            revision: self.revision,
+            changed_nodes: changed_nodes.clone().into(),
+            structural_nodes: sorted_nodes(&self.pending_structural).into(),
+            geometry_nodes: sorted_nodes(&self.pending_geometry).into(),
+            deleted_nodes: sorted_nodes(&self.pending_deleted).into(),
+        };
+        let commit_stats = SceneCommitStats {
+            changed_nodes: changed_nodes.len(),
+            storage_entries_written: changed_nodes.len(),
+        };
+        self.pending_changed.clear();
+        self.pending_structural.clear();
+        self.pending_geometry.clear();
+        self.pending_deleted.clear();
+        self.committed_data = Arc::clone(&self.data);
+        SceneSnapshot {
+            data: Arc::clone(&self.data),
+            resources: self.resources.clone(),
+            journal,
+            commit_stats,
+        }
     }
 
     /// Release resource pins no longer referenced by this scene, then reclaim entries that no
@@ -332,49 +542,130 @@ impl SceneGraph {
 
     /// トップレベル（root）ノードを挿入する。
     pub fn insert(&mut self, node: Node) -> NodeId {
+        let id = self.ids.insert(());
         let data = Arc::make_mut(&mut self.data);
-        let id = data.nodes.insert(Arc::new(node));
-        data.roots.push(id);
+        if let NodeKind::ElementAnchor { element_id } = node.kind {
+            data.anchors.insert(element_id, id);
+        }
+        data.nodes.insert(id, Arc::new(node));
+        data.order.push_back(id);
+        Arc::make_mut(&mut data.roots).push(id);
+        self.pending_changed.insert(id);
+        self.pending_structural.insert(id);
+        self.pending_geometry.insert(id);
         id
     }
 
     /// 既存ノードの子としてノードを挿入する。
     pub fn insert_child(&mut self, parent: NodeId, node: Node) -> NodeId {
+        let id = self.ids.insert(());
         let data = Arc::make_mut(&mut self.data);
-        let id = data.nodes.insert(Arc::new(node));
-        if let Some(p) = data.nodes.get_mut(parent) {
-            Arc::make_mut(p).children.push(id);
+        if let NodeKind::ElementAnchor { element_id } = node.kind {
+            data.anchors.insert(element_id, id);
         }
+        data.nodes.insert(id, Arc::new(node));
+        data.order.push_back(id);
+        if let Some(parent_node) = data.nodes.get_mut(&parent) {
+            Arc::make_mut(parent_node).children.push(id);
+            data.parents.insert(id, parent);
+            self.pending_changed.insert(parent);
+            self.pending_structural.insert(parent);
+        }
+        self.pending_changed.insert(id);
+        self.pending_structural.insert(id);
+        self.pending_geometry.insert(id);
         id
     }
 
     pub fn get(&self, id: NodeId) -> Option<&Node> {
-        self.data.nodes.get(id).map(Arc::as_ref)
+        self.data.nodes.get(&id).map(Arc::as_ref)
     }
 
     pub fn get_mut(&mut self, id: NodeId) -> Option<&mut Node> {
+        if !self.data.nodes.contains_key(&id) {
+            return None;
+        }
+        self.pending_changed.insert(id);
+        self.pending_geometry.insert(id);
         Arc::make_mut(&mut self.data)
             .nodes
-            .get_mut(id)
+            .get_mut(&id)
             .map(Arc::make_mut)
     }
 
+    /// Mutate one retained child list while keeping the persistent parent index coherent.
+    pub fn edit_children<R>(
+        &mut self,
+        parent: NodeId,
+        edit: impl FnOnce(&mut Vec<NodeId>) -> R,
+    ) -> Option<R> {
+        let old_children = self.data.nodes.get(&parent)?.children.clone();
+        let (result, new_children) = {
+            let data = Arc::make_mut(&mut self.data);
+            let node = data.nodes.get_mut(&parent)?;
+            let node = Arc::make_mut(node);
+            let result = edit(&mut node.children);
+            (result, node.children.clone())
+        };
+        let data = Arc::make_mut(&mut self.data);
+        for child in old_children
+            .iter()
+            .filter(|child| !new_children.contains(child))
+        {
+            if data.parents.get(child) == Some(&parent) {
+                data.parents.remove(child);
+            }
+        }
+        for child in new_children
+            .iter()
+            .filter(|child| !old_children.contains(child))
+        {
+            data.parents.insert(*child, parent);
+        }
+        self.pending_changed.insert(parent);
+        self.pending_structural.insert(parent);
+        Some(result)
+    }
+
     pub fn retain_roots(&mut self, mut keep: impl FnMut(NodeId) -> bool) {
-        Arc::make_mut(&mut self.data).roots.retain(|&id| keep(id));
+        let removed: Vec<NodeId> = self
+            .data
+            .roots
+            .iter()
+            .copied()
+            .filter(|id| !keep(*id))
+            .collect();
+        let data = Arc::make_mut(&mut self.data);
+        Arc::make_mut(&mut data.roots).retain(|id| !removed.contains(id));
+        for id in removed {
+            self.pending_changed.insert(id);
+            self.pending_structural.insert(id);
+        }
     }
 
     pub fn remove(&mut self, id: NodeId) -> Option<Node> {
-        let node = {
-            let data = Arc::make_mut(&mut self.data);
-            let node = data.nodes.remove(id)?;
-            data.roots.retain(|&root| root != id);
-            node
-        };
-        if let Some(parent) = self.parent_of(id) {
-            if let Some(p) = Arc::make_mut(&mut self.data).nodes.get_mut(parent) {
-                Arc::make_mut(p).children.retain(|&child| child != id);
+        let parent = self.parent_of(id);
+        let node = Arc::make_mut(&mut self.data).nodes.remove(&id)?;
+        let _ = self.ids.remove(id);
+        if let Some(parent) = parent {
+            self.edit_children(parent, |children| children.retain(|child| *child != id));
+        }
+        let data = Arc::make_mut(&mut self.data);
+        Arc::make_mut(&mut data.roots).retain(|root| *root != id);
+        data.parents.remove(&id);
+        for child in &node.children {
+            if data.parents.get(child) == Some(&id) {
+                data.parents.remove(child);
             }
         }
+        if let NodeKind::ElementAnchor { element_id } = node.kind {
+            if data.anchors.get(&element_id) == Some(&id) {
+                data.anchors.remove(&element_id);
+            }
+        }
+        self.pending_changed.insert(id);
+        self.pending_structural.insert(id);
+        self.pending_deleted.insert(id);
         let node = Arc::unwrap_or_clone(node);
         if matches!(node.kind, NodeKind::TextRun { .. }) {
             self.retired_text_nodes_since_sweep += 1;
@@ -384,12 +675,12 @@ impl SceneGraph {
 
     /// Group / Clip / ElementAnchor 配下にネストしているときの `id` の親。
     pub fn parent_of(&self, id: NodeId) -> Option<NodeId> {
-        for (parent_id, parent) in self.data.nodes.iter() {
-            if parent.children.contains(&id) {
-                return Some(parent_id);
-            }
-        }
-        None
+        self.data.parents.get(&id).copied()
+    }
+
+    /// Resolve an element's retained anchor without a whole-graph scan.
+    pub fn anchor_of(&self, element: crate::element::id::ElementId) -> Option<NodeId> {
+        self.data.anchors.get(&element).copied()
     }
 
     /// `id` とその全子孫をグラフから削除する。
@@ -397,7 +688,7 @@ impl SceneGraph {
         let children = self
             .data
             .nodes
-            .get(id)
+            .get(&id)
             .map(|n| n.children.clone())
             .unwrap_or_default();
         for child in children {
@@ -417,7 +708,10 @@ impl SceneGraph {
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (NodeId, &Node)> {
-        self.data.nodes.iter().map(|(id, node)| (id, node.as_ref()))
+        self.data
+            .order
+            .iter()
+            .filter_map(|id| self.data.nodes.get(id).map(|node| (*id, node.as_ref())))
     }
 
     pub fn len(&self) -> usize {
@@ -427,11 +721,89 @@ impl SceneGraph {
     pub fn is_empty(&self) -> bool {
         self.data.nodes.is_empty()
     }
+
+    fn refresh_indexes(&mut self) {
+        let changed: Vec<NodeId> = self.pending_changed.iter().copied().collect();
+        for id in changed {
+            let old_children = self
+                .committed_data
+                .nodes
+                .get(&id)
+                .map(|node| node.children.clone())
+                .unwrap_or_default();
+            let new_children = self
+                .data
+                .nodes
+                .get(&id)
+                .map(|node| node.children.clone())
+                .unwrap_or_default();
+            if old_children != new_children {
+                self.pending_structural.insert(id);
+            }
+            let data = Arc::make_mut(&mut self.data);
+            for child in old_children
+                .iter()
+                .filter(|child| !new_children.contains(child))
+            {
+                if data.parents.get(child) == Some(&id) {
+                    data.parents.remove(child);
+                }
+            }
+            for child in new_children
+                .iter()
+                .filter(|child| !old_children.contains(child))
+            {
+                data.parents.insert(*child, id);
+            }
+            let old_anchor = self
+                .committed_data
+                .nodes
+                .get(&id)
+                .and_then(|node| match node.kind {
+                    NodeKind::ElementAnchor { element_id } => Some(element_id),
+                    _ => None,
+                });
+            let new_anchor = data.nodes.get(&id).and_then(|node| match node.kind {
+                NodeKind::ElementAnchor { element_id } => Some(element_id),
+                _ => None,
+            });
+            if old_anchor != new_anchor {
+                if let Some(element) = old_anchor {
+                    if data.anchors.get(&element) == Some(&id) {
+                        data.anchors.remove(&element);
+                    }
+                }
+                if let Some(element) = new_anchor {
+                    data.anchors.insert(element, id);
+                }
+            }
+        }
+    }
+}
+
+fn sorted_nodes(nodes: &HashSet<NodeId>) -> Vec<NodeId> {
+    let mut nodes: Vec<_> = nodes.iter().copied().collect();
+    nodes.sort_by_key(|id| id.data().as_ffi());
+    nodes
 }
 
 impl Default for SceneGraph {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl SceneRead for SceneGraph {
+    fn get(&self, id: NodeId) -> Option<&Node> {
+        self.get(id)
+    }
+
+    fn roots(&self) -> &[NodeId] {
+        self.roots()
+    }
+
+    fn resources(&self) -> &SceneResources {
+        self.resources()
     }
 }
 
@@ -449,11 +821,11 @@ mod tests {
     }
 
     #[test]
-    fn cloned_scene_reuses_unchanged_nodes_and_detaches_only_the_mutated_node() {
+    fn snapshot_reuses_unchanged_nodes_and_detaches_only_the_mutated_node() {
         let mut ui_scene = SceneGraph::new();
         let unchanged = ui_scene.insert(group());
         let changed = ui_scene.insert(group());
-        let committed = ui_scene.clone();
+        let committed = ui_scene.snapshot();
 
         assert!(
             std::ptr::eq(ui_scene.get(unchanged).unwrap(), committed.get(unchanged).unwrap()),

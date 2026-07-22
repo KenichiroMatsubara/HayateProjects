@@ -34,7 +34,7 @@ use crate::element::text;
 use crate::element::visual_invalidation::{
     self, Change, DirtyKind, DirtySink, ElementContext, VisualInvalidationReach,
 };
-use crate::node::SceneGraph;
+use crate::node::{SceneGraph, SceneSnapshot};
 use crate::render::RenderImage;
 
 #[derive(Clone, Debug)]
@@ -208,6 +208,9 @@ pub struct ElementTree {
     pub(crate) engine: ElementEngine,
     pub(crate) viewport: (f32, f32),
     pub(crate) scene_cache: SceneGraph,
+    /// Latest immutable scene value. Committed frames clone this O(1) handle instead of borrowing
+    /// mutable retained storage or cloning the complete graph for raster handoff.
+    pub(crate) scene_snapshot: SceneSnapshot,
     pub(crate) scene_lowering: SceneLowering,
     /// parent 単位の retained Paint Order（ADR-0060）。scene lowering / hit-test /
     /// Layer Topology が同じ借用 view を消費する。
@@ -289,13 +292,16 @@ pub struct ElementTree {
 
 impl ElementTree {
     pub fn new() -> Self {
+        let mut scene_cache = SceneGraph::new();
+        let scene_snapshot = scene_cache.snapshot();
         Self {
             elements: HashMap::new(),
             root: None,
             layout: LayoutPass::new(),
             engine: ElementEngine::new(),
             viewport: (800.0, 600.0),
-            scene_cache: SceneGraph::new(),
+            scene_cache,
+            scene_snapshot,
             scene_lowering: SceneLowering::default(),
             paint_order: PaintOrder::default(),
             #[cfg(any(debug_assertions, feature = "scene-validation"))]
@@ -1810,6 +1816,7 @@ impl ElementTree {
         // transform 係数だけの変化（Some→Some）を保持シーンへ patch する（#633）。re-lower なしで
         // 全面 raster 経路（FramePlan が raster を選んだフレーム）の出力を正しく保つ。
         self.patch_transform_groups();
+        self.scene_snapshot = self.scene_cache.snapshot();
         #[cfg(any(debug_assertions, feature = "scene-validation"))]
         {
             let changed_roots = validation_elements.into_iter().filter_map(|id| {
@@ -1846,6 +1853,7 @@ impl ElementTree {
         let scroll_inputs = self.frame_scroll_compositor_inputs();
         crate::CommittedFrame::new(
             &self.scene_cache,
+            self.scene_snapshot.clone(),
             &self.frame_layers,
             &self.frame_layer_dirty,
             &self.frame_layer_chrome_dirty,

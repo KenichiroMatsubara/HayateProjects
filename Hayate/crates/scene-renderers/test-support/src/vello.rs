@@ -1,5 +1,5 @@
 use crate::pixel::{CANVAS_H, CANVAS_W, CLEAR_COLOR};
-use hayate_core::SceneGraph;
+use hayate_core::SceneRead;
 use hayate_scene_renderer_vello::{VelloRenderTarget, VelloSceneRenderer};
 
 pub struct VelloHarness {
@@ -35,13 +35,16 @@ pub fn try_vello_harness() -> Option<VelloHarness> {
     })
 }
 
-pub fn render_scene_to_pixels(harness: &mut VelloHarness, graph: &SceneGraph) -> Option<Vec<u8>> {
+pub fn render_scene_to_pixels(
+    harness: &mut VelloHarness,
+    graph: &(impl SceneRead + ?Sized),
+) -> Option<Vec<u8>> {
     render_scene_to_pixels_scaled(harness, graph, CANVAS_W, CANVAS_H, 1.0)
 }
 
 pub fn render_scene_to_pixels_scaled(
     harness: &mut VelloHarness,
-    graph: &SceneGraph,
+    graph: &(impl SceneRead + ?Sized),
     width: u32,
     height: u32,
     content_scale: f32,

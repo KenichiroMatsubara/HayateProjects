@@ -36,7 +36,8 @@ fn shadow_scene(blur: f32) -> Vec<u8> {
             }]),
         ],
     );
-    render_scene_to_pixels(&tree.render(0.0).clone())
+    tree.render(0.0);
+    render_scene_to_pixels(tree.committed_frame().snapshot())
 }
 
 /// premultiplied（不透明白背景）出力から黒影の被覆を復元する: rgb0 = 255·(1 − 0.8·cov)。
@@ -171,7 +172,8 @@ fn inset_scene(blur: f32) -> Vec<u8> {
             }]),
         ],
     );
-    render_scene_to_pixels(&tree.render(0.0).clone())
+    tree.render(0.0);
+    render_scene_to_pixels(tree.committed_frame().snapshot())
 }
 
 #[test]

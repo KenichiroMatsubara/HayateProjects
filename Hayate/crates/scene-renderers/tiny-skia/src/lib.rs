@@ -1,7 +1,7 @@
 mod layer_compositor;
 mod painter;
 
-use hayate_core::{render_scene_graph, SceneGraph};
+use hayate_core::{render_scene_graph, SceneRead};
 use tiny_skia::{Color, Pixmap};
 
 // ADR-0054: ScenePainter は crate 内部 seam。host 向け公開契約ではない。
@@ -21,7 +21,7 @@ impl TinySkiaSceneRenderer {
 
     pub fn render_scene(
         &mut self,
-        graph: &SceneGraph,
+        graph: &(impl SceneRead + ?Sized),
         pixmap: &mut Pixmap,
         clear_color: [f32; 4],
         content_scale: f32,
@@ -33,7 +33,7 @@ impl TinySkiaSceneRenderer {
 
     pub(crate) fn render_scene_at(
         &mut self,
-        graph: &SceneGraph,
+        graph: &(impl SceneRead + ?Sized),
         pixmap: &mut Pixmap,
         clear_color: [f32; 4],
         content_scale: f32,

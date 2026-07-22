@@ -11,7 +11,7 @@
 use std::collections::HashSet;
 use std::time::Instant;
 
-use hayate_core::{ElementId, LayerRasterBounds};
+use hayate_core::{ElementId, LayerRasterBounds, SceneRead};
 use hayate_demo_fixtures::{
     dual_transition_tree, tasks_tree, DUAL_TRANSITION_VIEWPORT, TASKS_VIEWPORT,
 };
@@ -35,7 +35,7 @@ fn layered_gpu_frame(
     rasterizer: &mut VelloLayerRasterizer,
     compositor: &mut WgpuQuadCompositor,
     cached: &mut HashSet<ElementId>,
-    graph: &hayate_core::SceneGraph,
+    graph: &(impl SceneRead + ?Sized),
     layers: &[ElementId],
     layer_raster_bounds: &[LayerRasterBounds],
     layer_dirty: &HashSet<ElementId>,
@@ -162,7 +162,8 @@ fn perf_probe() {
     });
 
     // ── 2. vello Scene フルエンコード（present ごとに毎回走る）────────────────
-    let graph = tree.render(ts + 16.0).clone();
+    tree.render(ts + 16.0);
+    let graph = tree.committed_frame().snapshot().clone();
     bench("vello Scene full encode scale=1.0", 100, || {
         let s = debug_encode_scene(&graph, 1.0);
         std::hint::black_box(&s);
@@ -311,7 +312,8 @@ fn perf_probe() {
             let mut t = 16.0;
             let mut frames = 0;
             while dtree.has_pending_visual_work() && frames < 60 {
-                let graph = dtree.render(t).clone();
+                dtree.render(t);
+                let graph = dtree.committed_frame().snapshot().clone();
                 let layers = dtree.frame_layers().to_vec();
                 let layer_raster_bounds = dtree.committed_frame().layer_raster_bounds().to_vec();
                 let dirty = dtree.frame_layer_dirty().clone();

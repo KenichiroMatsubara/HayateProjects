@@ -59,6 +59,7 @@ web-sys = { version = "0.3", features = [
 
 # Utilities
 slotmap = "1"
+imbl = "6"
 anyhow = "1"
 log = "0.4"
 # desktop demo バイナリのログ出力（RUST_LOG を実際に効かせる・#777）

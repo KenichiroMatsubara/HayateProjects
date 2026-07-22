@@ -4,8 +4,8 @@ mod painter;
 use std::num::NonZeroUsize;
 
 use hayate_core::{
-    render_scene_graph, RenderImage, RenderImageAlphaType, RenderImageFormat, SceneGraph,
-    ScenePainter,
+    render_scene_graph, RenderImage, RenderImageAlphaType, RenderImageFormat, ScenePainter,
+    SceneRead,
 };
 use vello::peniko::color::{AlphaColor, Srgb};
 use vello::{
@@ -321,7 +321,7 @@ impl VelloSceneRenderer {
 
     pub fn render_scene(
         &mut self,
-        graph: &SceneGraph,
+        graph: &(impl SceneRead + ?Sized),
         target: &VelloRenderTarget<'_>,
         clear_color: [f32; 4],
         content_scale: f32,
@@ -340,7 +340,7 @@ impl VelloSceneRenderer {
     /// texture row 0.
     pub fn render_scene_at(
         &mut self,
-        graph: &SceneGraph,
+        graph: &(impl SceneRead + ?Sized),
         target: &VelloRenderTarget<'_>,
         clear_color: [f32; 4],
         content_scale: f32,
@@ -360,7 +360,7 @@ impl VelloSceneRenderer {
     /// もこの一般化経路を通る。
     pub fn render_scene_with_offset(
         &mut self,
-        graph: &SceneGraph,
+        graph: &(impl SceneRead + ?Sized),
         target: &VelloRenderTarget<'_>,
         clear_color: [f32; 4],
         content_scale: f32,
@@ -396,7 +396,7 @@ impl VelloSceneRenderer {
 /// scale は shift 後の量にも一様に掛かる）。
 fn encode_frame(
     scene: &mut Scene,
-    graph: &SceneGraph,
+    graph: &(impl SceneRead + ?Sized),
     content_scale: f32,
     offset_x: f32,
     offset_y: f32,
@@ -430,7 +430,7 @@ fn encode_frame(
 // perf プローブ用 seam（`tests/perf_probe.rs`）：GPU なしで「SceneGraph → vello Scene
 // エンコード」だけの所要時間を測るために公開する。公開契約ではない。
 #[doc(hidden)]
-pub fn debug_encode_scene(graph: &SceneGraph, content_scale: f32) -> Scene {
+pub fn debug_encode_scene(graph: &(impl SceneRead + ?Sized), content_scale: f32) -> Scene {
     let mut scene = Scene::new();
     encode_frame(&mut scene, graph, content_scale, 0.0, 0.0);
     scene
@@ -440,7 +440,11 @@ pub fn debug_encode_scene(graph: &SceneGraph, content_scale: f32) -> Scene {
 // する。render_scene と同じ経路（`encode_frame`）を通すので、reset 再利用の内容が新規 Scene と同値かつ
 // 前フレームを持ち越さないことを GPU 抜きで固定できる。
 #[doc(hidden)]
-pub fn debug_encode_frame(scene: &mut Scene, graph: &SceneGraph, content_scale: f32) {
+pub fn debug_encode_frame(
+    scene: &mut Scene,
+    graph: &(impl SceneRead + ?Sized),
+    content_scale: f32,
+) {
     encode_frame(scene, graph, content_scale, 0.0, 0.0);
 }
 

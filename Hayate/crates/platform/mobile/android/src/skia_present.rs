@@ -8,7 +8,7 @@
 //! 同じ理由）。ここは `ndk::native_window` に一切触れない純関数だけを置き、ホストでテストする。
 //! ANativeWindow への実書き込み（lock/lines/unlockAndPost）は device 専用の `skia_window.rs`。
 
-use hayate_core::SceneGraph;
+use hayate_core::SceneRead;
 use hayate_scene_renderer_skia::{new_raster_surface, read_rgba, SkiaSceneRenderer};
 
 /// RGBA8888（premultiplied、skia raster surface の読み戻し形式）を ANativeWindow の
@@ -29,7 +29,7 @@ pub fn copy_rgba_to_rgbx(rgba: &[u8], out: &mut [u8]) {
 /// インセットのシーン平行移動原点（b2, issue #794・ADR-0144・`SafeAreaInsets::scene_origin`）——
 /// vello の `render_scene_with_offset` と同じ役割を skia 側で担う。
 pub fn raster_frame_rgbx(
-    graph: &SceneGraph,
+    graph: &(impl SceneRead + ?Sized),
     width: u32,
     height: u32,
     content_scale: f32,
@@ -64,7 +64,7 @@ mod tests {
 
     #[test]
     fn raster_frame_rgbx_produces_tightly_packed_rows_of_the_requested_size() {
-        let graph = SceneGraph::default();
+        let graph = hayate_core::SceneGraph::default();
         let pixels = raster_frame_rgbx(&graph, 4, 3, 1.0, [1.0, 0.0, 0.0, 1.0], 0.0, 0.0);
         assert_eq!(
             pixels.len(),

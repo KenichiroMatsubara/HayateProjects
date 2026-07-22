@@ -16,7 +16,8 @@ use hayate_platform_desktop::skia_present::raster_frame_xrgb;
 fn shared_fixture_paints_tasks_scenery_through_skia_raster() {
     let (vw, vh) = TASKS_VIEWPORT;
     let mut tree = tasks_tree("skia");
-    let graph = tree.render(0.0).clone();
+    tree.render(0.0);
+    let graph = tree.committed_frame().snapshot().clone();
 
     let clear = hayate_platform_desktop::CLEAR_COLOR;
     let pixels = raster_frame_xrgb(&graph, vw as u32, vh as u32, 1.0, clear);

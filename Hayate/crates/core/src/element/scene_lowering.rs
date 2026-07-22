@@ -174,23 +174,21 @@ pub(crate) fn clear_lowered_content(
     for id in to_remove {
         sg.remove_subtree(id);
     }
-    if let Some(anchor) = sg.get_mut(anchor_id) {
-        anchor.children.retain(|id| preserve.contains(id));
-    }
+    sg.edit_children(anchor_id, |children| {
+        children.retain(|id| preserve.contains(id))
+    });
 }
 
 fn detach_child(sg: &mut SceneGraph, child: NodeId) {
     if let Some(parent) = sg.parent_of(child) {
-        if let Some(p) = sg.get_mut(parent) {
-            p.children.retain(|&id| id != child);
-        }
+        sg.edit_children(parent, |children| children.retain(|&id| id != child));
     }
 }
 
 fn attach_child(sg: &mut SceneGraph, parent: NodeId, child: NodeId) {
-    if let Some(p) = sg.get_mut(parent) {
-        if !p.children.contains(&child) {
-            p.children.push(child);
+    sg.edit_children(parent, |children| {
+        if !children.contains(&child) {
+            children.push(child);
         }
-    }
+    });
 }

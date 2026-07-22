@@ -14,7 +14,7 @@ mod layer_compositor;
 mod painter;
 mod resource_cache;
 
-use hayate_core::{render_scene_graph, SceneGraph};
+use hayate_core::{render_scene_graph, SceneRead};
 use skia_safe::{surfaces, Canvas, Color4f, ColorType, ISize, ImageInfo, Surface};
 
 use painter::SkiaPainter;
@@ -53,7 +53,7 @@ impl SkiaSceneRenderer {
     /// 覗いたりしない（ADR-0146 §3 の surface 非依存 painter）。
     pub fn render_scene(
         &mut self,
-        graph: &SceneGraph,
+        graph: &(impl SceneRead + ?Sized),
         canvas: &Canvas,
         clear_color: [f32; 4],
         content_scale: f32,
@@ -66,7 +66,7 @@ impl SkiaSceneRenderer {
     /// 揃えるための surface 非依存 seam。
     pub fn render_scene_with_offset(
         &mut self,
-        graph: &SceneGraph,
+        graph: &(impl SceneRead + ?Sized),
         canvas: &Canvas,
         clear_color: [f32; 4],
         content_scale: f32,
@@ -90,7 +90,7 @@ impl SkiaSceneRenderer {
     /// `device_origin` が texture pixel (0, 0) に来るよう、内容を上・左へずらして描く。
     pub fn render_scene_at(
         &mut self,
-        graph: &SceneGraph,
+        graph: &(impl SceneRead + ?Sized),
         canvas: &Canvas,
         clear_color: [f32; 4],
         content_scale: f32,

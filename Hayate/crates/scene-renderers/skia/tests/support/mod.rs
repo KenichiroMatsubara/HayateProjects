@@ -6,7 +6,7 @@
 //! warning は許容する（統合テストの `mod support;` 共有パターンの通常の副作用）。
 #![allow(dead_code)]
 
-use hayate_core::SceneGraph;
+use hayate_core::SceneRead;
 use hayate_scene_renderer_skia::{new_raster_surface, read_rgba, SkiaSceneRenderer};
 
 pub const CANVAS_W: u32 = 100;
@@ -14,7 +14,7 @@ pub const CANVAS_H: u32 = 100;
 pub const CLEAR_COLOR: [f32; 4] = [1.0, 1.0, 1.0, 1.0];
 
 pub fn render_scene_to_pixels_scaled(
-    graph: &SceneGraph,
+    graph: &(impl SceneRead + ?Sized),
     width: u32,
     height: u32,
     content_scale: f32,
@@ -24,7 +24,7 @@ pub fn render_scene_to_pixels_scaled(
     read_rgba(&mut surface)
 }
 
-pub fn render_scene_to_pixels(graph: &SceneGraph) -> Vec<u8> {
+pub fn render_scene_to_pixels(graph: &(impl SceneRead + ?Sized)) -> Vec<u8> {
     render_scene_to_pixels_scaled(graph, CANVAS_W, CANVAS_H, 1.0)
 }
 

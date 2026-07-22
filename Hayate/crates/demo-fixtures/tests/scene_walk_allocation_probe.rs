@@ -7,7 +7,7 @@
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
 
-use hayate_core::{render_scene_graph, Node, NodeKind, NullPainter};
+use hayate_core::{render_scene_graph, NodeKind, NullPainter, OverflowValue, StyleProp};
 use hayate_demo_fixtures::tasks_tree;
 
 struct ThreadTrackingAllocator;
@@ -64,41 +64,11 @@ fn allocation_count(f: impl FnOnce()) -> usize {
 #[test]
 fn tasks_scene_walk_allocates_nothing_for_structural_child_traversal() {
     let mut tree = tasks_tree("allocation-probe");
+    let root = tree.root().expect("tasks fixture root");
+    tree.element_set_transform(root, Some([1.0, 0.0, 0.0, 1.0, 0.0, 0.0]));
+    tree.element_set_style(root, &[StyleProp::Overflow(OverflowValue::Hidden)]);
     let _ = tree.render(0.0);
-    let mut graph = tree.scene_graph().clone();
-    let group = graph.insert(Node {
-        kind: NodeKind::Group {
-            transform: [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
-        },
-        children: Vec::new(),
-    });
-    let clip = graph.insert_child(
-        group,
-        Node {
-            kind: NodeKind::Clip {
-                x: 0.0,
-                y: 0.0,
-                width: 1.0,
-                height: 1.0,
-                corner_radii: [0.0; 4],
-            },
-            children: Vec::new(),
-        },
-    );
-    graph.insert_child(
-        clip,
-        Node {
-            kind: NodeKind::Rect {
-                x: 0.0,
-                y: 0.0,
-                width: 1.0,
-                height: 1.0,
-                color: [0.0; 4],
-                corner_radius: 0.0,
-            },
-            children: Vec::new(),
-        },
-    );
+    let graph = tree.scene_graph();
 
     let (groups, clips, anchors) = graph.iter().fold(
         (0usize, 0usize, 0usize),

@@ -792,9 +792,7 @@ fn reorder_children_for_z_index(
             .filter_map(|child| lowering.anchors.get(child).map(|e| e.anchor_id))
             .collect()
     });
-    if let Some(parent) = sg.get_mut(parent_anchor) {
-        parent.children = child_anchors;
-    }
+    sg.edit_children(parent_anchor, |children| *children = child_anchors);
 }
 
 fn first_child_matching(
@@ -895,9 +893,7 @@ fn insert_anchor_ordered(
 ) {
     sg.retain_roots(|root| root != child);
     if let Some(old_parent) = sg.parent_of(child) {
-        if let Some(p) = sg.get_mut(old_parent) {
-            p.children.retain(|&c| c != child);
-        }
+        sg.edit_children(old_parent, |children| children.retain(|&id| id != child));
     }
     // 要素順で `id` より後ろの兄弟アンカー。`child` を `parent` 下に存在する最初の後続兄弟の
     // 直前に挿入。まだ存在しなければ末尾に追加。後続兄弟の前に挿入する（先行兄弟の後ろではなく）
@@ -917,26 +913,24 @@ fn insert_anchor_ordered(
                     .find_map(|sibling| lowering.anchors.get(&sibling).map(|entry| entry.anchor_id))
             })
         });
-    if let Some(p) = sg.get_mut(parent) {
+    sg.edit_children(parent, |children| {
         let index = following
-            .and_then(|following| p.children.iter().position(|&child| child == following))
-            .unwrap_or(p.children.len());
-        p.children.insert(index, child);
-    }
+            .and_then(|following| children.iter().position(|&child| child == following))
+            .unwrap_or(children.len());
+        children.insert(index, child);
+    });
 }
 
 fn attach_under(sg: &mut SceneGraph, parent: NodeId, child: NodeId) {
     sg.retain_roots(|root| root != child);
     if let Some(old_parent) = sg.parent_of(child) {
-        if let Some(p) = sg.get_mut(old_parent) {
-            p.children.retain(|&id| id != child);
-        }
+        sg.edit_children(old_parent, |children| children.retain(|&id| id != child));
     }
-    if let Some(p) = sg.get_mut(parent) {
-        if !p.children.contains(&child) {
-            p.children.push(child);
+    sg.edit_children(parent, |children| {
+        if !children.contains(&child) {
+            children.push(child);
         }
-    }
+    });
 }
 
 /// 再ウォークした要素の子アンカーを、自身の内容の後ろへ要素順で積み直す。`emit_element` は

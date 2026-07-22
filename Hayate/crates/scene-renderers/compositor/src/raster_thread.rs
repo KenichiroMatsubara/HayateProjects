@@ -29,13 +29,13 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::thread::{self, JoinHandle};
 
 use hayate_core::element::id::ElementId;
-use hayate_core::{CommittedFrame, LayerRasterBounds, SceneGraph, ScrollCompositorInput};
+use hayate_core::{CommittedFrame, LayerRasterBounds, SceneSnapshot, ScrollCompositorInput};
 
 /// UI スレッド → Raster スレッドのハンドオフ（ADR-0128）。スレッド境界はこれ 1 つで、lower 済み
 /// SceneGraph と全レイヤ（描画順）・`layer_dirty`・`chrome_dirty` を owned で渡す。`Send + Sync` 境界。
 pub struct RasterHandoff {
-    /// 本フレームの lower 済み SceneGraph（owned スナップショット。境界を越えて move する）。
-    pub scene: SceneGraph,
+    /// 本フレームの immutable Scene Snapshot（O(1) handle を境界越しに move する）。
+    pub scene: SceneSnapshot,
     /// 全 compositing layer（描画順 = ADR-0021）。
     pub layers: Vec<ElementId>,
     /// Core が同じ commit で導出した layer-local logical raster extent。
@@ -53,12 +53,10 @@ pub struct RasterHandoff {
 
 impl RasterHandoff {
     /// Freeze every renderer-visible fact from one Core commit into the single owned value sent
-    /// across the native raster seam. `SceneGraph::clone` is a structurally-shared snapshot: it
-    /// clones Arc handles, not the retained nodes, and later UI mutations detach only changed
-    /// nodes.
+    /// across the native raster seam. The mutable SceneGraph and its allocator never cross.
     pub fn from_committed_frame(frame: &CommittedFrame<'_>) -> Self {
         Self {
-            scene: frame.scene().clone(),
+            scene: frame.snapshot().clone(),
             layers: frame.layers().to_vec(),
             layer_raster_bounds: frame.layer_raster_bounds().to_vec(),
             layer_dirty: frame.content_dirty_layers().clone(),
@@ -323,7 +321,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use hayate_core::{ElementKind, ElementTree};
+    use hayate_core::{ElementKind, ElementTree, SceneSnapshot};
     use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
     use std::sync::{mpsc, Arc};
 
@@ -332,8 +330,9 @@ mod tests {
     }
 
     fn handoff(dirty: &[u64]) -> RasterHandoff {
+        let mut scene = hayate_core::SceneGraph::new();
         RasterHandoff {
-            scene: SceneGraph::new(),
+            scene: scene.snapshot(),
             layers: dirty.iter().map(|&r| id(r)).collect(),
             layer_raster_bounds: Vec::new(),
             layer_dirty: dirty.iter().map(|&r| id(r)).collect(),
@@ -351,10 +350,12 @@ mod tests {
     }
 
     #[test]
-    fn scene_graph_handoff_is_send_and_sync() {
-        // ADR-0128: スレッド境界＝SceneGraph ハンドオフが Send + Sync で成立する。
+    fn scene_snapshot_handoff_is_send_and_sync() {
+        // ADR-0128/0153: thread handoff owns the immutable snapshot handle, not mutable storage.
         fn assert_send_sync<T: Send + Sync>() {}
-        assert_send_sync::<SceneGraph>();
+        fn assert_snapshot(_: &SceneSnapshot) {}
+        assert_snapshot(&handoff(&[]).scene);
+        assert_send_sync::<SceneSnapshot>();
         assert_send_sync::<RasterHandoff>();
     }
 

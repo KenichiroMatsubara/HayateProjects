@@ -1701,8 +1701,9 @@ pub static CSS_PIXEL_CASES: &[CssPixelCase] = &[
     },
 ];
 
-pub fn render_tree_to_scene(mut tree: ElementTree) -> hayate_core::SceneGraph {
-    tree.render(0.0).clone()
+pub fn render_tree_to_scene(mut tree: ElementTree) -> hayate_core::SceneSnapshot {
+    let _ = tree.render(0.0);
+    tree.committed_frame().snapshot().clone()
 }
 
 #[cfg(test)]

@@ -89,8 +89,9 @@ pub use element::{
 };
 pub use layer_raster_bounds::LayerRasterBounds;
 pub use node::{
-    Node, NodeId, NodeKind, SceneGraph, ShadowOccluder, TextDecorationLine, TextFontAttributes,
-    TextFontSlant, TextRunData, TextSynthesis,
+    Node, NodeId, NodeKind, SceneChangeJournal, SceneCommitStats, SceneGraph, SceneRead,
+    SceneSnapshot, ShadowOccluder, TextDecorationLine, TextFontAttributes, TextFontSlant,
+    TextRunData, TextSynthesis,
 };
 pub use render::{
     build_draw_path, is_notdef, missing_glyph_placeholder, render_scene_graph, transform_verbs,

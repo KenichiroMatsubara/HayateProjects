@@ -11,7 +11,9 @@
 use std::collections::HashSet;
 use std::time::Instant;
 
-use hayate_core::{ElementId, LayerRasterBounds};
+use hayate_core::{
+    ElementId, LayerRasterBounds, Node, NodeId, NodeKind, SceneRead, SceneResources, SceneSnapshot,
+};
 use hayate_demo_fixtures::{tasks_tree, TASKS_VIEWPORT};
 use hayate_layer_compositor::layer_scene::{
     collect_layer_placements, extract_layer_scene, extract_root_scene,
@@ -22,6 +24,24 @@ use hayate_scene_renderer_tiny_skia::{
     TinySkiaLayerRasterizer, TinySkiaLayerTexture, TinySkiaSceneRenderer,
 };
 use tiny_skia::Pixmap;
+
+struct WithoutText<'a>(&'a SceneSnapshot);
+
+impl SceneRead for WithoutText<'_> {
+    fn get(&self, id: NodeId) -> Option<&Node> {
+        self.0
+            .get(id)
+            .filter(|node| !matches!(node.kind, NodeKind::TextRun { .. }))
+    }
+
+    fn roots(&self) -> &[NodeId] {
+        self.0.roots()
+    }
+
+    fn resources(&self) -> &SceneResources {
+        self.0.resources()
+    }
+}
 
 fn ms(d: std::time::Duration) -> f64 {
     d.as_secs_f64() * 1000.0
@@ -54,7 +74,8 @@ fn perf_probe() {
     // Promote the app bar into a representative non-root layer so this probe measures the
     // bounded-cache path rather than the fixture's otherwise single-root full-surface path.
     tree.element_set_transform(ElementId::from_u64(2), Some([1.0, 0.0, 0.0, 1.0, 0.0, 0.0]));
-    let graph = tree.render(0.0).clone();
+    let _ = tree.render(0.0);
+    let graph = tree.committed_frame().snapshot().clone();
     let (
         mut rects,
         mut rings,
@@ -113,16 +134,7 @@ fn perf_probe() {
     );
 
     // テキスト run のグリフを空にしたバリアントで、グリフラスタのコストを切り分ける。
-    let mut no_text = graph.clone();
-    let ids: Vec<_> = no_text.iter().map(|(id, _)| id).collect();
-    for id in ids {
-        if no_text
-            .get(id)
-            .is_some_and(|node| matches!(node.kind, hayate_core::NodeKind::TextRun { .. }))
-        {
-            no_text.remove(id);
-        }
-    }
+    let no_text = WithoutText(&graph);
     {
         let w = vw as u32;
         let h = vh as u32;

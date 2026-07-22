@@ -107,7 +107,8 @@ fn repeated_raster_reuses_the_text_runs_sk_text_blob() {
         ],
     );
     tree.element_set_text(text, "\u{1F601}");
-    let graph = tree.render(0.0).clone();
+    tree.render(0.0);
+    let graph = tree.committed_frame().snapshot().clone();
     let mut renderer = SkiaSceneRenderer::new();
     let mut surface = new_raster_surface(100, 100).expect("raster surface");
 

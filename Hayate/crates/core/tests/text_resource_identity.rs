@@ -121,7 +121,7 @@ fn a_concurrent_scene_snapshot_keeps_its_text_resources_alive_until_drop() {
         },
         children: Vec::new(),
     });
-    let raster_snapshot = scene.clone();
+    let raster_snapshot = scene.snapshot();
 
     scene.remove(node);
     let while_snapshot_alive = scene.sweep_resources();
