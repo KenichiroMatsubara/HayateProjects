@@ -16,9 +16,10 @@ use std::time::Instant;
 
 use hayate_core::{CommittedFrame, ElementId, ElementTree};
 use hayate_layer_compositor::{
-    scroll_layer_geometry_from_inputs, tunables, CompositeQuad, GpuBudget, LayerCompositor,
-    LayerPresentation, LayerPresentationAdapter, LayerPresentationFrame, LayerRasterizer,
-    PlacementPlan, RasterJob, RasterJobKind,
+    scroll_layer_geometry_from_inputs, CompositeQuad, DeviceMemoryClass, GpuBudget,
+    LayerCompositor, LayerPresentation, LayerPresentationAdapter, LayerPresentationFrame,
+    LayerRasterizer, PlacementPlan, RasterJob, RasterJobKind, RenderResourceBudgetPolicy,
+    ResourceBudgetInputs,
 };
 use hayate_scene_renderer_vello::layer_compositor::{
     CompositeTarget, VelloLayerRasterizer, WgpuQuadCompositor,
@@ -43,6 +44,7 @@ struct GpuSurface {
     presentation: LayerPresentation,
     rasterizer: VelloLayerRasterizer,
     compositor: WgpuQuadCompositor,
+    resource_policy: RenderResourceBudgetPolicy,
 }
 
 /// 1 ビューぶんのアダプタ状態。Swift が `hayate_ios_app_new` で sized な `CAMetalLayer`
@@ -301,11 +303,18 @@ async fn init_gpu_surface(
     surface_config.usage |= wgpu::TextureUsages::RENDER_ATTACHMENT;
     surface.configure(&device, &surface_config);
 
-    let rasterizer =
+    let mut rasterizer =
         VelloLayerRasterizer::new(device.clone(), queue.clone(), width, height, content_scale)?;
     let mut compositor = WgpuQuadCompositor::new(device.clone(), queue.clone());
     compositor.set_content_scale(content_scale);
     compositor.warmup();
+
+    let resource_policy = RenderResourceBudgetPolicy::for_device(ResourceBudgetInputs::new(
+        DeviceMemoryClass::Constrained,
+        width,
+        height,
+    ));
+    rasterizer.configure_resource_residency(resource_policy);
 
     Ok(GpuSurface {
         device,
@@ -317,6 +326,7 @@ async fn init_gpu_surface(
         presentation: LayerPresentation::new(),
         rasterizer,
         compositor,
+        resource_policy,
     })
 }
 
@@ -341,11 +351,7 @@ impl GpuSurface {
                 &mut adapter,
             )
             .map_err(|error| format!("layer presentation: {error:?}"))?;
-        let budget = GpuBudget::from_viewports(
-            self.width,
-            self.height,
-            tunables::GPU_BUDGET_VIEWPORTS_MOBILE,
-        );
+        let budget = GpuBudget::from_bytes(self.resource_policy.gpu.max_bytes);
         self.presentation.enforce_budget(budget, &mut adapter);
         Ok(())
     }
@@ -362,6 +368,13 @@ impl GpuSurface {
         self.width = width;
         self.height = height;
         self.content_scale = content_scale;
+        self.resource_policy = RenderResourceBudgetPolicy::for_device(ResourceBudgetInputs::new(
+            DeviceMemoryClass::Constrained,
+            width,
+            height,
+        ));
+        self.rasterizer
+            .configure_resource_residency(self.resource_policy);
         self.surface_config.width = width;
         self.surface_config.height = height;
         self.surface.configure(&self.device, &self.surface_config);

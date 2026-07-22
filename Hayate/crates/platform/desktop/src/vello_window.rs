@@ -17,9 +17,10 @@ use hayate_app_host::render_host::{ClearColor, SceneRenderer};
 use hayate_app_host::renderer_selection::SceneRendererKind;
 use hayate_core::{ElementId, LayerTopology, SceneSnapshot};
 use hayate_layer_compositor::{
-    tunables, CompositeQuad, GpuBudget, LayerCompositor, LayerPresentation,
-    LayerPresentationAdapter, LayerPresentationFrame, LayerRasterizer, PlacementPlan, RasterJob,
-    RasterJobKind, ScrollLayerGeometry,
+    CompositeQuad, DeviceMemoryClass, GpuBudget, LayerCompositor, LayerPresentation,
+    LayerPresentationAdapter, LayerPresentationFrame, LayerRasterizer, MemoryPressure,
+    PlacementPlan, RasterJob, RasterJobKind, RenderResourceBudgetPolicy, ResidencyEvent,
+    ResourceBudgetInputs, ScrollLayerGeometry,
 };
 use hayate_scene_renderer_vello::layer_compositor::{
     CompositeTarget, VelloLayerRasterizer, WgpuQuadCompositor,
@@ -38,6 +39,7 @@ pub struct VelloWindowRenderer {
     /// バッキングストア寸法（物理 px）。
     width: u32,
     height: u32,
+    resource_policy: RenderResourceBudgetPolicy,
 }
 
 struct LayerPresentState {
@@ -193,6 +195,11 @@ impl VelloWindowRenderer {
             layer_present,
             width,
             height,
+            resource_policy: RenderResourceBudgetPolicy::for_device(ResourceBudgetInputs::new(
+                DeviceMemoryClass::Expanded,
+                width,
+                height,
+            )),
         })
     }
 
@@ -219,6 +226,21 @@ impl VelloWindowRenderer {
             .compositor
             .set_content_scale(content_scale);
         self.layer_present.presentation.invalidate();
+    }
+
+    fn enforce_resource_budget(&mut self, max_bytes: u64) {
+        let state = &mut self.layer_present;
+        let mut adapter = DesktopVelloLayerPresentationAdapter {
+            rasterizer: &mut state.rasterizer,
+            compositor: &mut state.compositor,
+            device: &self.device,
+            surface: &self.surface,
+            surface_config: &self.surface_config,
+            clear: [0.0; 4],
+        };
+        state
+            .presentation
+            .enforce_budget(GpuBudget::from_bytes(max_bytes), &mut adapter);
     }
 }
 
@@ -314,6 +336,30 @@ impl SceneRenderer for VelloWindowRenderer {
         SceneRendererKind::Vello
     }
 
+    fn configure_resource_residency(&mut self, policy: RenderResourceBudgetPolicy) {
+        self.resource_policy = policy;
+        self.layer_present
+            .rasterizer
+            .configure_resource_residency(policy);
+        self.enforce_resource_budget(policy.gpu.max_bytes);
+    }
+
+    fn handle_resource_lifecycle(&mut self, event: ResidencyEvent) {
+        self.layer_present
+            .rasterizer
+            .handle_resource_lifecycle(event);
+        match event {
+            ResidencyEvent::MemoryPressure(MemoryPressure::Moderate) => {
+                self.enforce_resource_budget(self.resource_policy.gpu.low_watermark_bytes);
+            }
+            ResidencyEvent::SurfaceLost
+            | ResidencyEvent::ContextLost
+            | ResidencyEvent::Shutdown => {
+                self.layer_present.presentation.invalidate();
+            }
+        }
+    }
+
     fn present_layers(
         &mut self,
         scene: &SceneSnapshot,
@@ -341,11 +387,7 @@ impl SceneRenderer for VelloWindowRenderer {
                 &mut adapter,
             )
             .map_err(|error| anyhow!("vello layer presentation: {error:?}"))?;
-        let budget = GpuBudget::from_viewports(
-            self.surface_config.width,
-            self.surface_config.height,
-            tunables::GPU_BUDGET_VIEWPORTS_DESKTOP,
-        );
+        let budget = GpuBudget::from_bytes(self.resource_policy.gpu.max_bytes);
         state.presentation.enforce_budget(budget, &mut adapter);
         Ok(())
     }

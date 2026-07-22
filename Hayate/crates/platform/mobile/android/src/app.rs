@@ -16,9 +16,10 @@ use hayate_core::{
     ScrollCompositorInput,
 };
 use hayate_layer_compositor::{
-    scroll_layer_geometry_from_inputs, tunables, CompositeQuad, GpuBudget, LayerCompositor,
-    LayerPresentation, LayerPresentationAdapter, LayerPresentationFrame, LayerRasterizer,
-    PlacementPlan, RasterCommand, RasterHandoff, RasterJob, RasterJobKind, RasterThread,
+    scroll_layer_geometry_from_inputs, CompositeQuad, DeviceMemoryClass, GpuBudget,
+    LayerCompositor, LayerPresentation, LayerPresentationAdapter, LayerPresentationFrame,
+    LayerRasterizer, PlacementPlan, RasterCommand, RasterHandoff, RasterJob, RasterJobKind,
+    RasterThread, RenderResourceBudgetPolicy, ResourceBudgetInputs,
 };
 use hayate_performance_observability::{
     FrameCounters, FrameDeadline, PerformanceObservability, PerformancePhase,
@@ -71,6 +72,7 @@ pub(crate) struct GpuSurface {
     rasterizer: VelloLayerRasterizer,
     compositor: WgpuQuadCompositor,
     content_scale: f32,
+    resource_policy: RenderResourceBudgetPolicy,
 }
 
 /// JS 駆動経路（ADR-0112, feature=tsubame-js）。Hermes に Tsubame バンドルを載せ、
@@ -229,6 +231,7 @@ pub fn android_main(app: AndroidApp) {
                 cache_hits: 0,
                 cache_misses: 0,
                 allocations: 0,
+                ..FrameCounters::default()
             });
             // render() が捕捉した保持シーン + frame_layers / frame_layer_dirty / chrome_dirty を
             // owned handoff にして Raster スレッドへ送る（#635）。UI スレッドは raster を待たず、
@@ -240,19 +243,29 @@ pub fn android_main(app: AndroidApp) {
                 frame_scheduler.request_frame();
             }
             observation.finish();
-            if let Some(report) = observability.periodic_report() {
+            if let Some(report) = observability.periodic_summary() {
                 log::info!(
                     target: "HayatePerf",
-                    "frame deadline_ns={} total_ns={} missed={} nodes={} layers={} dirty={} cache_hit={} cache_miss={} allocations={}",
-                    report.deadline_ns,
-                    report.total_phase_ns(),
-                    report.missed_deadline(),
+                    "window samples={} total_p95_ns={} frames_over_2x={} app_host_p95_ns={} core_commit_p95_ns={} scene_lowering_p95_ns={} layer_presentation_p95_ns={} renderer_submit_p95_ns={} renderer_present_p95_ns={} nodes={} layers={} dirty={} cache_hit={} cache_miss={} allocations={} cpu_resident_bytes={} gpu_resident_bytes={} resource_evictions={} resource_rebuild_cost={}",
+                    report.sample_count,
+                    report.total_p95_ns,
+                    report.frames_over_two_intervals,
+                    report.phase_p95_ns[PerformancePhase::AppHost as usize],
+                    report.phase_p95_ns[PerformancePhase::CoreCommit as usize],
+                    report.phase_p95_ns[PerformancePhase::SceneLowering as usize],
+                    report.phase_p95_ns[PerformancePhase::LayerPresentation as usize],
+                    report.phase_p95_ns[PerformancePhase::RendererSubmit as usize],
+                    report.phase_p95_ns[PerformancePhase::RendererPresent as usize],
                     report.counters.nodes,
                     report.counters.layers,
                     report.counters.dirty_layers,
                     report.counters.cache_hits,
                     report.counters.cache_misses,
                     report.counters.allocations,
+                    report.counters.cpu_resident_bytes,
+                    report.counters.gpu_resident_bytes,
+                    report.counters.resource_evictions,
+                    report.counters.resource_rebuild_cost,
                 );
             }
         }
@@ -520,7 +533,7 @@ pub(crate) async fn init_gpu_surface(
     surface_config.usage |= wgpu::TextureUsages::RENDER_ATTACHMENT;
     surface.configure(&device, &surface_config);
 
-    let rasterizer = VelloLayerRasterizer::new_with_options(
+    let mut rasterizer = VelloLayerRasterizer::new_with_options(
         device.clone(),
         queue.clone(),
         width,
@@ -532,6 +545,13 @@ pub(crate) async fn init_gpu_surface(
     compositor.set_content_scale(content_scale);
     compositor.warmup();
 
+    let resource_policy = RenderResourceBudgetPolicy::for_device(ResourceBudgetInputs::new(
+        DeviceMemoryClass::Constrained,
+        width,
+        height,
+    ));
+    rasterizer.configure_resource_residency(resource_policy);
+
     Ok(GpuSurface {
         device,
         surface,
@@ -542,6 +562,7 @@ pub(crate) async fn init_gpu_surface(
         rasterizer,
         compositor,
         content_scale,
+        resource_policy,
     })
 }
 
@@ -677,11 +698,7 @@ impl GpuSurface {
             )
             .map_err(|error| format!("layer presentation: {error:?}"))?;
         self.presentation.enforce_budget(
-            GpuBudget::from_viewports(
-                self.width,
-                self.height,
-                tunables::GPU_BUDGET_VIEWPORTS_MOBILE,
-            ),
+            GpuBudget::from_bytes(self.resource_policy.gpu.max_bytes),
             &mut adapter,
         );
         Ok(())
@@ -698,6 +715,13 @@ impl GpuSurface {
         self.width = width;
         self.height = height;
         self.content_scale = content_scale;
+        self.resource_policy = RenderResourceBudgetPolicy::for_device(ResourceBudgetInputs::new(
+            DeviceMemoryClass::Constrained,
+            width,
+            height,
+        ));
+        self.rasterizer
+            .configure_resource_residency(self.resource_policy);
         self.surface_config.width = width;
         self.surface_config.height = height;
         self.surface.configure(&self.device, &self.surface_config);

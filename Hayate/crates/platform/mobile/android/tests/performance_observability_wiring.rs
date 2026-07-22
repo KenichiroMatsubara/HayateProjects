@@ -45,7 +45,7 @@ fn fixed_vocabulary_is_emitted_at_a_bounded_summary_interval() {
         assert!(app.contains(phase), "Android frame path records {phase}");
     }
     assert!(
-        app.contains("target: \"HayatePerf\"") && app.contains("observability.periodic_report()")
+        app.contains("target: \"HayatePerf\"") && app.contains("observability.periodic_summary()")
     );
     assert!(
         observability.contains("DEFAULT_RING_CAPACITY")
@@ -54,6 +54,7 @@ fn fixed_vocabulary_is_emitted_at_a_bounded_summary_interval() {
     assert!(
         observability.contains("LayerPresentation") && observability.contains("RendererPresent")
     );
+    assert!(app.contains("frames_over_2x") && app.contains("cpu_resident_bytes"));
 }
 
 #[test]

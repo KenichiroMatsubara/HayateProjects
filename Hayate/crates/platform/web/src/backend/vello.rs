@@ -3,9 +3,10 @@ use std::collections::HashMap;
 use super::{js_to_anyhow, CanvasBackend, ClearColor, SceneRendererKind};
 use hayate_core::{ElementId, LayerTopology, SceneSnapshot};
 use hayate_layer_compositor::{
-    tunables, CompositeQuad, GpuBudget, LayerCompositor, LayerPresentation,
-    LayerPresentationAdapter, LayerPresentationFrame, LayerRasterizer, PlacementPlan, RasterJob,
-    RasterJobKind, ScrollLayerGeometry,
+    CompositeQuad, DeviceMemoryClass, GpuBudget, LayerCompositor, LayerPresentation,
+    LayerPresentationAdapter, LayerPresentationFrame, LayerRasterizer, MemoryPressure,
+    PlacementPlan, RasterJob, RasterJobKind, RenderResourceBudgetPolicy, ResidencyEvent,
+    ResourceBudgetInputs, ScrollLayerGeometry,
 };
 use hayate_scene_renderer_vello::layer_compositor::{
     CompositeTarget, LayerTexture, VelloLayerRasterizer, WgpuQuadCompositor,
@@ -47,6 +48,7 @@ pub(crate) struct SelectedBackend {
     surface_host: VelloSurfaceHost,
     content_scale: f32,
     layer_present: LayerPresentState,
+    resource_policy: RenderResourceBudgetPolicy,
 }
 
 struct VelloSurfaceHost {
@@ -70,10 +72,28 @@ impl SelectedBackend {
         )
         .map_err(|error| JsValue::from_str(&format!("vello layer presentation: {error}")))?;
         Ok(Self {
+            resource_policy: RenderResourceBudgetPolicy::for_device(ResourceBudgetInputs::new(
+                DeviceMemoryClass::Balanced,
+                surface_host.width,
+                surface_host.height,
+            )),
             surface_host,
             content_scale: 1.0,
             layer_present,
         })
+    }
+
+    fn enforce_resource_budget(&mut self, max_bytes: u64) {
+        let (surface_host, state) = (&mut self.surface_host, &mut self.layer_present);
+        let mut adapter = VelloLayerPresentationAdapter {
+            rasterizer: &mut state.rasterizer,
+            compositor: &mut state.compositor,
+            surface_host,
+            clear: [0.0; 4],
+        };
+        state
+            .presentation
+            .enforce_budget(GpuBudget::from_bytes(max_bytes), &mut adapter);
     }
 }
 
@@ -269,6 +289,30 @@ impl CanvasBackend for SelectedBackend {
         SceneRendererKind::Vello
     }
 
+    fn configure_resource_residency(&mut self, policy: RenderResourceBudgetPolicy) {
+        self.resource_policy = policy;
+        self.layer_present
+            .rasterizer
+            .configure_resource_residency(policy);
+        self.enforce_resource_budget(policy.gpu.max_bytes);
+    }
+
+    fn handle_resource_lifecycle(&mut self, event: ResidencyEvent) {
+        self.layer_present
+            .rasterizer
+            .handle_resource_lifecycle(event);
+        match event {
+            ResidencyEvent::MemoryPressure(MemoryPressure::Moderate) => {
+                self.enforce_resource_budget(self.resource_policy.gpu.low_watermark_bytes);
+            }
+            ResidencyEvent::SurfaceLost
+            | ResidencyEvent::ContextLost
+            | ResidencyEvent::Shutdown => {
+                self.layer_present.presentation.invalidate();
+            }
+        }
+    }
+
     fn clear(&mut self, clear_color: ClearColor) -> Result<(), anyhow::Error> {
         let (surface_host, state) = (&mut self.surface_host, &mut self.layer_present);
         surface_host
@@ -312,11 +356,7 @@ impl CanvasBackend for SelectedBackend {
                 &mut adapter,
             )
             .map_err(|error| anyhow::anyhow!("layer presentation: {error:?}"))?;
-        let budget = GpuBudget::from_viewports(
-            adapter.surface_host.width,
-            adapter.surface_host.height,
-            tunables::GPU_BUDGET_VIEWPORTS_DESKTOP,
-        );
+        let budget = GpuBudget::from_bytes(self.resource_policy.gpu.max_bytes);
         state.presentation.enforce_budget(budget, &mut adapter);
         Ok(())
     }

@@ -15,8 +15,10 @@ use hayate_core::element::id::ElementId;
 use hayate_core::{LayerRasterBounds, LayerScene, LayerTopology, SceneRead, SceneSnapshot};
 use hayate_layer_compositor::{
     tunables, CompositeQuad, GpuBudget, LayerCompositor, LayerPresentation,
-    LayerPresentationAdapter, LayerPresentationFrame, LayerRasterizer, PlacementPlan, RasterBand,
-    RasterJob, RasterJobKind, ScrollLayerExtent, ScrollLayerGeometry,
+    LayerPresentationAdapter, LayerPresentationFrame, LayerRasterizer, LayerResourceId,
+    LayerResourcePlane, PlacementPlan, RasterBand, RasterJob, RasterJobKind,
+    RenderResourceBudgetPolicy, RenderResourceKey, RenderResourceResidency, ResidencyEvent,
+    ResidencyStats, ResourceDomain, ScrollLayerExtent, ScrollLayerGeometry,
 };
 use skia_safe::{Color4f, Image, Matrix, Rect, Surface};
 
@@ -48,7 +50,8 @@ pub struct SkiaLayerRasterizer {
     width: i32,
     height: i32,
     content_scale: f32,
-    textures: HashMap<ElementId, SkiaLayerTexture>,
+    plane: LayerResourcePlane,
+    resources: RenderResourceResidency<SkiaLayerTexture>,
     renderer: SkiaSceneRenderer,
 }
 
@@ -74,13 +77,34 @@ impl SkiaLayerTexture {
 
 impl SkiaLayerRasterizer {
     pub fn new(width: u32, height: u32, content_scale: f32) -> Self {
+        Self::new_for_plane(width, height, content_scale, LayerResourcePlane::Content)
+    }
+
+    pub fn new_for_plane(
+        width: u32,
+        height: u32,
+        content_scale: f32,
+        plane: LayerResourcePlane,
+    ) -> Self {
+        let policy = RenderResourceBudgetPolicy::for_device(
+            hayate_layer_compositor::ResourceBudgetInputs::new(
+                hayate_layer_compositor::DeviceMemoryClass::Balanced,
+                width,
+                height,
+            ),
+        );
         Self {
             width: (width.max(1)) as i32,
             height: (height.max(1)) as i32,
             content_scale,
-            textures: HashMap::new(),
+            plane,
+            resources: RenderResourceResidency::new(policy),
             renderer: SkiaSceneRenderer::new(),
         }
+    }
+
+    fn resource_key(&self, layer: ElementId) -> RenderResourceKey {
+        RenderResourceKey::Layer(LayerResourceId::new(layer, self.plane))
     }
 
     /// サーフェスサイズ / DPR 変更。キャッシュ面は全部作り直しになる（呼び元は planner も invalidate）。
@@ -88,7 +112,7 @@ impl SkiaLayerRasterizer {
         self.width = width.max(1) as i32;
         self.height = height.max(1) as i32;
         self.content_scale = content_scale;
-        self.textures.clear();
+        self.resources.clear_domain(ResourceDomain::Gpu);
     }
 
     fn band_device_height(&self, height: f32) -> i32 {
@@ -112,6 +136,20 @@ impl SkiaLayerRasterizer {
 
     pub fn resource_work_counts(&self) -> SkiaResourceWorkCounts {
         self.renderer.resource_work_counts()
+    }
+
+    pub fn configure_resource_residency(&mut self, policy: RenderResourceBudgetPolicy) {
+        self.renderer.configure_resource_residency(policy);
+        self.resources.set_policy(policy);
+    }
+
+    pub fn handle_resource_lifecycle(&mut self, event: ResidencyEvent) {
+        self.renderer.handle_resource_lifecycle(event);
+        self.resources.handle_lifecycle(event);
+    }
+
+    pub fn residency_stats(&self) -> ResidencyStats {
+        self.resources.stats()
     }
 
     pub fn rasterize_with_bounds(
@@ -152,22 +190,28 @@ impl SkiaLayerRasterizer {
             self.content_scale,
             device_origin,
         );
-        self.textures.insert(
-            layer,
+        let bytes = width as u64 * height as u64 * tunables::BYTES_PER_PIXEL;
+        self.resources.insert_retained(
+            ResourceDomain::Gpu,
+            self.resource_key(layer),
             SkiaLayerTexture {
                 image: surface.image_snapshot(),
                 device_origin,
             },
+            bytes,
+            width as u64 * height as u64,
         );
         Ok(())
     }
 
     pub fn texture_bytes(&self, layer: ElementId) -> u64 {
-        self.textures.get(&layer).map_or(0, |texture| {
-            texture.width() as u64
-                * texture.height() as u64
-                * hayate_layer_compositor::tunables::BYTES_PER_PIXEL
-        })
+        self.resources
+            .peek(ResourceDomain::Gpu, self.resource_key(layer))
+            .map_or(0, |texture| {
+                texture.width() as u64
+                    * texture.height() as u64
+                    * hayate_layer_compositor::tunables::BYTES_PER_PIXEL
+            })
     }
 
     pub fn rasterize_with_layer_surface_factory(
@@ -188,12 +232,16 @@ impl SkiaLayerRasterizer {
             self.content_scale,
             (0, (origin_y * self.content_scale).floor() as i32),
         );
-        self.textures.insert(
-            layer,
+        let bytes = self.width as u64 * height as u64 * tunables::BYTES_PER_PIXEL;
+        self.resources.insert_retained(
+            ResourceDomain::Gpu,
+            self.resource_key(layer),
             SkiaLayerTexture {
                 image: surface.image_snapshot(),
                 device_origin: (0, (origin_y * self.content_scale).floor() as i32),
             },
+            bytes,
+            self.width as u64 * height as u64,
         );
         Ok(())
     }
@@ -217,7 +265,8 @@ impl LayerRasterizer for SkiaLayerRasterizer {
     }
 
     fn texture(&self, layer: ElementId) -> Option<&SkiaLayerTexture> {
-        self.textures.get(&layer)
+        self.resources
+            .peek(ResourceDomain::Gpu, self.resource_key(layer))
     }
 
     fn texture_bytes_per_layer(&self) -> u64 {
@@ -227,11 +276,12 @@ impl LayerRasterizer for SkiaLayerRasterizer {
     }
 
     fn discard(&mut self, layer: ElementId) {
-        self.textures.remove(&layer);
+        self.resources
+            .remove(ResourceDomain::Gpu, self.resource_key(layer));
     }
 
     fn discard_all(&mut self) {
-        self.textures.clear();
+        self.resources.clear_domain(ResourceDomain::Gpu);
     }
 }
 
@@ -339,7 +389,12 @@ impl SkiaLayerPresenter {
         Self {
             presentation: LayerPresentation::new(),
             rasterizer: SkiaLayerRasterizer::new(width, height, content_scale),
-            chrome_rasterizer: SkiaLayerRasterizer::new(width, height, content_scale),
+            chrome_rasterizer: SkiaLayerRasterizer::new_for_plane(
+                width,
+                height,
+                content_scale,
+                LayerResourcePlane::ScrollChrome,
+            ),
             compositor: SkiaLayerCompositor::new(content_scale),
             width: width.max(1),
             height: height.max(1),
@@ -363,6 +418,22 @@ impl SkiaLayerPresenter {
     /// Content cache bytes recorded in the shared budget ledger using actual texture dimensions.
     pub fn cached_texture_bytes(&self) -> u64 {
         self.presentation.cached_bytes()
+    }
+
+    pub fn configure_resource_residency(&mut self, policy: RenderResourceBudgetPolicy) {
+        self.rasterizer.configure_resource_residency(policy);
+        self.chrome_rasterizer.configure_resource_residency(policy);
+    }
+
+    pub fn handle_resource_lifecycle(&mut self, event: ResidencyEvent) {
+        self.rasterizer.handle_resource_lifecycle(event);
+        self.chrome_rasterizer.handle_resource_lifecycle(event);
+        if matches!(
+            event,
+            ResidencyEvent::SurfaceLost | ResidencyEvent::ContextLost | ResidencyEvent::Shutdown
+        ) {
+            self.presentation.invalidate();
+        }
     }
 
     pub fn resize(&mut self, width: u32, height: u32, content_scale: f32) {

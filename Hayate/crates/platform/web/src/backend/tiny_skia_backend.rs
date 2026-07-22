@@ -2,7 +2,9 @@ use std::collections::HashMap;
 
 use hayate_core::{ElementId, LayerTopology, SceneSnapshot};
 use hayate_layer_compositor::{
-    tunables, GpuBudget, LayerPresentation, LayerPresentationFrame, ScrollLayerGeometry,
+    DeviceMemoryClass, GpuBudget, LayerPresentation, LayerPresentationFrame, LayerResourcePlane,
+    MemoryPressure, RenderResourceBudgetPolicy, ResidencyEvent, ResourceBudgetInputs,
+    ScrollLayerGeometry,
 };
 use hayate_scene_renderer_tiny_skia::{
     premultiplied_to_straight, TinySkiaLayerCompositor, TinySkiaLayerPresentationAdapter,
@@ -24,6 +26,7 @@ pub(crate) struct SelectedBackend {
     rasterizer: TinySkiaLayerRasterizer,
     chrome_rasterizer: TinySkiaLayerRasterizer,
     compositor: TinySkiaLayerCompositor,
+    resource_policy: RenderResourceBudgetPolicy,
 }
 
 impl SelectedBackend {
@@ -50,15 +53,60 @@ impl SelectedBackend {
             content_scale: 1.0,
             presentation: LayerPresentation::new(),
             rasterizer: TinySkiaLayerRasterizer::new(width, height, 1.0),
-            chrome_rasterizer: TinySkiaLayerRasterizer::new(width, height, 1.0),
+            chrome_rasterizer: TinySkiaLayerRasterizer::new_for_plane(
+                width,
+                height,
+                1.0,
+                LayerResourcePlane::ScrollChrome,
+            ),
             compositor: TinySkiaLayerCompositor::new(1.0),
+            resource_policy: RenderResourceBudgetPolicy::for_device(ResourceBudgetInputs::new(
+                DeviceMemoryClass::Balanced,
+                width,
+                height,
+            )),
         })
+    }
+
+    fn enforce_resource_budget(&mut self, max_bytes: u64) {
+        let mut adapter = TinySkiaLayerPresentationAdapter {
+            rasterizer: &mut self.rasterizer,
+            chrome_rasterizer: &mut self.chrome_rasterizer,
+            compositor: &mut self.compositor,
+            target: &mut self.pixmap,
+            clear: [0.0; 4],
+        };
+        self.presentation
+            .enforce_budget(GpuBudget::from_bytes(max_bytes), &mut adapter);
     }
 }
 
 impl CanvasBackend for SelectedBackend {
     fn kind(&self) -> SceneRendererKind {
         SceneRendererKind::TinySkia
+    }
+
+    fn configure_resource_residency(&mut self, policy: RenderResourceBudgetPolicy) {
+        self.resource_policy = policy;
+        self.rasterizer.configure_resource_residency(policy);
+        self.chrome_rasterizer.configure_resource_residency(policy);
+        self.enforce_resource_budget(policy.cpu.max_bytes);
+    }
+
+    fn handle_resource_lifecycle(&mut self, event: ResidencyEvent) {
+        self.rasterizer.handle_resource_lifecycle(event);
+        self.chrome_rasterizer.handle_resource_lifecycle(event);
+        match event {
+            ResidencyEvent::MemoryPressure(MemoryPressure::Moderate) => {
+                self.enforce_resource_budget(self.resource_policy.cpu.low_watermark_bytes);
+            }
+            ResidencyEvent::Shutdown => {
+                self.presentation.invalidate();
+            }
+            ResidencyEvent::SurfaceLost | ResidencyEvent::ContextLost => {
+                // Pixmaps are CPU-backed and survive GPU/canvas surface loss.
+            }
+        }
     }
 
     fn clear(&mut self, clear_color: ClearColor) -> Result<(), anyhow::Error> {
@@ -99,11 +147,7 @@ impl CanvasBackend for SelectedBackend {
                 &mut adapter,
             )
             .map_err(|error| anyhow::anyhow!("layer presentation: {error:?}"))?;
-        let budget = GpuBudget::from_viewports(
-            self.width,
-            self.height,
-            tunables::GPU_BUDGET_VIEWPORTS_DESKTOP,
-        );
+        let budget = GpuBudget::from_bytes(self.resource_policy.cpu.max_bytes);
         self.presentation.enforce_budget(budget, &mut adapter);
         drop(adapter);
         blit_to_canvas(&self.ctx, &self.pixmap, self.width, self.height).map_err(js_to_anyhow)
