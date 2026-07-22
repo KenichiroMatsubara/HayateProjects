@@ -4,7 +4,7 @@ use crate::node::{NodeId, NodeKind};
 use crate::render::shadow::{SHADOW_REACH_BLUR_FACTOR, SHADOW_REACH_SIGMA_FACTOR};
 use crate::render::{transform_verbs, Affine2};
 use crate::wire::protocol::{DrawCommand, PathVerb};
-use crate::{ElementId, SceneGraph};
+use crate::{ElementId, SceneRead};
 
 /// Conservative font-size-relative reach around each shaped glyph origin. This intentionally
 /// covers italic/variable-font overhang without making backend glyph-outline policy part of Core.
@@ -32,7 +32,7 @@ impl LayerRasterBounds {
 }
 
 pub(crate) fn derive_layer_raster_bounds(
-    scene: &SceneGraph,
+    scene: &(impl SceneRead + ?Sized),
     layers: &[ElementId],
 ) -> Vec<LayerRasterBounds> {
     let layer_set: HashSet<ElementId> = layers.iter().copied().collect();
@@ -43,7 +43,7 @@ pub(crate) fn derive_layer_raster_bounds(
             let mut extent = None;
             if layers.first() == Some(&layer) {
                 // The implicit root layer owns every top-level overlay as well as the document
-                // root anchor, matching `extract_root_scene`.
+                // root anchor, matching the root Layer Scene projection.
                 for &root in scene.roots() {
                     accumulate(
                         scene,
@@ -55,10 +55,7 @@ pub(crate) fn derive_layer_raster_bounds(
                         &mut extent,
                     );
                 }
-            } else if let Some(anchor) = scene.iter().find_map(|(id, node)| match node.kind {
-                NodeKind::ElementAnchor { element_id } if element_id == layer => Some(id),
-                _ => None,
-            }) {
+            } else if let Some(anchor) = find_anchor(scene, layer) {
                 let own_transform = scene.get(anchor).and_then(|anchor| {
                     anchor.children.iter().copied().find(|child| {
                         scene
@@ -103,7 +100,7 @@ pub(crate) fn derive_layer_raster_bounds(
 }
 
 fn accumulate(
-    scene: &SceneGraph,
+    scene: &(impl SceneRead + ?Sized),
     id: NodeId,
     target_layer: ElementId,
     layers: &HashSet<ElementId>,
@@ -289,6 +286,22 @@ fn accumulate(
     for &child in &node.children {
         accumulate(scene, child, target_layer, layers, transform, clip, extent);
     }
+}
+
+fn find_anchor(scene: &(impl SceneRead + ?Sized), layer: ElementId) -> Option<NodeId> {
+    fn descend(scene: &(impl SceneRead + ?Sized), id: NodeId, layer: ElementId) -> Option<NodeId> {
+        let node = scene.get(id)?;
+        if matches!(node.kind, NodeKind::ElementAnchor { element_id } if element_id == layer) {
+            return Some(id);
+        }
+        node.children
+            .iter()
+            .find_map(|child| descend(scene, *child, layer))
+    }
+    scene
+        .roots()
+        .iter()
+        .find_map(|root| descend(scene, *root, layer))
 }
 
 #[derive(Clone, Copy)]

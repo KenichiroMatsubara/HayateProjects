@@ -1,24 +1,24 @@
-//! レイヤ分解（extract + quad 合成）の出力パリティ（#633・ADR-0125 backend 半分）。
+//! Zero-copy Layer Scene + retained Layer Presentation output parity.
 //!
 //! 「レイヤを個別 texture に raster し、quad（transform/clip 付き）で合成した結果」が「従来の
 //! 全面 raster」とピクセル一致することを、CPU（tiny-skia）でホスト固定する。wgpu compositor は
 //! 同じ `LayerPlacement` / 抽出シーンを消費するだけなので、この分解パリティが合成の正しさの正本。
 //! 整数 translate のみを使う（回転はリサンプリング差が出る既知制限・ADR-0125 の焼き込み系）。
 
-use std::collections::HashSet;
-
 use hayate_core::element::style::{Dimension, StyleProp};
-use hayate_core::{Color, ElementId, ElementKind, ElementTree};
-use hayate_layer_compositor::layer_scene::{
-    collect_layer_placements, extract_layer_scene, extract_root_scene, extract_scroll_layer_scene,
+use hayate_core::{Color, ElementId, ElementKind, ElementTree, LayerScene, LayerSceneKind};
+use hayate_layer_compositor::{
+    scroll_layer_geometry_from_inputs, LayerPresentation, LayerPresentationFrame,
 };
-use hayate_scene_renderer_tiny_skia::TinySkiaSceneRenderer;
-use tiny_skia::{Pixmap, PixmapPaint, Transform};
+use hayate_scene_renderer_tiny_skia::{
+    TinySkiaLayerCompositor, TinySkiaLayerPresentationAdapter, TinySkiaLayerRasterizer,
+    TinySkiaSceneRenderer,
+};
+use tiny_skia::Pixmap;
 
 const W: u32 = 200;
 const H: u32 = 200;
 const CLEAR: [f32; 4] = [1.0, 1.0, 1.0, 1.0];
-const TRANSPARENT: [f32; 4] = [0.0, 0.0, 0.0, 0.0];
 
 fn px(v: f32) -> Dimension {
     Dimension::px(v)
@@ -26,62 +26,36 @@ fn px(v: f32) -> Dimension {
 
 fn render_full(tree: &ElementTree) -> Pixmap {
     let mut pixmap = Pixmap::new(W, H).unwrap();
-    TinySkiaSceneRenderer::new().render_scene(tree.scene_graph(), &mut pixmap, CLEAR, 1.0);
+    let frame = tree.committed_frame();
+    TinySkiaSceneRenderer::new().render_scene(frame.snapshot(), &mut pixmap, CLEAR, 1.0);
     pixmap
 }
 
-/// レイヤ分解して CPU 合成する（wgpu compositor の CompositeQuad 意味論の CPU ミラー）。
-fn render_layered(tree: &ElementTree, root: ElementId) -> Pixmap {
-    let graph = tree.scene_graph();
-    let boundaries: HashSet<ElementId> = tree.frame_layers().iter().copied().collect();
-    let placements = collect_layer_placements(graph, root, &boundaries);
-
-    // root レイヤ（他レイヤの内容を除外した残り）を不透明背景で raster。
+/// Run the production retained presentation with zero-copy Layer Scene projections.
+fn render_layered(tree: &ElementTree, _root: ElementId) -> Pixmap {
+    let frame = tree.committed_frame();
+    let scroll_geometry = scroll_layer_geometry_from_inputs(frame.scroll_inputs());
+    let mut presentation = LayerPresentation::new();
+    let mut rasterizer = TinySkiaLayerRasterizer::new(W, H, 1.0);
+    let mut chrome_rasterizer = TinySkiaLayerRasterizer::new(W, H, 1.0);
+    let mut compositor = TinySkiaLayerCompositor::new(1.0);
     let mut out = Pixmap::new(W, H).unwrap();
-    let root_scene = extract_root_scene(graph, root, &boundaries);
-    TinySkiaSceneRenderer::new().render_scene(&root_scene, &mut out, CLEAR, 1.0);
-
-    // 各レイヤを透明キャッシュ面へ raster し、placement（transform/clip）で合成。
-    for placement in &placements {
-        if placement.layer == root {
-            continue;
-        }
-        let Some(scene) = extract_layer_scene(graph, placement.layer, &boundaries) else {
-            continue;
-        };
-        let mut layer_pixmap = Pixmap::new(W, H).unwrap();
-        TinySkiaSceneRenderer::new().render_scene(&scene, &mut layer_pixmap, TRANSPARENT, 1.0);
-
-        let t = placement.transform;
-        let transform = Transform::from_row(
-            t[0] as f32,
-            t[1] as f32,
-            t[2] as f32,
-            t[3] as f32,
-            t[4] as f32,
-            t[5] as f32,
-        );
-        let mask = placement.clip.map(|[x, y, w, h]| {
-            let mut mask = tiny_skia::Mask::new(W, H).unwrap();
-            let rect = tiny_skia::Rect::from_xywh(x, y, w, h).unwrap();
-            let path = tiny_skia::PathBuilder::from_rect(rect);
-            mask.fill_path(
-                &path,
-                tiny_skia::FillRule::Winding,
-                true,
-                Transform::identity(),
-            );
-            mask
-        });
-        out.draw_pixmap(
-            0,
-            0,
-            layer_pixmap.as_ref(),
-            &PixmapPaint::default(),
-            transform,
-            mask.as_ref(),
-        );
-    }
+    presentation
+        .present(
+            LayerPresentationFrame {
+                snapshot: frame.snapshot(),
+                topology: frame.layer_topology(),
+                scroll_geometry: &scroll_geometry,
+            },
+            &mut TinySkiaLayerPresentationAdapter {
+                rasterizer: &mut rasterizer,
+                chrome_rasterizer: &mut chrome_rasterizer,
+                compositor: &mut compositor,
+                target: &mut out,
+                clear: CLEAR,
+            },
+        )
+        .unwrap();
     out
 }
 
@@ -136,8 +110,8 @@ fn scroll_layer_placement_keeps_its_own_viewport_clip() {
     );
     let _ = tree.render(0.0);
 
-    let boundaries: HashSet<ElementId> = tree.frame_layers().iter().copied().collect();
-    let placements = collect_layer_placements(tree.scene_graph(), root, &boundaries);
+    let frame = tree.committed_frame();
+    let placements = frame.layer_topology().placements();
     let placement = placements
         .iter()
         .find(|placement| placement.layer == scroll)
@@ -148,11 +122,13 @@ fn scroll_layer_placement_keeps_its_own_viewport_clip() {
         "a translated scroll cache must remain clipped to its viewport at composite time",
     );
 
-    let extracted = extract_scroll_layer_scene(
-        tree.scene_graph(),
+    let extracted = LayerScene::new(
+        frame.snapshot().clone(),
+        frame.layer_topology().clone(),
         scroll,
-        &boundaries,
-        tree.element_scroll_group_affine(scroll),
+        LayerSceneKind::ScrollContent {
+            scroll_affine: tree.element_scroll_group_affine(scroll),
+        },
     )
     .unwrap();
     let mut painter = hayate_core::RecordingPainter::new();
@@ -252,9 +228,14 @@ fn nested_transform_layers_composite_matches_full_raster() {
     let _ = tree.render(0.0);
 
     // 親レイヤの texture にネストレイヤの内容が焼き込まれていないこと（二重描画防止）。
-    let graph = tree.scene_graph();
-    let boundaries: HashSet<ElementId> = tree.frame_layers().iter().copied().collect();
-    let boxed_scene = extract_layer_scene(graph, boxed, &boundaries).unwrap();
+    let frame = tree.committed_frame();
+    let boxed_scene = LayerScene::new(
+        frame.snapshot().clone(),
+        frame.layer_topology().clone(),
+        boxed,
+        LayerSceneKind::Content,
+    )
+    .unwrap();
     let mut painter = hayate_core::RecordingPainter::new();
     hayate_core::render_scene_graph(&boxed_scene, &mut painter);
     let has_red = painter.ops().iter().any(|op| {
@@ -292,8 +273,14 @@ fn layer_extraction_strips_the_outer_transform_group() {
     tree.element_set_transform(boxed, Some([1.0, 0.0, 0.0, 1.0, 30.0, 20.0]));
     let _ = tree.render(0.0);
 
-    let boundaries: HashSet<ElementId> = tree.frame_layers().iter().copied().collect();
-    let scene = extract_layer_scene(tree.scene_graph(), boxed, &boundaries).unwrap();
+    let frame = tree.committed_frame();
+    let scene = LayerScene::new(
+        frame.snapshot().clone(),
+        frame.layer_topology().clone(),
+        boxed,
+        LayerSceneKind::Content,
+    )
+    .unwrap();
     let mut painter = hayate_core::RecordingPainter::new();
     hayate_core::render_scene_graph(&scene, &mut painter);
     let has_transform = painter
@@ -306,7 +293,7 @@ fn layer_extraction_strips_the_outer_transform_group() {
     );
 
     // placement 側が transform を持つ。
-    let placements = collect_layer_placements(tree.scene_graph(), root, &boundaries);
+    let placements = frame.layer_topology().placements();
     let boxed_placement = placements.iter().find(|p| p.layer == boxed).unwrap();
     assert_eq!(boxed_placement.transform, [1.0, 0.0, 0.0, 1.0, 30.0, 20.0]);
 }

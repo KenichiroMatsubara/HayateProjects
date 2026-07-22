@@ -26,15 +26,12 @@
 //! confirmed absent in the sandbox this was authored in (no Vulkan ICD, no `/dev/dri`). These
 //! tests are correct and will run on a real dev machine or a CI runner with a GPU.
 
-use std::collections::HashSet;
-
 use hayate_core::element::style::{Dimension, StyleProp};
-use hayate_core::{Color, ElementId, ElementKind, ElementTree};
+use hayate_core::{Color, ElementId, ElementKind, ElementTree, LayerScene, LayerSceneKind};
 use hayate_layer_compositor::layer_scene::compose;
 use hayate_layer_compositor::{
-    collect_layer_placements, extract_layer_scene, extract_root_scene, extract_scroll_chrome_scene,
-    extract_scroll_layer_scene, scroll_layer_geometry, scroll_layer_geometry_table, tunables,
-    CompositeQuad, LayerCompositor, LayerRasterizer, PresentPlanner,
+    scroll_layer_geometry, scroll_layer_geometry_table, tunables, CompositeQuad, LayerCompositor,
+    LayerRasterizer, PresentPlanner,
 };
 use hayate_scene_renderer_vello::layer_compositor::{
     CompositeTarget, VelloLayerRasterizer, WgpuQuadCompositor,
@@ -125,13 +122,15 @@ fn pump_scroll_layer(
     planner: &mut PresentPlanner,
     rasterizer: &mut VelloLayerRasterizer,
 ) -> bool {
-    let graph = tree.scene_graph();
-    let root = tree.frame_layers()[0];
-    let boundaries: HashSet<ElementId> = tree.frame_layers().iter().copied().collect();
+    let frame = tree.committed_frame();
+    let graph = frame.snapshot();
+    let topology = frame.layer_topology();
+    let root = topology.paint_order()[0];
     let geometry = scroll_layer_geometry(tree, scroll).expect("scroll view has geometry");
     let bounds = tree
         .committed_frame()
-        .layer_raster_bounds()
+        .layer_topology()
+        .raster_bounds()
         .iter()
         .find(|bounds| bounds.layer == scroll)
         .copied()
@@ -143,19 +142,27 @@ fn pump_scroll_layer(
             geometry.viewport_height,
         );
     if needs_content_raster {
-        let extracted = if scroll == root {
-            extract_root_scene(graph, root, &boundaries)
+        let kind = if scroll == root {
+            LayerSceneKind::Content
         } else {
-            extract_scroll_layer_scene(graph, scroll, &boundaries, geometry.scroll_affine)
-                .expect("scroll view is lowered")
+            LayerSceneKind::ScrollContent {
+                scroll_affine: geometry.scroll_affine,
+            }
         };
+        let extracted = LayerScene::new(graph.clone(), topology.clone(), scroll, kind)
+            .expect("scroll view is lowered");
         rasterizer
             .rasterize_in_bounds(scroll, &extracted, bounds, Some(geometry.raster_band()))
             .unwrap();
     }
     if scroll != root {
-        let chrome = extract_scroll_chrome_scene(graph, scroll, &boundaries)
-            .expect("scroll chrome is lowered");
+        let chrome = LayerScene::new(
+            graph.clone(),
+            topology.clone(),
+            scroll,
+            LayerSceneKind::ScrollChrome,
+        )
+        .expect("scroll chrome is lowered");
         rasterizer
             .update_scroll_chrome_in_bounds(
                 scroll,
@@ -179,20 +186,20 @@ fn rasterize_non_scroll_layers(
     scroll: ElementId,
     rasterizer: &mut VelloLayerRasterizer,
 ) {
-    let graph = tree.scene_graph();
-    let root = tree.frame_layers()[0];
-    let boundaries: HashSet<ElementId> = tree.frame_layers().iter().copied().collect();
-    for &layer in tree.frame_layers() {
+    let frame = tree.committed_frame();
+    let graph = frame.snapshot();
+    let topology = frame.layer_topology();
+    for &layer in topology.paint_order() {
         if layer == scroll {
             continue;
         }
-        let extracted = if layer == root {
-            extract_root_scene(graph, root, &boundaries)
-        } else {
-            match extract_layer_scene(graph, layer, &boundaries) {
-                Some(s) => s,
-                None => continue,
-            }
+        let Some(extracted) = LayerScene::new(
+            graph.clone(),
+            topology.clone(),
+            layer,
+            LayerSceneKind::Content,
+        ) else {
+            continue;
         };
         rasterizer.rasterize(layer, &extracted, None).unwrap();
     }
@@ -211,9 +218,8 @@ fn composite_frame_scaled(
     planner: &PresentPlanner,
     content_scale: f32,
 ) -> Vec<u8> {
-    let graph = tree.scene_graph();
-    let root = tree.frame_layers()[0];
-    let boundaries: HashSet<ElementId> = tree.frame_layers().iter().copied().collect();
+    let frame = tree.committed_frame();
+    let topology = frame.layer_topology();
     let scroll_geometry = scroll_layer_geometry_table(tree, tree.frame_layers());
 
     let mut compositor = WgpuQuadCompositor::new(harness.device.clone(), harness.queue.clone());
@@ -242,9 +248,9 @@ fn composite_frame_scaled(
         format: wgpu::TextureFormat::Rgba8Unorm,
         clear: [1.0, 1.0, 1.0, 1.0],
     };
-    let placements = collect_layer_placements(graph, root, &boundaries);
+    let placements = topology.placements();
     let mut quads: Vec<CompositeQuad<'_, _>> = Vec::new();
-    for placement in &placements {
+    for placement in placements {
         if let Some(texture) = rasterizer.texture(placement.layer) {
             // Same formula as `vello.rs`'s `present_layers`: the CACHED band (what's
             // actually in the texture, possibly from an earlier raster) composed with
@@ -414,9 +420,14 @@ fn scroll_chrome_rasters_only_for_cache_miss_resize_or_committed_dirty() {
         return;
     };
     let (tree, scroll) = tall_list_tree();
-    let boundaries: HashSet<ElementId> = tree.frame_layers().iter().copied().collect();
-    let chrome = extract_scroll_chrome_scene(tree.scene_graph(), scroll, &boundaries)
-        .expect("scroll chrome is lowered");
+    let frame = tree.committed_frame();
+    let chrome = LayerScene::new(
+        frame.snapshot().clone(),
+        frame.layer_topology().clone(),
+        scroll,
+        LayerSceneKind::ScrollChrome,
+    )
+    .expect("scroll chrome is lowered");
     let mut rasterizer = VelloLayerRasterizer::new(
         harness.device.clone(),
         harness.queue.clone(),
@@ -473,8 +484,9 @@ fn assert_banded_scroll_present_matches_full_raster(
     tree: &ElementTree,
     label: &str,
 ) {
-    let scroll = tree.frame_layers()[1];
-    let full = render_scene_to_pixels_scaled(harness, tree.scene_graph(), W, SURFACE_H, 1.0)
+    let frame = tree.committed_frame();
+    let scroll = frame.layer_topology().paint_order()[1];
+    let full = render_scene_to_pixels_scaled(harness, frame.snapshot(), W, SURFACE_H, 1.0)
         .expect("full raster");
 
     let mut rasterizer = VelloLayerRasterizer::new(
@@ -567,8 +579,14 @@ fn banded_present_tracks_further_in_band_scrolling_without_a_reraster() {
     // THIS frame's (scrolled-further) tree state — proving the composite affine correctly
     // recomputes the on-screen position from the cached band + this frame's (not the
     // raster-time) geometry, instead of freezing the picture at the raster-time offset.
-    let full = render_scene_to_pixels_scaled(&mut harness, tree.scene_graph(), W, SURFACE_H, 1.0)
-        .expect("full raster");
+    let full = render_scene_to_pixels_scaled(
+        &mut harness,
+        tree.committed_frame().snapshot(),
+        W,
+        SURFACE_H,
+        1.0,
+    )
+    .expect("full raster");
     let layered = composite_frame(&harness, &tree, &rasterizer, &planner);
     assert_pixels_match(
         &full,
@@ -592,7 +610,7 @@ fn banded_present_matches_full_raster_at_device_scale_two() {
     let target_height = (SURFACE_H as f32 * scale) as u32;
     let full = render_scene_to_pixels_scaled(
         &mut harness,
-        tree.scene_graph(),
+        tree.committed_frame().snapshot(),
         target_width,
         target_height,
         scale,

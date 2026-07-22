@@ -3,7 +3,7 @@
 //! Android の `app.rs` に対応する薄いプラットフォーム配線。ただし iOS ではイベントループ
 //! を Rust が回さず、Swift ホスト（`HayateView`）が UIScene ライフサイクル・`UITouch`・
 //! UITextInput・CADisplayLink を所有し、ここで公開する `extern "C"` FFI を叩く。Rust は
-//! `ElementTree` を `SceneGraph` に lower し、Swift が渡す `CAMetalLayer` に紐づく wgpu
+//! `ElementTree` を immutable committed frame に lower し、Swift が渡す `CAMetalLayer` に紐づく wgpu
 //! Metal サーフェスへ提示する。decode/diff/apply のロジックはホストでテスト可能な
 //! シーム（`surface_lifecycle` / `touch_input` / `ime_input`）にあり、本モジュールはその
 //! 呼び出しと FFI 整形に限る。
@@ -14,11 +14,15 @@
 use std::ffi::{c_char, c_void, CStr};
 use std::time::Instant;
 
-use hayate_core::{ElementId, ElementTree, SceneGraph};
-use hayate_scene_renderer_vello::{
-    create_blitter, create_target_view, VelloRenderTarget, VelloSceneRenderer,
+use hayate_core::{CommittedFrame, ElementId, ElementTree};
+use hayate_layer_compositor::{
+    scroll_layer_geometry_from_inputs, tunables, CompositeQuad, GpuBudget, LayerCompositor,
+    LayerPresentation, LayerPresentationAdapter, LayerPresentationFrame, LayerRasterizer,
+    PlacementPlan, RasterJob, RasterJobKind,
 };
-use wgpu::util::TextureBlitter;
+use hayate_scene_renderer_vello::layer_compositor::{
+    CompositeTarget, VelloLayerRasterizer, WgpuQuadCompositor,
+};
 
 use crate::ime_bridge::IosImeBridge;
 use crate::ime_input::{apply_command, apply_ime_action, ImeBuffer, ImeCommand};
@@ -31,14 +35,14 @@ pub const CLEAR_COLOR: [f32; 4] = crate::STAGE_A_CLEAR_COLOR;
 
 struct GpuSurface {
     device: wgpu::Device,
-    queue: wgpu::Queue,
     surface: wgpu::Surface<'static>,
     surface_config: wgpu::SurfaceConfiguration,
-    target_view: wgpu::TextureView,
-    blitter: TextureBlitter,
     width: u32,
     height: u32,
-    scene_renderer: VelloSceneRenderer,
+    content_scale: f32,
+    presentation: LayerPresentation,
+    rasterizer: VelloLayerRasterizer,
+    compositor: WgpuQuadCompositor,
 }
 
 /// 1 ビューぶんのアダプタ状態。Swift が `hayate_ios_app_new` で sized な `CAMetalLayer`
@@ -78,8 +82,8 @@ impl IosApp {
         }
 
         let timestamp_ms = self.start.elapsed().as_secs_f64() * 1000.0;
-        let scene = self.tree.render(timestamp_ms);
-        if let Err(err) = self.gpu.render_frame(scene) {
+        let frame = self.tree.commit_rendered_frame(timestamp_ms);
+        if let Err(err) = self.gpu.render_frame(&frame) {
             log::error!("hayate-adapter-ios: render failed: {err}");
         }
     }
@@ -122,7 +126,7 @@ pub unsafe extern "C" fn hayate_ios_app_new(metal_layer: *mut c_void, scale: f32
     let mut tree = build_demo_tree();
     let content_scale = scale.max(1.0);
 
-    let gpu = match pollster::block_on(init_gpu_surface(metal_layer)) {
+    let gpu = match pollster::block_on(init_gpu_surface(metal_layer, content_scale)) {
         Ok(gpu) => gpu,
         Err(err) => {
             log::error!("hayate-adapter-ios: GPU init failed: {err}");
@@ -168,7 +172,7 @@ pub unsafe extern "C" fn hayate_ios_resize(app: *mut c_void, width: i32, height:
     };
     app.content_scale = scale.max(1.0);
     let (w, h) = window_dimensions(width, height);
-    app.gpu.resize(w, h);
+    app.gpu.resize(w, h, app.content_scale);
     app.set_viewport_from(w as i32, h as i32);
 }
 
@@ -250,7 +254,10 @@ fn touch_phase_to_action(phase: i32) -> Option<TouchAction> {
     }
 }
 
-async fn init_gpu_surface(metal_layer: *mut c_void) -> Result<GpuSurface, String> {
+async fn init_gpu_surface(
+    metal_layer: *mut c_void,
+    content_scale: f32,
+) -> Result<GpuSurface, String> {
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
         backends: wgpu::Backends::METAL,
         ..wgpu::InstanceDescriptor::new_without_display_handle()
@@ -294,66 +301,155 @@ async fn init_gpu_surface(metal_layer: *mut c_void) -> Result<GpuSurface, String
     surface_config.usage |= wgpu::TextureUsages::RENDER_ATTACHMENT;
     surface.configure(&device, &surface_config);
 
-    let target_view = create_target_view(&device, width, height);
-    let blitter = create_blitter(&device, surface_config.format);
-    let scene_renderer = VelloSceneRenderer::new(&device)?;
+    let rasterizer =
+        VelloLayerRasterizer::new(device.clone(), queue.clone(), width, height, content_scale)?;
+    let mut compositor = WgpuQuadCompositor::new(device.clone(), queue.clone());
+    compositor.set_content_scale(content_scale);
+    compositor.warmup();
 
     Ok(GpuSurface {
         device,
-        queue,
         surface,
         surface_config,
-        target_view,
-        blitter,
         width,
         height,
-        scene_renderer,
+        content_scale,
+        presentation: LayerPresentation::new(),
+        rasterizer,
+        compositor,
     })
 }
 
 impl GpuSurface {
-    fn render_frame(&mut self, scene: &SceneGraph) -> Result<(), String> {
-        let target = VelloRenderTarget {
+    fn render_frame(&mut self, frame: &CommittedFrame) -> Result<(), String> {
+        let scroll_geometry = scroll_layer_geometry_from_inputs(frame.scroll_inputs());
+        let mut adapter = IosLayerPresentationAdapter {
+            rasterizer: &mut self.rasterizer,
+            compositor: &mut self.compositor,
             device: &self.device,
-            queue: &self.queue,
-            target_view: &self.target_view,
-            width: self.width,
-            height: self.height,
+            surface: &self.surface,
+            surface_config: &self.surface_config,
+            clear: CLEAR_COLOR,
         };
-        self.scene_renderer
-            .render_scene(scene, &target, CLEAR_COLOR, 1.0)?;
-
-        let surface_texture = match self.surface.get_current_texture() {
-            wgpu::CurrentSurfaceTexture::Success(t)
-            | wgpu::CurrentSurfaceTexture::Suboptimal(t) => t,
-            wgpu::CurrentSurfaceTexture::Occluded => return Ok(()),
-            other => return Err(format!("get_current_texture: {other:?}")),
-        };
-
-        let surface_view = surface_texture
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
-        let mut encoder = self
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("hayate_ios_blit"),
-            });
-        self.blitter
-            .copy(&self.device, &mut encoder, &self.target_view, &surface_view);
-        self.queue.submit(std::iter::once(encoder.finish()));
-        surface_texture.present();
+        self.presentation
+            .present(
+                LayerPresentationFrame {
+                    snapshot: frame.snapshot(),
+                    topology: frame.layer_topology(),
+                    scroll_geometry: &scroll_geometry,
+                },
+                &mut adapter,
+            )
+            .map_err(|error| format!("layer presentation: {error:?}"))?;
+        let budget = GpuBudget::from_viewports(
+            self.width,
+            self.height,
+            tunables::GPU_BUDGET_VIEWPORTS_MOBILE,
+        );
+        self.presentation.enforce_budget(budget, &mut adapter);
         Ok(())
     }
 
-    fn resize(&mut self, width: u32, height: u32) {
-        if width == 0 || height == 0 || (width == self.width && height == self.height) {
+    fn resize(&mut self, width: u32, height: u32, content_scale: f32) {
+        if width == 0 || height == 0 {
+            return;
+        }
+        let changed =
+            width != self.width || height != self.height || content_scale != self.content_scale;
+        if !changed {
             return;
         }
         self.width = width;
         self.height = height;
+        self.content_scale = content_scale;
         self.surface_config.width = width;
         self.surface_config.height = height;
         self.surface.configure(&self.device, &self.surface_config);
-        self.target_view = create_target_view(&self.device, width, height);
+        self.rasterizer.resize(width, height, self.content_scale);
+        self.compositor.set_content_scale(self.content_scale);
+        self.presentation.invalidate();
+    }
+}
+
+struct IosLayerPresentationAdapter<'a> {
+    rasterizer: &'a mut VelloLayerRasterizer,
+    compositor: &'a mut WgpuQuadCompositor,
+    device: &'a wgpu::Device,
+    surface: &'a wgpu::Surface<'static>,
+    surface_config: &'a wgpu::SurfaceConfiguration,
+    clear: [f32; 4],
+}
+
+impl LayerPresentationAdapter for IosLayerPresentationAdapter<'_> {
+    type Error = String;
+
+    fn rasterize(&mut self, job: &RasterJob<'_>) -> Result<u64, Self::Error> {
+        match job.kind {
+            RasterJobKind::Content => match job.bounds {
+                Some(bounds) => self
+                    .rasterizer
+                    .rasterize_in_bounds(job.layer, job.scene, bounds, job.band)?,
+                None => self.rasterizer.rasterize(job.layer, job.scene, job.band)?,
+            },
+            RasterJobKind::ScrollChrome => {
+                match job.bounds {
+                    Some(bounds) => self.rasterizer.update_scroll_chrome_in_bounds(
+                        job.layer,
+                        job.scene,
+                        bounds,
+                        job.repaint,
+                    )?,
+                    None => {
+                        self.rasterizer
+                            .update_scroll_chrome(job.layer, job.scene, job.repaint)?
+                    }
+                };
+            }
+        }
+        Ok(self.rasterizer.cache_bytes(job.layer))
+    }
+
+    fn composite(&mut self, plan: &PlacementPlan) -> Result<(), Self::Error> {
+        let surface_texture = match self.surface.get_current_texture() {
+            wgpu::CurrentSurfaceTexture::Success(texture)
+            | wgpu::CurrentSurfaceTexture::Suboptimal(texture) => texture,
+            wgpu::CurrentSurfaceTexture::Occluded => return Ok(()),
+            other => return Err(format!("get_current_texture: {other:?}")),
+        };
+        let surface_view = surface_texture
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+        let mut quads = Vec::with_capacity(plan.planes.len());
+        for plane in &plan.planes {
+            let texture = match plane.kind {
+                RasterJobKind::Content => self.rasterizer.texture(plane.layer),
+                RasterJobKind::ScrollChrome => self.rasterizer.scroll_chrome_texture(plane.layer),
+            };
+            if let Some(texture) = texture {
+                quads.push(CompositeQuad {
+                    layer: plane.layer,
+                    transform: plane.transform,
+                    opacity: 1.0,
+                    clip: plane.clip,
+                    texture,
+                });
+            }
+        }
+        let mut target = CompositeTarget {
+            view: surface_view,
+            width: self.surface_config.width,
+            height: self.surface_config.height,
+            format: self.surface_config.format,
+            clear: self.clear,
+        };
+        self.compositor.composite(&mut target, &quads)?;
+        surface_texture.present();
+        Ok(())
+    }
+
+    fn discard(&mut self, layers: &[ElementId]) {
+        for &layer in layers {
+            self.rasterizer.discard(layer);
+        }
     }
 }

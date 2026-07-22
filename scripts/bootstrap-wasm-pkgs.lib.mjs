@@ -46,7 +46,7 @@ export class HayateElementHtmlRenderer {}
 
 export const DTS_STUB = `export default function init(): Promise<void>;
 export class HayateElementRenderer {
-  static init(canvas: HTMLCanvasElement, layerPresentEnabled?: boolean): Promise<unknown>;
+  static init(canvas: HTMLCanvasElement): Promise<unknown>;
 }
 export class HayateElementHtmlRenderer {}
 `;

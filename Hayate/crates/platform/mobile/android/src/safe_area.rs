@@ -83,7 +83,7 @@ impl SafeAreaInsets {
     ///
     /// レイアウトは (0,0) 起点のビューポートでシーンを組むので、フルウィンドウの GPU ターゲット
     /// 上ではそのままだとステータスバー/カットアウトの裏から始まってしまう。左インセット分右へ・
-    /// 上インセット分下へずらす（`VelloSceneRenderer::render_scene_with_offset` に渡す）。
+    /// 上インセット分下へずらす（Layer Presentation の placement adapter に渡す）。
     /// レンダラは content_scale を後段で掛けるため、ここは物理インセットを scale で割った論理px。
     pub fn scene_origin(self, content_scale: f32) -> (f32, f32) {
         let scale = content_scale.max(1.0);

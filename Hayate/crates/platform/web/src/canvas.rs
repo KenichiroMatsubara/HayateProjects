@@ -205,10 +205,6 @@ pub struct HayateElementRenderer {
     /// アダプタ所有の EditContext とその配線（ADR-0069）。`render()` 末尾で着脱・候補窓 rect を
     /// 駆動する。EditContext 非対応（HTML モード等）では `None`。
     edit_context: Option<EditContextHandle>,
-    /// present 側 raster gating（#632・ADR-0125）。clean フレーム（`frame_layer_dirty` 空・
-    /// キャッシュ有効）では `backend.render_scene` を呼ばず、canvas に表示中の raster 済み
-    /// フレームをそのまま維持する（composite-only 相当）。resize でキャッシュ面ごと invalidate。
-    planner: hayate_layer_compositor::PresentPlanner,
     /// 適応的レンダースケール劣化（ADR-0129・#647）。各 `render()` で rAF timestamp 差分から frame
     /// 時間を導出して駆動し、逼迫時は render_scale を段階的に下げる。スケール変更時のみ buffer を
     /// 実効 content scale で resize する（CSS/レイアウトビューポートは不変・ヒットテストは論理座標のまま）。
@@ -271,12 +267,7 @@ impl HayateElementRenderer {
 
     fn commit_frame_contents(&mut self, timestamp_ms: f64) -> Result<(), JsValue> {
         let frame = self.tree.commit_rendered_frame(timestamp_ms);
-        let present = Self::present_frame(
-            &mut self.backend,
-            &mut self.planner,
-            self.background,
-            &frame,
-        );
+        let present = Self::present_frame(&mut self.backend, self.background, &frame);
         self.tree.drive_ime(&mut self.ime);
         self.sync_edit_context();
         if let Some(render_scale) = self.render_scale.note_frame(timestamp_ms, false) {
@@ -288,14 +279,7 @@ impl HayateElementRenderer {
 
 #[wasm_bindgen]
 impl HayateElementRenderer {
-    /// `layer_present_enabled` は tiny-skia の per-layer 経路の比較用トグル
-    /// （ADR-0138）。未指定（`None`）は既定 ON。vello など、コンパイル時にしか
-    /// per-layer 対応を決めないバックエンドには無害（`SceneRenderer::set_layer_present_enabled`
-    /// の既定実装が no-op）。
-    pub async fn init(
-        canvas: HtmlCanvasElement,
-        layer_present_enabled: Option<bool>,
-    ) -> Result<HayateElementRenderer, JsValue> {
+    pub async fn init(canvas: HtmlCanvasElement) -> Result<HayateElementRenderer, JsValue> {
         let rect = canvas.get_bounding_client_rect();
         let dpr = web_sys::window()
             .map(|w| w.device_pixel_ratio())
@@ -308,7 +292,6 @@ impl HayateElementRenderer {
         let mut backend: SelectedBackend = init_render_host(canvas.clone())
             .await
             .map_err(anyhow_to_js)?;
-        backend.set_layer_present_enabled(layer_present_enabled.unwrap_or(true));
         backend.resize(
             metrics.buffer_width,
             metrics.buffer_height,
@@ -374,7 +357,6 @@ impl HayateElementRenderer {
             pending_pointer_down: None,
             scroll_samples: Vec::new(),
             drag_raw: None,
-            planner: hayate_layer_compositor::PresentPlanner::new(),
             // 適応的レンダースケール劣化（ADR-0129・#647）。60Hz 予算で開始。base DPR は init 時の
             // device_pixel_ratio。逼迫が続くと render_scale を段階的に下げ、buffer を縮小する。
             render_scale: RenderScaleDriver::new(FRAME_BUDGET_60HZ_MS),
@@ -595,61 +577,24 @@ impl HayateElementRenderer {
             metrics.buffer_height,
             metrics.content_scale,
         );
-        self.planner.invalidate();
     }
 
-    /// render_scale 変更なしのフレームの present 本体（#666 で `render()` から抽出）。render() が
-    /// 捕捉した frame_layers / frame_layer_dirty を通して raster を gating する（#632/#636・ADR-0125）。
-    /// per-layer 対応バックエンド（tiny-skia）は dirty レイヤだけキャッシュ面へ再 raster し、clean
-    /// レイヤはキャッシュ面を合成する（composite-only フレームで全面 render_scene を起動しない）。
-    /// 未対応バックエンドは従来の単一 root FramePlan gating にフォールバックする。scroll フレーム
-    /// （#634 で content dirty から分離した chrome dirty）は単一 Pixmap/texture 経路では offset が
-    /// キャッシュ面へ焼き込まれるため、保守的に raster トリガへ含める（stale フレーム回避）。transform
-    /// 係数だけの変化は quad が適用するので per-layer 経路では raster トリガに含めない（composite-only）。
+    /// Present one committed snapshot through the retained Layer Presentation path.
     fn present_frame(
         backend: &mut SelectedBackend,
-        planner: &mut hayate_layer_compositor::PresentPlanner,
         background: [f32; 4],
-        frame: &CommittedFrame<'_>,
+        frame: &CommittedFrame,
     ) -> Result<(), JsValue> {
-        if backend.supports_layer_present() {
-            let mut layer_dirty = frame.content_dirty_layers().clone();
-            layer_dirty.extend(frame.chrome_dirty_layers().iter().copied());
-            // ADR-0127 scroll overscan サイジングの配線（#707）: `present_layers` は
-            // `&SceneGraph` とレイヤ id しか受け取らず `ElementTree` を持たないため、scroll
-            // レイヤごとの帯ジオメトリをここで一度だけ計算して渡す（vello バックエンドはこれを
-            // 使って scroll 内容レイヤを可視域＋overscan の帯サイズだけ raster する。対応しない
-            // バックエンドは無視して従来どおりフルサーフェス raster する）。
-            let scroll_geometry =
-                hayate_layer_compositor::scroll_layer_geometry_from_inputs(frame.scroll_inputs());
-            backend
-                .present_layers(
-                    frame.scene(),
-                    frame.layers(),
-                    frame.layer_raster_bounds(),
-                    &layer_dirty,
-                    frame.chrome_dirty_layers(),
-                    &scroll_geometry,
-                    background,
-                )
-                .map_err(anyhow_to_js)
-        } else {
-            // 単一 root 経路は quad 合成を持たないため、transform 係数だけの変化（#633 で content
-            // dirty から分離）と scroll chrome（#634）も保守的に raster トリガへ含める。
-            let mut raster_trigger = frame.content_dirty_layers().clone();
-            raster_trigger.extend(frame.transform_dirty_layers().iter().copied());
-            raster_trigger.extend(frame.chrome_dirty_layers().iter().copied());
-            let plan = planner.plan(frame.layers(), &raster_trigger);
-            if plan.needs_raster {
-                let result = backend.render_scene(frame.scene(), background);
-                if result.is_ok() {
-                    planner.note_full_raster(frame.layers());
-                }
-                result.map_err(anyhow_to_js)
-            } else {
-                Ok(())
-            }
-        }
+        let scroll_geometry =
+            hayate_layer_compositor::scroll_layer_geometry_from_inputs(frame.scroll_inputs());
+        backend
+            .present_layers(
+                frame.snapshot(),
+                frame.layer_topology(),
+                &scroll_geometry,
+                background,
+            )
+            .map_err(anyhow_to_js)
     }
 
     /// `render()` 冒頭で自前配線の編集入力バッファを排出し、各入力を到着順に core の編集
@@ -1065,7 +1010,6 @@ impl HayateElementRenderer {
         // governor 状態は保持されるので、逼迫が続いていれば次の数フレームで再び劣化へ収束する。
         self.base_dpr = metrics.content_scale;
         // 描画サーフェスを作り直した＝キャッシュ面は失われた。次フレームは clean でも全面 raster。
-        self.planner.invalidate();
         // #649: canvas の画面矩形が変わり得るので EditContext 用 rect キャッシュを無効化する（次の
         // sync_edit_context で 1 回だけ再読）。
         *self.edit_context_canvas_rect.borrow_mut() = None;

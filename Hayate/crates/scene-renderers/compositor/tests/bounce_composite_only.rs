@@ -12,12 +12,11 @@
 
 use hayate_core::element::style::{Dimension, StyleProp};
 use hayate_core::{Color, ElementId, ElementKind, ElementTree};
-use hayate_layer_compositor::layer_scene::{collect_layer_placements, compose};
+use hayate_layer_compositor::layer_scene::compose;
 use hayate_layer_compositor::{
     scroll_content_visible_top, scroll_layer_extent, scroll_layer_geometry, tunables,
     PresentPlanner, ScrollLayerExtent,
 };
-use std::collections::HashSet;
 
 const VW: f32 = 200.0;
 const VH: f32 = 200.0;
@@ -150,10 +149,11 @@ fn presented_scroll_affine(
     planner: &PresentPlanner,
     scroll: ElementId,
 ) -> [f64; 6] {
-    let root = tree.frame_layers()[0];
-    let boundaries: HashSet<ElementId> = tree.frame_layers().iter().copied().collect();
-    let placement = collect_layer_placements(tree.scene_graph(), root, &boundaries)
-        .into_iter()
+    let frame = tree.committed_frame();
+    let placement = frame
+        .layer_topology()
+        .placements()
+        .iter()
         .find(|placement| placement.layer == scroll)
         .expect("scroll layer has a placement");
     let geometry = scroll_layer_geometry(tree, scroll).expect("scroll layer has geometry");

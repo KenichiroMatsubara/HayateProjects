@@ -21,7 +21,8 @@ fn shared_fixture_paints_tasks_scenery_through_vello() {
 
     let (vw, vh) = TASKS_VIEWPORT;
     let mut tree = tasks_tree("vello");
-    let graph = tree.render(0.0).clone();
+    tree.render(0.0);
+    let graph = tree.committed_frame().snapshot().clone();
 
     let pixels = render_scene_to_pixels_scaled(&mut harness, &graph, vw as u32, vh as u32, 1.0)
         .expect("offscreen render must succeed once an adapter is present");

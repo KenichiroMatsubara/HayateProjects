@@ -74,7 +74,8 @@ fn max_saturation(data: &[u8]) -> u8 {
 #[test]
 fn skia_paints_color_emoji_glyph_with_saturated_ink() {
     let mut tree = emoji_tree();
-    let graph = tree.render(0.0).clone();
+    tree.render(0.0);
+    let graph = tree.committed_frame().snapshot().clone();
     let pixels = render_scene_to_pixels(&graph);
     let sat = max_saturation(&pixels);
     assert!(
@@ -110,7 +111,8 @@ fn skia_does_not_fabricate_saturation_for_plain_black_text() {
         ],
     );
     tree.element_set_text(text, "A");
-    let graph = tree.render(0.0).clone();
+    tree.render(0.0);
+    let graph = tree.committed_frame().snapshot().clone();
     let pixels = render_scene_to_pixels(&graph);
     let sat = max_saturation(&pixels);
     assert!(

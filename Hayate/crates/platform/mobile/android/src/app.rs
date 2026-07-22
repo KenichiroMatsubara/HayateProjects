@@ -5,22 +5,28 @@
 //! 画面上で切り替わる。IME / AccessKit / クリップボードは未実装。
 
 use std::cell::Cell;
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::time::Instant;
 
 use android_activity::input::{InputEvent, MotionAction};
 use android_activity::{AndroidApp, MainEvent, PollEvent};
 use hayate_app_host::FrameContinuation;
-use hayate_core::{CommittedFrame, ElementTree, SceneGraph};
-use hayate_layer_compositor::{PresentPlanner, RasterCommand, RasterHandoff, RasterThread};
+use hayate_core::{
+    compose, CommittedFrame, ElementTree, LayerTopology, SceneGraph, SceneSnapshot,
+    ScrollCompositorInput,
+};
+use hayate_layer_compositor::{
+    scroll_layer_geometry_from_inputs, tunables, CompositeQuad, GpuBudget, LayerCompositor,
+    LayerPresentation, LayerPresentationAdapter, LayerPresentationFrame, LayerRasterizer,
+    PlacementPlan, RasterCommand, RasterHandoff, RasterJob, RasterJobKind, RasterThread,
+};
 use hayate_performance_observability::{
     FrameCounters, FrameDeadline, PerformanceObservability, PerformancePhase,
     DEFAULT_REFRESH_RATE_HZ,
 };
-use hayate_scene_renderer_vello::{
-    create_blitter, create_target_view, VelloRenderTarget, VelloSceneRenderer,
+use hayate_scene_renderer_vello::layer_compositor::{
+    CompositeTarget, VelloLayerRasterizer, WgpuQuadCompositor,
 };
-use wgpu::util::TextureBlitter;
 
 use hayate_core::ElementId;
 
@@ -57,25 +63,13 @@ fn install_panic_logger() {
 
 pub(crate) struct GpuSurface {
     device: wgpu::Device,
-    queue: wgpu::Queue,
     surface: wgpu::Surface<'static>,
     surface_config: wgpu::SurfaceConfiguration,
-    /// vello が毎 dirty フレーム全面 raster するオフスクリーンターゲット（Web の
-    /// `VelloSurfaceHost` と同型、#687）。サーフェスへは `blitter` で blit する。
-    target_view: wgpu::TextureView,
-    blitter: TextureBlitter,
     width: u32,
     height: u32,
-    /// present 側 raster gating（#632、#687 で単一 root 経路に揃えた）。`plan` が dirty /
-    /// 未キャッシュなら raster、clean なら composite-only（前回 present 済みの target_view を
-    /// そのまま維持——実際は blit そのものをスキップして触らない）。
-    planner: PresentPlanner,
-    /// シーン全体を毎 dirty フレーム再描画する vello レンダラ。per-layer レイヤキャッシュ＋専用
-    /// wgpu compositor（ADR-0125/0127/0128）は #680 の実機回帰の温床だったため撤去し、同一
-    /// ハードウェアで高速だった Web の現行経路（`vello.rs::SelectedBackend`）と揃えた（#687）。
-    /// per-layer 実装コード自体は将来の Web 検証issue向けに削除していない。
-    scene_renderer: VelloSceneRenderer,
-    /// 論理px→物理pxの倍率（DPI 対応）。`render_scene` へ毎フレーム渡す。
+    presentation: LayerPresentation,
+    rasterizer: VelloLayerRasterizer,
+    compositor: WgpuQuadCompositor,
     content_scale: f32,
 }
 
@@ -229,9 +223,9 @@ pub fn android_main(app: AndroidApp) {
                 tree.commit_rendered_frame(timestamp_ms)
             });
             observation.set_counters(FrameCounters {
-                nodes: frame.scene().len() as u32,
-                layers: frame.layers().len() as u32,
-                dirty_layers: frame.content_dirty_layers().len() as u32,
+                nodes: frame.snapshot().len() as u32,
+                layers: frame.layer_topology().paint_order().len() as u32,
+                dirty_layers: frame.layer_topology().content_changed().len() as u32,
                 cache_hits: 0,
                 cache_misses: 0,
                 allocations: 0,
@@ -526,108 +520,170 @@ pub(crate) async fn init_gpu_surface(
     surface_config.usage |= wgpu::TextureUsages::RENDER_ATTACHMENT;
     surface.configure(&device, &surface_config);
 
-    let target_view = create_target_view(&device, width, height);
-    let blitter = create_blitter(&device, surface_config.format);
-    // AA 方式を注入して構築する（#795）。選んだ方式のパイプラインだけをコンパイルし、warmup /
-    // render も同じ config で回す（web/iOS は既定 Area のまま）。
-    let mut scene_renderer = VelloSceneRenderer::new_with_options(&device, None, aa)?;
-    // init 直後・最初の実アプリフレーム前に vello パイプラインを warmup する（#644/ADR-0130a）。
-    // warmup 失敗は boot を落とさず、初回フレームで従来どおりコンパイル遅延が出るだけで続行する
-    // （Web の SelectedBackend::init と同じ扱い、#687）。
-    if let Err(err) = scene_renderer.warmup(&device, &queue) {
-        log::warn!("hayate-adapter-android: vello warmup skipped: {err}");
-    }
+    let rasterizer = VelloLayerRasterizer::new_with_options(
+        device.clone(),
+        queue.clone(),
+        width,
+        height,
+        content_scale,
+        aa,
+    )?;
+    let mut compositor = WgpuQuadCompositor::new(device.clone(), queue.clone());
+    compositor.set_content_scale(content_scale);
+    compositor.warmup();
 
     Ok(GpuSurface {
         device,
-        queue,
         surface,
         surface_config,
-        target_view,
-        blitter,
         width,
         height,
-        planner: PresentPlanner::new(),
-        scene_renderer,
+        presentation: LayerPresentation::new(),
+        rasterizer,
+        compositor,
         content_scale,
     })
 }
 
-impl GpuSurface {
-    /// 1 フレームの提示（#632・#687 で Web の単一 root 経路と揃えた）。`layers` / `layer_dirty` /
-    /// `transform_dirty` / `chrome_dirty` は core が `render()` で捕捉した `frame_layers()` /
-    /// `frame_layer_dirty()` / `frame_layer_transform_dirty()` / `frame_layer_chrome_dirty()`。
-    ///
-    /// per-layer quad 合成を持たないため、3 つの dirty 集合すべてを保守的に union して raster
-    /// トリガとする（`canvas.rs::present_frame` の単一 root 分岐と同じ理由）。`plan().needs_raster`
-    /// なら `VelloSceneRenderer::render_scene` でシーン全体を 1 回再描画してから present し、
-    /// `note_full_raster` で記録する。dirty でなければ raster も present も呼ばない
-    /// （composite-only フレームは vello を一切起動しない）。
-    pub(crate) fn render_frame(
-        &mut self,
-        scene: &SceneGraph,
-        layers: &[ElementId],
-        layer_dirty: &HashSet<ElementId>,
-        transform_dirty: &HashSet<ElementId>,
-        chrome_dirty: &HashSet<ElementId>,
-    ) -> Result<(), String> {
-        let mut raster_trigger: HashSet<ElementId> = layer_dirty.clone();
-        raster_trigger.extend(transform_dirty.iter().copied());
-        raster_trigger.extend(chrome_dirty.iter().copied());
-        let plan = self.planner.plan(layers, &raster_trigger);
-        if !plan.needs_raster {
-            return Ok(());
-        }
+struct AndroidVelloPresentationAdapter<'a> {
+    rasterizer: &'a mut VelloLayerRasterizer,
+    compositor: &'a mut WgpuQuadCompositor,
+    surface: &'a mut wgpu::Surface<'static>,
+    format: wgpu::TextureFormat,
+    width: u32,
+    height: u32,
+    scene_origin: (f32, f32),
+    clear: [f32; 4],
+}
 
-        let target = VelloRenderTarget {
-            device: &self.device,
-            queue: &self.queue,
-            target_view: &self.target_view,
-            width: self.width,
-            height: self.height,
-        };
-        // b2（edge-to-edge, issue #794・ADR-0144）: GPU ターゲットはフルウィンドウのまま、シーンを
-        // 安全領域インセット分だけ右下へ平行移動する。バー裏の空き領域は vello が base_color
-        // （= ルート背景色 CLEAR_COLOR）でターゲット全面をクリアするのでそのまま塗られる。JNI push が
-        // まだ無いフレームは (0,0)（フルウィンドウ描画）で、直後の rootWindowInsets スナップショット
-        // push で安全領域へ収まる。
-        let (origin_x, origin_y) = crate::safe_area::pushed_insets()
-            .map(|insets| insets.scene_origin(self.content_scale))
-            .unwrap_or((0.0, 0.0));
-        self.scene_renderer.render_scene_with_offset(
-            scene,
-            &target,
-            CLEAR_COLOR,
-            self.content_scale,
-            origin_x,
-            origin_y,
-        )?;
-        self.present_target()?;
-        self.planner.note_full_raster(layers);
-        Ok(())
+impl LayerPresentationAdapter for AndroidVelloPresentationAdapter<'_> {
+    type Error = String;
+
+    fn rasterize(&mut self, job: &RasterJob<'_>) -> Result<u64, Self::Error> {
+        match job.kind {
+            RasterJobKind::Content => match job.bounds {
+                Some(bounds) => self
+                    .rasterizer
+                    .rasterize_in_bounds(job.layer, job.scene, bounds, job.band)?,
+                None => self.rasterizer.rasterize(job.layer, job.scene, job.band)?,
+            },
+            RasterJobKind::ScrollChrome => match job.bounds {
+                Some(bounds) => {
+                    self.rasterizer.update_scroll_chrome_in_bounds(
+                        job.layer,
+                        job.scene,
+                        bounds,
+                        job.repaint,
+                    )?;
+                }
+                None => {
+                    self.rasterizer
+                        .update_scroll_chrome(job.layer, job.scene, job.repaint)?;
+                }
+            },
+        }
+        Ok(self.rasterizer.cache_bytes(job.layer))
     }
 
-    /// オフスクリーンの `target_view` をサーフェスへ blit して present する（Web の
-    /// `VelloSurfaceHost::present_target` と同型、#687）。
-    fn present_target(&mut self) -> Result<(), String> {
+    fn composite(&mut self, plan: &PlacementPlan) -> Result<(), Self::Error> {
+        let translation = [
+            1.0,
+            0.0,
+            0.0,
+            1.0,
+            f64::from(self.scene_origin.0),
+            f64::from(self.scene_origin.1),
+        ];
+        let mut quads = Vec::with_capacity(plan.planes.len());
+        for plane in &plan.planes {
+            let texture = match plane.kind {
+                RasterJobKind::Content => self.rasterizer.texture(plane.layer),
+                RasterJobKind::ScrollChrome => self.rasterizer.scroll_chrome_texture(plane.layer),
+            };
+            if let Some(texture) = texture {
+                quads.push(CompositeQuad {
+                    layer: plane.layer,
+                    transform: compose(translation, plane.transform),
+                    opacity: 1.0,
+                    clip: plane.clip.map(|[x, y, width, height]| {
+                        [
+                            x + self.scene_origin.0,
+                            y + self.scene_origin.1,
+                            width,
+                            height,
+                        ]
+                    }),
+                    texture,
+                });
+            }
+        }
         let surface_texture = match self.surface.get_current_texture() {
-            wgpu::CurrentSurfaceTexture::Success(t)
-            | wgpu::CurrentSurfaceTexture::Suboptimal(t) => t,
+            wgpu::CurrentSurfaceTexture::Success(texture)
+            | wgpu::CurrentSurfaceTexture::Suboptimal(texture) => texture,
             wgpu::CurrentSurfaceTexture::Occluded => return Ok(()),
             other => return Err(format!("get_current_texture: {other:?}")),
         };
-        let surface_view = surface_texture
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
-        let mut encoder = self
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("hayate_blit"),
-            });
-        self.blitter
-            .copy(&self.device, &mut encoder, &self.target_view, &surface_view);
-        self.queue.submit(std::iter::once(encoder.finish()));
+        let mut target = CompositeTarget {
+            view: surface_texture
+                .texture
+                .create_view(&wgpu::TextureViewDescriptor::default()),
+            width: self.width,
+            height: self.height,
+            format: self.format,
+            clear: self.clear,
+        };
+        self.compositor.composite(&mut target, &quads)?;
         surface_texture.present();
+        Ok(())
+    }
+
+    fn discard(&mut self, layers: &[ElementId]) {
+        for &layer in layers {
+            self.rasterizer.discard(layer);
+        }
+    }
+}
+
+impl GpuSurface {
+    /// Present through the same retained Layer Presentation transaction used by Web Vello.
+    pub(crate) fn render_frame(
+        &mut self,
+        scene: &SceneSnapshot,
+        topology: &LayerTopology,
+        scroll_inputs: &[ScrollCompositorInput],
+    ) -> Result<(), String> {
+        let (origin_x, origin_y) = crate::safe_area::pushed_insets()
+            .map(|insets| insets.scene_origin(self.content_scale))
+            .unwrap_or((0.0, 0.0));
+        let scroll_geometry = scroll_layer_geometry_from_inputs(scroll_inputs);
+        let mut adapter = AndroidVelloPresentationAdapter {
+            rasterizer: &mut self.rasterizer,
+            compositor: &mut self.compositor,
+            surface: &mut self.surface,
+            format: self.surface_config.format,
+            width: self.width,
+            height: self.height,
+            scene_origin: (origin_x, origin_y),
+            clear: CLEAR_COLOR,
+        };
+        self.presentation
+            .present(
+                LayerPresentationFrame {
+                    snapshot: scene,
+                    topology,
+                    scroll_geometry: &scroll_geometry,
+                },
+                &mut adapter,
+            )
+            .map_err(|error| format!("layer presentation: {error:?}"))?;
+        self.presentation.enforce_budget(
+            GpuBudget::from_viewports(
+                self.width,
+                self.height,
+                tunables::GPU_BUDGET_VIEWPORTS_MOBILE,
+            ),
+            &mut adapter,
+        );
         Ok(())
     }
 
@@ -645,10 +701,9 @@ impl GpuSurface {
         self.surface_config.width = width;
         self.surface_config.height = height;
         self.surface.configure(&self.device, &self.surface_config);
-        // オフスクリーンターゲットはサーフェスサイズなので作り直し＝キャッシュ面を失うので
-        // invalidate する（invalidate しないと clean フレームが古いサイズの内容を blit し続ける）。
-        self.target_view = create_target_view(&self.device, width, height);
-        self.planner.invalidate();
+        self.rasterizer.resize(width, height, content_scale);
+        self.compositor.set_content_scale(content_scale);
+        self.presentation.invalidate();
     }
 }
 
@@ -673,20 +728,10 @@ pub(crate) fn spawn_raster_thread(mut surface: GpuSurface) -> RasterHandle {
                 }
                 let RasterHandoff {
                     scene,
-                    layers,
-                    layer_raster_bounds: _,
-                    layer_dirty,
-                    transform_dirty,
-                    chrome_dirty,
-                    scroll_inputs: _,
+                    topology,
+                    scroll_inputs,
                 } = handoff;
-                if let Err(err) = surface.render_frame(
-                    &scene,
-                    &layers,
-                    &layer_dirty,
-                    &transform_dirty,
-                    &chrome_dirty,
-                ) {
+                if let Err(err) = surface.render_frame(&scene, &topology, &scroll_inputs) {
                     let message = err.to_string();
                     log_terminal_renderer_failure("vello", &message);
                     return Err(message);
@@ -729,22 +774,10 @@ pub(crate) fn spawn_skia_raster_thread(
                 }
                 let RasterHandoff {
                     scene,
-                    layers,
-                    layer_raster_bounds,
-                    layer_dirty,
-                    transform_dirty,
-                    chrome_dirty,
+                    topology,
                     scroll_inputs,
                 } = handoff;
-                if let Err(err) = surface.render_frame(
-                    &scene,
-                    &layers,
-                    &layer_raster_bounds,
-                    &layer_dirty,
-                    &transform_dirty,
-                    &chrome_dirty,
-                    &scroll_inputs,
-                ) {
+                if let Err(err) = surface.render_frame(&scene, &topology, &scroll_inputs) {
                     log_terminal_skia_failure(&err);
                     return Err(err);
                 }
@@ -789,22 +822,10 @@ pub(crate) fn spawn_skia_gl_raster_thread(
                 }
                 let RasterHandoff {
                     scene,
-                    layers,
-                    layer_raster_bounds,
-                    layer_dirty,
-                    transform_dirty,
-                    chrome_dirty,
+                    topology,
                     scroll_inputs,
                 } = handoff;
-                if let Err(err) = surface.render_frame(
-                    &scene,
-                    &layers,
-                    &layer_raster_bounds,
-                    &layer_dirty,
-                    &transform_dirty,
-                    &chrome_dirty,
-                    &scroll_inputs,
-                ) {
+                if let Err(err) = surface.render_frame(&scene, &topology, &scroll_inputs) {
                     log_terminal_skia_failure(&err);
                     return Err(err);
                 }
@@ -970,6 +991,6 @@ pub(crate) fn init_and_spawn_raster(
 
 /// Freeze one Core commit into the owned value shared by both native renderer families. The
 /// SceneGraph snapshot structurally shares retained nodes and detaches changed nodes lazily.
-pub(crate) fn frame_handoff(frame: &CommittedFrame<'_>) -> RasterCommand {
+pub(crate) fn frame_handoff(frame: &CommittedFrame) -> RasterCommand {
     RasterCommand::Frame(RasterHandoff::from_committed_frame(frame))
 }

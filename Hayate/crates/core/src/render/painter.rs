@@ -1,4 +1,4 @@
-use crate::node::{NodeId, NodeKind, SceneGraph};
+use crate::node::{NodeId, NodeKind, SceneGraph, SceneRead};
 use crate::render::draw_path::{transform_verbs, Affine2, DrawFillRule, StrokeStyle};
 use crate::render::RenderImage;
 use crate::wire::protocol::PathVerb;
@@ -623,7 +623,7 @@ impl SceneRecorder {
         Self::default()
     }
 
-    pub fn record(&mut self, graph: &SceneGraph, clear_color: [f32; 4]) {
+    pub fn record(&mut self, graph: &(impl SceneRead + ?Sized), clear_color: [f32; 4]) {
         let mut painter = RecordingPainter::new();
         render_scene_graph(graph, &mut painter);
         self.frames.push(RecordedFrame {
@@ -642,13 +642,13 @@ impl SceneRecorder {
     }
 }
 
-pub fn render_scene_graph<P: ScenePainter>(graph: &SceneGraph, painter: &mut P) {
+pub fn render_scene_graph<P: ScenePainter>(graph: &(impl SceneRead + ?Sized), painter: &mut P) {
     for &root_id in graph.roots() {
         walk_node(graph, root_id, painter);
     }
 }
 
-fn walk_node<P: ScenePainter>(graph: &SceneGraph, id: NodeId, painter: &mut P) {
+fn walk_node<P: ScenePainter>(graph: &(impl SceneRead + ?Sized), id: NodeId, painter: &mut P) {
     let node = match graph.get(id) {
         Some(node) => node,
         None => return,

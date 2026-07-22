@@ -6,8 +6,6 @@ import {
   resolveCanvasBackendSelection,
   RENDERER_QUERY_PARAM,
   WEB_RENDERER_QUERY_VALUES,
-  rendererOptimizationQueryParam,
-  parseRendererOptimizationOptions,
 } from './resolve-backend.js';
 
 // Web の「タップで Scene Renderer を切り替える」操作面（Android の
@@ -83,30 +81,6 @@ describe('WEB_RENDERER_QUERY_VALUES', () => {
       'vello',
       'tiny-skia',
     ]);
-  });
-});
-
-describe('rendererOptimizationQueryParam', () => {
-  it('keeps backend-specific optimization query mapping in the Host policy', () => {
-    expect(rendererOptimizationQueryParam('vello')).toBe('layerPresent');
-    expect(rendererOptimizationQueryParam('tiny-skia')).toBe('cpuLayerPresent');
-    expect(rendererOptimizationQueryParam('vello-cpu')).toBeUndefined();
-    expect(rendererOptimizationQueryParam('canvaskit')).toBeUndefined();
-    expect(rendererOptimizationQueryParam('auto')).toBeUndefined();
-    expect(rendererOptimizationQueryParam('dom')).toBeUndefined();
-  });
-});
-
-describe('parseRendererOptimizationOptions', () => {
-  it('parses optimization query flags inside the Host boundary', () => {
-    expect(parseRendererOptimizationOptions('')).toEqual({
-      layerPresent: true,
-      cpuLayerPresent: true,
-    });
-    expect(parseRendererOptimizationOptions('?layerPresent=0&cpuLayerPresent=0')).toEqual({
-      layerPresent: false,
-      cpuLayerPresent: false,
-    });
   });
 });
 

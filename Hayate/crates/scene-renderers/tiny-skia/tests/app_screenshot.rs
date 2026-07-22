@@ -28,7 +28,8 @@ fn render_tasks_screen() {
     let (vw, vh) = TASKS_VIEWPORT;
     let mut tree = tasks_tree("tiny-skia");
 
-    let graph = tree.render(0.0).clone();
+    tree.render(0.0);
+    let graph = tree.committed_frame().snapshot().clone();
     let mut pixmap = Pixmap::new(vw as u32, vh as u32).expect("pixmap");
     TinySkiaSceneRenderer::new().render_scene(&graph, &mut pixmap, [1.0, 1.0, 1.0, 1.0], 1.0);
     let mut data = pixmap.data().to_vec();
@@ -70,7 +71,8 @@ fn render_glyph_coverage() {
         );
         b.child(root, t);
     }
-    let graph = b.tree.render(0.0).clone();
+    b.tree.render(0.0);
+    let graph = b.tree.committed_frame().snapshot().clone();
     let mut pixmap = Pixmap::new(W as u32, H as u32).expect("pixmap");
     TinySkiaSceneRenderer::new().render_scene(&graph, &mut pixmap, [1.0, 1.0, 1.0, 1.0], 1.0);
     let mut data = pixmap.data().to_vec();
@@ -117,7 +119,8 @@ fn diagnose_glyph_ink() {
             &[StyleProp::FontSize(40.0), StyleProp::Color(Color::BLACK)],
         );
         b.child(root, t);
-        let graph = b.tree.render(0.0).clone();
+        b.tree.render(0.0);
+        let graph = b.tree.committed_frame().snapshot().clone();
         let mut pixmap = Pixmap::new(W, H).expect("pixmap");
         TinySkiaSceneRenderer::new().render_scene(&graph, &mut pixmap, [1.0, 1.0, 1.0, 1.0], 1.0);
         let data = pixmap.data();
@@ -180,7 +183,8 @@ fn glyph_ink(s: &str) -> usize {
         &[StyleProp::FontSize(40.0), StyleProp::Color(Color::BLACK)],
     );
     b.child(root, t);
-    let graph = b.tree.render(0.0).clone();
+    b.tree.render(0.0);
+    let graph = b.tree.committed_frame().snapshot().clone();
     let mut pixmap = Pixmap::new(W, H).expect("pixmap");
     TinySkiaSceneRenderer::new().render_scene(&graph, &mut pixmap, [1.0, 1.0, 1.0, 1.0], 1.0);
     pixmap
@@ -414,7 +418,8 @@ fn render_input_state(st: &InputState) -> Pixmap {
         }
     }
 
-    let graph = b.tree.render(0.0).clone();
+    b.tree.render(0.0);
+    let graph = b.tree.committed_frame().snapshot().clone();
     let mut pixmap = Pixmap::new(PANEL_W, PANEL_H).expect("pixmap");
     TinySkiaSceneRenderer::new().render_scene(&graph, &mut pixmap, [1.0, 1.0, 1.0, 1.0], 1.0);
     pixmap
@@ -716,7 +721,8 @@ fn render_input_state_with_rect(st: &InputState) -> (Pixmap, (f32, f32, f32, f32
     }
     let _ = b.tree.render(0.0);
     let rect = b.tree.element_layout_rect(input).unwrap();
-    let graph = b.tree.render(0.0).clone();
+    b.tree.render(0.0);
+    let graph = b.tree.committed_frame().snapshot().clone();
     let mut pixmap = Pixmap::new(PANEL_W, PANEL_H).expect("pixmap");
     TinySkiaSceneRenderer::new().render_scene(&graph, &mut pixmap, [1.0, 1.0, 1.0, 1.0], 1.0);
     (pixmap, rect)

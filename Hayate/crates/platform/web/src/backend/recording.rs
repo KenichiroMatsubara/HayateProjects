@@ -1,4 +1,7 @@
-use hayate_core::{SceneGraph, SceneRecorder};
+use std::collections::HashMap;
+
+use hayate_core::{ElementId, LayerTopology, SceneRecorder, SceneSnapshot};
+use hayate_layer_compositor::ScrollLayerGeometry;
 use wasm_bindgen::prelude::*;
 use web_sys::HtmlCanvasElement;
 
@@ -26,9 +29,11 @@ impl CanvasBackend for SelectedBackend {
         SceneRendererKind::Recording
     }
 
-    fn render_scene(
+    fn present_layers(
         &mut self,
-        scene: &SceneGraph,
+        scene: &SceneSnapshot,
+        _topology: &LayerTopology,
+        _scroll_geometry: &HashMap<ElementId, ScrollLayerGeometry>,
         clear_color: ClearColor,
     ) -> Result<(), anyhow::Error> {
         self.recorder.record(scene, clear_color);

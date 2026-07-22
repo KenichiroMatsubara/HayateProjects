@@ -1,16 +1,18 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use hayate_core::element::id::ElementId;
 use hayate_core::element::style::{Dimension, StyleProp};
-use hayate_core::{ElementKind, ElementTree, LayerRasterBounds, SceneGraph};
+use hayate_core::{Color, CommittedFrame, ElementKind, ElementTree};
 use hayate_layer_compositor::{
     scroll_layer_geometry_from_inputs, LayerPresentation, LayerPresentationAdapter,
-    LayerPresentationError, LayerPresentationFrame, RasterJob, RasterJobKind, ScrollLayerGeometry,
+    LayerPresentationError, LayerPresentationFrame, PlacementPlan, RasterJob, RasterJobKind,
+    ScrollLayerGeometry,
 };
 
 #[derive(Default)]
 struct RecordingAdapter {
     rasterized: Vec<RasterJobKind>,
+    repaints: Vec<(RasterJobKind, bool)>,
     placed: Vec<RasterJobKind>,
     composites: usize,
     discarded: Vec<ElementId>,
@@ -22,21 +24,17 @@ impl LayerPresentationAdapter for RecordingAdapter {
 
     fn rasterize(&mut self, job: &RasterJob) -> Result<u64, Self::Error> {
         self.rasterized.push(job.kind);
+        self.repaints.push((job.kind, job.repaint));
         Ok(64)
     }
 
-    fn composite(
-        &mut self,
-        plan: &hayate_layer_compositor::PlacementPlan,
-    ) -> Result<(), Self::Error> {
+    fn composite(&mut self, plan: &PlacementPlan) -> Result<(), Self::Error> {
         self.placed
             .extend(plan.planes.iter().map(|plane| plane.kind));
         self.composites += 1;
-        if self.fail_composite {
-            Err("composite failed")
-        } else {
-            Ok(())
-        }
+        self.fail_composite
+            .then_some(())
+            .map_or(Ok(()), |_| Err("composite failed"))
     }
 
     fn discard(&mut self, layers: &[ElementId]) {
@@ -48,57 +46,29 @@ fn px(value: f32) -> Dimension {
     Dimension::px(value)
 }
 
-fn id(value: u64) -> ElementId {
-    ElementId::from_u64(value)
+fn root_tree() -> ElementTree {
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(0, ElementKind::View);
+    tree.set_root(root);
+    tree.set_viewport(100.0, 100.0);
+    tree
 }
 
 fn frame<'a>(
-    scene: &'a SceneGraph,
-    layers: &'a [ElementId],
-    bounds: &'a [LayerRasterBounds],
-    dirty: &'a HashSet<ElementId>,
-    chrome_dirty: &'a HashSet<ElementId>,
+    committed: &'a CommittedFrame,
     scroll: &'a HashMap<ElementId, ScrollLayerGeometry>,
 ) -> LayerPresentationFrame<'a> {
     LayerPresentationFrame {
-        scene,
-        layers,
-        layer_raster_bounds: bounds,
-        layer_dirty: dirty,
-        chrome_dirty,
+        snapshot: committed.snapshot(),
+        topology: committed.layer_topology(),
         scroll_geometry: scroll,
     }
 }
 
 #[test]
-fn missing_non_root_bounds_fails_before_backend_work() {
-    let scene = SceneGraph::new();
-    let layers = [id(1), id(2)];
-    let empty = HashSet::new();
-    let scroll = HashMap::new();
-    let mut presentation = LayerPresentation::new();
-    let mut adapter = RecordingAdapter::default();
-
-    let error = presentation
-        .present(
-            frame(&scene, &layers, &[], &empty, &empty, &scroll),
-            &mut adapter,
-        )
-        .expect_err("a non-root layer without Core bounds is an invalid committed frame");
-
-    assert!(matches!(
-        error,
-        LayerPresentationError::InvalidFrame { layer, .. } if layer == id(2)
-    ));
-    assert!(adapter.rasterized.is_empty());
-    assert_eq!(adapter.composites, 0);
-}
-
-#[test]
-fn failed_composite_does_not_commit_the_cache_ledger() {
-    let scene = SceneGraph::new();
-    let layers = [id(1)];
-    let empty = HashSet::new();
+fn failed_composite_keeps_revision_and_cache_ledger_uncommitted() {
+    let mut tree = root_tree();
+    let committed = tree.commit_rendered_frame(0.0);
     let scroll = HashMap::new();
     let mut presentation = LayerPresentation::new();
     let mut adapter = RecordingAdapter {
@@ -107,19 +77,159 @@ fn failed_composite_does_not_commit_the_cache_ledger() {
     };
 
     let error = presentation
-        .present(
-            frame(&scene, &layers, &[], &empty, &empty, &scroll),
-            &mut adapter,
-        )
+        .present(frame(&committed, &scroll), &mut adapter)
         .expect_err("failed composite must abort the presentation transaction");
 
     assert!(matches!(error, LayerPresentationError::Adapter(_)));
-    assert_eq!(
-        presentation.cached_bytes(),
-        0,
-        "no staged cache entry is committed"
-    );
+    assert_eq!(presentation.cached_bytes(), 0);
+    assert_eq!(presentation.applied_revision(), None);
+    assert!(!presentation.pending_dirty().is_empty());
     assert_eq!(adapter.rasterized, vec![RasterJobKind::Content]);
+}
+
+#[test]
+fn clean_frame_reuses_retained_placements_without_a_scene_walk() {
+    let mut tree = root_tree();
+    let first = tree.commit_rendered_frame(0.0);
+    let scroll = HashMap::new();
+    let mut presentation = LayerPresentation::new();
+    let mut adapter = RecordingAdapter::default();
+    presentation
+        .present(frame(&first, &scroll), &mut adapter)
+        .unwrap();
+    assert_eq!(presentation.placement_rebuilds(), 1);
+    assert!(first.layer_topology().placement_nodes_visited() > 0);
+
+    let clean = tree.commit_rendered_frame(16.0);
+    assert_eq!(
+        clean.layer_topology().placement_nodes_visited(),
+        0,
+        "Core must retain canonical placements without walking the snapshot on a clean frame"
+    );
+    presentation
+        .present(frame(&clean, &scroll), &mut adapter)
+        .unwrap();
+
+    assert_eq!(presentation.placement_rebuilds(), 1);
+    assert_eq!(
+        presentation.applied_revision(),
+        Some(clean.layer_topology().revision())
+    );
+}
+
+#[test]
+fn content_only_change_reuses_core_placements_without_a_scene_walk() {
+    let mut tree = root_tree();
+    let root = tree.root().expect("root");
+    let _ = tree.commit_rendered_frame(0.0);
+
+    tree.element_set_style(
+        root,
+        &[StyleProp::BackgroundColor(Color::new(0.2, 0.4, 0.6, 1.0))],
+    );
+    let changed = tree.commit_rendered_frame(16.0);
+
+    assert!(changed.layer_topology().content_changed().contains(&root));
+    assert!(changed.layer_topology().geometry_changed().is_empty());
+    assert_eq!(changed.layer_topology().placement_nodes_visited(), 0);
+}
+
+#[test]
+fn failed_topology_change_is_rebuilt_on_a_clean_retry() {
+    let mut tree = root_tree();
+    let first = tree.commit_rendered_frame(0.0);
+    let mut presentation = LayerPresentation::new();
+    let mut adapter = RecordingAdapter::default();
+    presentation
+        .present(frame(&first, &HashMap::new()), &mut adapter)
+        .unwrap();
+
+    let root = tree.root().expect("root");
+    let scroll = tree.element_create(1, ElementKind::ScrollView);
+    let content = tree.element_create(2, ElementKind::View);
+    tree.element_append_child(root, scroll);
+    tree.element_append_child(scroll, content);
+    tree.element_set_style(
+        scroll,
+        &[StyleProp::Width(px(100.0)), StyleProp::Height(px(100.0))],
+    );
+    tree.element_set_style(
+        content,
+        &[StyleProp::Width(px(100.0)), StyleProp::Height(px(300.0))],
+    );
+    let changed = tree.commit_rendered_frame(16.0);
+    let changed_scroll = scroll_layer_geometry_from_inputs(changed.scroll_inputs());
+    adapter.fail_composite = true;
+    presentation
+        .present(frame(&changed, &changed_scroll), &mut adapter)
+        .expect_err("changed frame must fail");
+    assert_eq!(presentation.placement_rebuilds(), 1);
+
+    adapter.fail_composite = false;
+    let clean = tree.commit_rendered_frame(32.0);
+    let clean_scroll = scroll_layer_geometry_from_inputs(clean.scroll_inputs());
+    presentation
+        .present(frame(&clean, &clean_scroll), &mut adapter)
+        .unwrap();
+
+    assert_eq!(
+        presentation.placement_rebuilds(),
+        2,
+        "a failed structural/geometry change must survive into the clean retry"
+    );
+}
+
+#[test]
+fn failed_scroll_chrome_repaint_is_retried_on_a_clean_frame() {
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(0, ElementKind::View);
+    let scroll = tree.element_create(1, ElementKind::ScrollView);
+    let content = tree.element_create(2, ElementKind::View);
+    tree.element_append_child(root, scroll);
+    tree.element_append_child(scroll, content);
+    tree.set_root(root);
+    tree.set_viewport(100.0, 100.0);
+    tree.element_set_style(
+        scroll,
+        &[StyleProp::Width(px(100.0)), StyleProp::Height(px(100.0))],
+    );
+    tree.element_set_style(
+        content,
+        &[StyleProp::Width(px(100.0)), StyleProp::Height(px(300.0))],
+    );
+
+    let mut presentation = LayerPresentation::new();
+    let mut adapter = RecordingAdapter::default();
+    let first = tree.commit_rendered_frame(0.0);
+    let first_scroll = scroll_layer_geometry_from_inputs(first.scroll_inputs());
+    presentation
+        .present(frame(&first, &first_scroll), &mut adapter)
+        .unwrap();
+
+    tree.element_set_scroll_offset(scroll, 0.0, 40.0);
+    let changed = tree.commit_rendered_frame(16.0);
+    assert!(changed.layer_topology().chrome_changed().contains(&scroll));
+    let changed_scroll = scroll_layer_geometry_from_inputs(changed.scroll_inputs());
+    adapter.fail_composite = true;
+    presentation
+        .present(frame(&changed, &changed_scroll), &mut adapter)
+        .expect_err("changed frame must fail");
+
+    adapter.fail_composite = false;
+    adapter.repaints.clear();
+    let clean = tree.commit_rendered_frame(32.0);
+    assert!(clean.layer_topology().chrome_changed().is_empty());
+    let clean_scroll = scroll_layer_geometry_from_inputs(clean.scroll_inputs());
+    presentation
+        .present(frame(&clean, &clean_scroll), &mut adapter)
+        .unwrap();
+
+    assert!(
+        adapter
+            .repaints
+            .contains(&(RasterJobKind::ScrollChrome, true)),
+        "a failed chrome repaint must remain dirty on the clean retry"
+    );
 }
 
 #[test]
@@ -140,34 +250,21 @@ fn scroll_chrome_is_placed_by_the_shared_transaction_plan() {
         content,
         &[StyleProp::Width(px(200.0)), StyleProp::Height(px(600.0))],
     );
-    let frame = tree.commit_rendered_frame(0.0);
-    let empty = HashSet::new();
-    let chrome_dirty = HashSet::from([scroll]);
-    let scroll_geometry = scroll_layer_geometry_from_inputs(frame.scroll_inputs());
+    let committed = tree.commit_rendered_frame(0.0);
+    let scroll_geometry = scroll_layer_geometry_from_inputs(committed.scroll_inputs());
     let mut presentation = LayerPresentation::new();
     let mut adapter = RecordingAdapter::default();
 
     presentation
-        .present(
-            LayerPresentationFrame {
-                scene: frame.scene(),
-                layers: frame.layers(),
-                layer_raster_bounds: frame.layer_raster_bounds(),
-                layer_dirty: &empty,
-                chrome_dirty: &chrome_dirty,
-                scroll_geometry: &scroll_geometry,
-            },
-            &mut adapter,
-        )
-        .expect("the committed scroll frame should be presentable");
+        .present(frame(&committed, &scroll_geometry), &mut adapter)
+        .unwrap();
 
     assert_eq!(
         adapter.placed,
         vec![
             RasterJobKind::Content,
             RasterJobKind::Content,
-            RasterJobKind::ScrollChrome,
-        ],
-        "the adapter must receive content and fixed chrome in one shared placement plan",
+            RasterJobKind::ScrollChrome
+        ]
     );
 }

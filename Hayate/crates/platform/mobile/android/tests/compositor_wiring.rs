@@ -1,5 +1,4 @@
-//! present 経路の FramePlan 駆動配線契約（#632・#687 で per-layer レイヤキャッシュ経路を撤去し
-//! Web 現行実装（全面 Vello 再描画）と同型の単一 root 経路に揃えた）。
+//! Android retained Layer Presentation wiring contract.
 //!
 //! raster gating の判定ロジック（`PresentPlanner` → `LayerCache::plan_raster` → `FramePlan`）と
 //! work-count 契約（clean フレーム raster 0 回 / dirty フレーム 1 回）は `hayate-layer-compositor`
@@ -20,45 +19,32 @@ fn app_src() -> String {
 }
 
 #[test]
-fn present_gates_raster_behind_a_frame_plan() {
+fn vello_present_uses_the_shared_retained_transaction() {
     let src = app_src();
-    // present は単一 root の FramePlan を通してから raster する（#632、#687 で plan_layers から
-    // Web と同じ plan に揃えた）。
     assert!(
-        src.contains("PresentPlanner"),
-        "GpuSurface must own a hayate_layer_compositor::PresentPlanner (#632)"
+        src.contains("LayerPresentation") && src.contains("LayerPresentationFrame"),
+        "GpuSurface must own the shared retained presentation transaction"
     );
     assert!(
-        src.contains(".plan(") && src.contains("needs_raster"),
-        "render_frame must consult plan(...).needs_raster before rendering the scene (#687)"
+        src.contains("VelloLayerRasterizer") && src.contains("WgpuQuadCompositor"),
+        "Android Vello must consume LayerScene through the common raster/composite interface"
     );
     assert!(
-        src.contains("note_full_raster"),
-        "a completed full-scene raster must be recorded so clean frames become composite-only (#687)"
-    );
-    // transform 係数だけの変化（#633）も、単一 root 経路では quad 合成が無いため保守的に
-    // raster トリガへ含める必要がある（Web の canvas.rs と同じ理由、#687）。
-    assert!(
-        src.contains("frame_layer_transform_dirty"),
-        "the single-root present path must union transform_dirty into its raster trigger (#687)"
+        !src.contains("PresentPlanner") && !src.contains("note_full_raster"),
+        "the retired full-frame ledger must not survive the cutover"
     );
 }
 
 #[test]
-fn present_no_longer_uses_the_per_layer_cache_path() {
-    // #687: per-layer レイヤキャッシュ＋専用 wgpu compositor 経路は Android から撤去し、Web の
-    // 現行実装（毎 dirty フレーム全面再描画）に揃える。撤去対象の実装コード自体は
-    // hayate-scene-renderer-vello / hayate-layer-compositor 側に残すが、app.rs はもう呼ばない。
+fn present_has_no_copied_extraction_or_full_scene_fallback() {
     let src = app_src();
     for gone in [
-        "VelloLayerRasterizer",
-        "WgpuQuadCompositor",
         "plan_layers(",
-        "GpuBudget",
         "collect_layer_placements",
         "extract_layer_scene",
         "extract_root_scene",
         "prev_layers",
+        "render_scene_with_offset(",
     ] {
         assert!(
             !src.contains(gone),
@@ -68,25 +54,12 @@ fn present_no_longer_uses_the_per_layer_cache_path() {
 }
 
 #[test]
-fn present_renders_the_whole_scene_with_the_vello_scene_renderer() {
-    // #687: 単一 root 経路は Web の SelectedBackend/VelloSurfaceHost と同型——オフスクリーン
-    // target_view へ VelloSceneRenderer::render_scene を 1 回呼び、TextureBlitter でサーフェスへ blit する。
+fn present_applies_safe_area_at_composite_time() {
     let src = app_src();
     assert!(
-        src.contains("VelloSceneRenderer"),
-        "GpuSurface must own a VelloSceneRenderer, matching the web backend (#687)"
-    );
-    assert!(
-        src.contains("create_target_view") && src.contains("create_blitter"),
-        "GpuSurface must build its offscreen target_view/blitter the same way the web backend does (#687)"
-    );
-    // b2（edge-to-edge, issue #794・ADR-0144）: 全画面 raster をシーンの安全領域平行移動込みで
-    // 1 回だけ呼ぶ（`render_scene_with_offset`。インセット push が無いフレームは offset 0）。
-    assert_eq!(
-        src.matches(".render_scene_with_offset(").count(),
-        1,
-        "app.rs must raster the whole scene exactly once via render_scene_with_offset \
-         (needs_raster branch, #687 + b2 safe-area shift #794)"
+        src.contains("compose(translation, plane.transform)")
+            && src.contains("x + self.scene_origin.0"),
+        "safe-area origin must move retained placements and clips together"
     );
 }
 
@@ -108,7 +81,7 @@ fn present_consumes_core_captured_frame_layers() {
     // ＋捕捉レイヤ）。app.rs がその捕捉を握り、両経路が frame_handoff を通す。
     let src = app_src();
     assert!(
-        src.contains("frame_handoff(frame: &CommittedFrame<'_>)")
+        src.contains("frame_handoff(frame: &CommittedFrame)")
             && src.contains("RasterHandoff::from_committed_frame(frame)"),
         "the present path must capture scene, layer order, dirty sets, and scroll facts from one Core commit (#855)"
     );
@@ -133,8 +106,8 @@ fn both_android_skia_surfaces_enable_the_shared_layer_presenter() {
             "{name} skia-safe path must use the shared per-layer presenter"
         );
         assert!(
-            src.contains("layer_raster_bounds"),
-            "{name} skia-safe path must consume Core layer raster bounds"
+            src.contains("LayerTopology"),
+            "{name} skia-safe path must consume Core layer topology"
         );
         assert!(
             src.contains("scroll_layer_geometry_from_inputs"),

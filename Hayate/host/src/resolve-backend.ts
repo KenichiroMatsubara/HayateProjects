@@ -25,36 +25,6 @@ export const WEB_RENDERER_QUERY_VALUES = [
   RENDERER_VALUE_TINY_SKIA,
 ] as const;
 
-export type WebRendererOptimizationQueryParam = 'layerPresent' | 'cpuLayerPresent';
-
-/** 選択中 backend に対応する比較用 optimization query。UI は対応表を複製しない。 */
-export function rendererOptimizationQueryParam(
-  renderer: string,
-): WebRendererOptimizationQueryParam | undefined {
-  switch (renderer) {
-    case RENDERER_VALUE_VELLO:
-      return 'layerPresent';
-    case RENDERER_VALUE_TINY_SKIA:
-      return 'cpuLayerPresent';
-    default:
-      return undefined;
-  }
-}
-
-export interface RendererOptimizationOptions {
-  layerPresent: boolean;
-  cpuLayerPresent: boolean;
-}
-
-/** URL の比較用 optimization flags も Host 内で解釈する。両経路とも既定は ON。 */
-export function parseRendererOptimizationOptions(search: string): RendererOptimizationOptions {
-  const params = new URLSearchParams(search);
-  return {
-    layerPresent: params.get('layerPresent') !== '0',
-    cpuLayerPresent: params.get('cpuLayerPresent') !== '0',
-  };
-}
-
 /**
  * `?renderer=vello|tiny-skia` を強制指定として解釈する。
  * `auto` / `dom` / 未知値 / 未指定は canvas backend の強制ではないので `undefined`

@@ -1,23 +1,22 @@
 //! skia raster の winit window 向け [`SceneRenderer`] 実装（issue #801・ADR-0146 §3）。
 //!
 //! wgpu 非依存の CPU present 経路 — skia-safe のレイヤ cache/composite surface を softbuffer で
-//! winit window へ software blit する。全面描画 fallback は
-//! [`crate::skia_present::raster_frame_xrgb`] と headless テストで共有する。GPU アダプタが一切無い
+//! winit window へ software blit する。GPU アダプタが一切無い
 //! 環境でも desktop が起動する、vello 初期化失敗時の一方向 fallback 先（spec §4 REND-15）。
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::num::NonZeroU32;
 use std::sync::Arc;
 
 use anyhow::{anyhow, Error};
 use hayate_app_host::render_host::{ClearColor, SceneRenderer};
 use hayate_app_host::renderer_selection::SceneRendererKind;
-use hayate_core::{ElementId, LayerRasterBounds, SceneGraph};
+use hayate_core::{ElementId, LayerTopology, SceneSnapshot};
 use hayate_layer_compositor::{tunables, GpuBudget, ScrollLayerGeometry};
 use hayate_scene_renderer_skia::{new_raster_surface, read_rgba, SkiaLayerPresenter};
 use winit::window::Window;
 
-use crate::skia_present::{copy_rgba_to_xrgb, raster_frame_xrgb};
+use crate::skia_present::copy_rgba_to_xrgb;
 
 /// softbuffer で winit window へ CPU present する skia raster の [`SceneRenderer`] 実装。
 pub struct SkiaWindowRenderer {
@@ -74,34 +73,10 @@ impl SceneRenderer for SkiaWindowRenderer {
         SceneRendererKind::Skia
     }
 
-    fn render_scene(&mut self, scene: &SceneGraph, clear_color: ClearColor) -> Result<(), Error> {
-        // 寸法・HiDPI 係数は window から毎フレーム自給する（resize の取りこぼしや
-        // fallback 直後でも常に現在値で描ける）。
-        let size = self.window.inner_size();
-        let (Some(width), Some(height)) =
-            (NonZeroU32::new(size.width), NonZeroU32::new(size.height))
-        else {
-            return Ok(()); // 最小化等でゼロ寸法のフレームは描かない。
-        };
-        let content_scale = self.window.scale_factor() as f32;
-
-        let pixels =
-            raster_frame_xrgb(scene, width.get(), height.get(), content_scale, clear_color);
-
-        self.present_pixels(width, height, &pixels)
-    }
-
-    fn supports_layer_present(&self) -> bool {
-        true
-    }
-
     fn present_layers(
         &mut self,
-        scene: &SceneGraph,
-        layers: &[ElementId],
-        layer_raster_bounds: &[LayerRasterBounds],
-        layer_dirty: &HashSet<ElementId>,
-        _chrome_dirty: &HashSet<ElementId>,
+        scene: &SceneSnapshot,
+        topology: &LayerTopology,
         scroll_geometry: &HashMap<ElementId, ScrollLayerGeometry>,
         clear_color: ClearColor,
     ) -> Result<(), Error> {
@@ -120,9 +95,7 @@ impl SceneRenderer for SkiaWindowRenderer {
             .presenter
             .present(
                 scene,
-                layers,
-                layer_raster_bounds,
-                layer_dirty,
+                topology,
                 scroll_geometry,
                 clear_color,
                 (0.0, 0.0),
@@ -141,7 +114,17 @@ impl SceneRenderer for SkiaWindowRenderer {
     }
 
     fn clear(&mut self, clear_color: ClearColor) -> Result<(), Error> {
-        self.render_scene(&SceneGraph::default(), clear_color)
+        let size = self.window.inner_size();
+        let (Some(width), Some(height)) =
+            (NonZeroU32::new(size.width), NonZeroU32::new(size.height))
+        else {
+            return Ok(());
+        };
+        let [r, g, b, _] =
+            clear_color.map(|channel| (channel.clamp(0.0, 1.0) * 255.0).round() as u32);
+        let pixel = (r << 16) | (g << 8) | b;
+        let pixels = vec![pixel; width.get() as usize * height.get() as usize];
+        self.present_pixels(width, height, &pixels)
     }
 
     fn resize(&mut self, width: u32, height: u32, content_scale: f32) {

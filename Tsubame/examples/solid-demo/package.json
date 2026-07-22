@@ -15,8 +15,7 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
-    "test:e2e:report": "playwright show-report",
-    "test:e2e:layer-present": "node ../../../Hayate/scripts/build-wasm.mjs pkg && playwright test --config playwright.config.layer-present.ts"
+    "test:e2e:report": "playwright show-report"
   },
   "dependencies": {
     "@torimi/hayate-host": "workspace:*",

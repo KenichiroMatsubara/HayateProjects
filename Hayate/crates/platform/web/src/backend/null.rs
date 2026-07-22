@@ -1,4 +1,7 @@
-use hayate_core::SceneGraph;
+use std::collections::HashMap;
+
+use hayate_core::{ElementId, LayerTopology, SceneSnapshot};
+use hayate_layer_compositor::ScrollLayerGeometry;
 use wasm_bindgen::prelude::*;
 use web_sys::HtmlCanvasElement;
 
@@ -22,9 +25,11 @@ impl CanvasBackend for SelectedBackend {
         SceneRendererKind::Null
     }
 
-    fn render_scene(
+    fn present_layers(
         &mut self,
-        _scene: &SceneGraph,
+        _scene: &SceneSnapshot,
+        _topology: &LayerTopology,
+        _scroll_geometry: &HashMap<ElementId, ScrollLayerGeometry>,
         _clear_color: ClearColor,
     ) -> Result<(), anyhow::Error> {
         Ok(())

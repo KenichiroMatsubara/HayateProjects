@@ -60,6 +60,21 @@ fn rust_glue_targets_metal_via_core_animation_layer() {
 }
 
 #[test]
+fn rust_glue_uses_the_shared_retained_layer_transaction() {
+    let app = read_relative("src/app.rs");
+    assert!(
+        app.contains("LayerPresentationFrame")
+            && app.contains("commit_rendered_frame")
+            && app.contains("VelloLayerRasterizer"),
+        "iOS must consume the same committed Layer Scene pipeline as the other platforms"
+    );
+    assert!(
+        !app.contains(".render_scene("),
+        "the retired full-scene production fallback must not remain in iOS glue"
+    );
+}
+
+#[test]
 fn info_plist_pins_bundle_id() {
     let plist = read_relative("ios-app/Hayate/Info.plist");
     assert!(

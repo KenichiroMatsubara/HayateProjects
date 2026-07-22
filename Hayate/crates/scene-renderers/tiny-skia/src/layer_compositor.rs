@@ -14,7 +14,7 @@
 use std::collections::HashMap;
 
 use hayate_core::element::id::ElementId;
-use hayate_core::{LayerRasterBounds, SceneGraph};
+use hayate_core::{LayerRasterBounds, LayerScene, SceneRead};
 use hayate_layer_compositor::{
     CompositeQuad, LayerCompositor, LayerPresentationAdapter, LayerRasterizer, PlacementPlan,
     RasterBand, RasterJob, RasterJobKind,
@@ -106,7 +106,7 @@ impl TinySkiaLayerRasterizer {
     pub fn rasterize_with_bounds(
         &mut self,
         layer: ElementId,
-        scene: &SceneGraph,
+        scene: &(impl SceneRead + ?Sized),
         mut bounds: LayerRasterBounds,
         band: Option<RasterBand>,
     ) -> Result<(), String> {
@@ -150,7 +150,7 @@ impl LayerRasterizer for TinySkiaLayerRasterizer {
     fn rasterize(
         &mut self,
         layer: ElementId,
-        scene: &SceneGraph,
+        scene: &LayerScene,
         // Compatibility entry point for root/unbounded callers. The production tiny-skia
         // present path uses `rasterize_with_bounds`, including scroll bands.
         _band: Option<RasterBand>,

@@ -13,6 +13,7 @@ parley.workspace = true
 fontique.workspace = true
 skrifa.workspace = true
 slotmap.workspace = true
+imbl.workspace = true
 anyhow.workspace = true
 log.workspace = true
 linebender_resource_handle = "0.1.1"

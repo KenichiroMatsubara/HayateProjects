@@ -17,6 +17,7 @@ pub mod geolocation;
 pub mod haptics;
 pub mod key_value_store;
 mod layer_raster_bounds;
+mod layer_scene;
 pub mod local_notification;
 pub mod node;
 pub mod qr_scanner;
@@ -88,9 +89,13 @@ pub use element::{
     ToolbarHit, ToolbarRect, TransitionTimingValue, UserSelectValue, ViewportCondition,
 };
 pub use layer_raster_bounds::LayerRasterBounds;
+pub use layer_scene::{
+    compose, LayerPlacement, LayerScene, LayerSceneKind, LayerTopology, IDENTITY,
+};
 pub use node::{
-    Node, NodeId, NodeKind, SceneGraph, ShadowOccluder, TextDecorationLine, TextFontAttributes,
-    TextFontSlant, TextRunData, TextSynthesis,
+    Node, NodeId, NodeKind, SceneChangeJournal, SceneCommitStats, SceneGraph, SceneRead,
+    SceneSnapshot, ShadowOccluder, TextDecorationLine, TextFontAttributes, TextFontSlant,
+    TextRunData, TextSynthesis,
 };
 pub use render::{
     build_draw_path, is_notdef, missing_glyph_placeholder, render_scene_graph, transform_verbs,

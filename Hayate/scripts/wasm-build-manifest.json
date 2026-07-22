@@ -10,7 +10,7 @@
       "description": "Hayate — GPU-native UI substrate",
       "includeInDefaultBuild": true,
       "npmName": "@torimi/hayate-adapter-web",
-      "host": { "backend": "vello", "runtimeLayerPresentArg": "layerPresent" }
+      "host": { "backend": "vello" }
     },
     {
       "name": "pkg-tiny-skia",
@@ -20,7 +20,7 @@
       "description": "Hayate — GPU-native UI substrate",
       "includeInDefaultBuild": true,
       "npmName": "@torimi/hayate-adapter-web-cpu",
-      "host": { "backend": "tiny-skia", "runtimeLayerPresentArg": "cpuLayerPresent" }
+      "host": { "backend": "tiny-skia" }
     },
     {
       "name": "pkg-null",

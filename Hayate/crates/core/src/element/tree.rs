@@ -34,7 +34,7 @@ use crate::element::text;
 use crate::element::visual_invalidation::{
     self, Change, DirtyKind, DirtySink, ElementContext, VisualInvalidationReach,
 };
-use crate::node::SceneGraph;
+use crate::node::{SceneGraph, SceneSnapshot};
 use crate::render::RenderImage;
 
 #[derive(Clone, Debug)]
@@ -208,6 +208,11 @@ pub struct ElementTree {
     pub(crate) engine: ElementEngine,
     pub(crate) viewport: (f32, f32),
     pub(crate) scene_cache: SceneGraph,
+    /// Latest immutable scene value. Committed frames clone this O(1) handle instead of borrowing
+    /// mutable retained storage or cloning the complete graph for raster handoff.
+    pub(crate) scene_snapshot: SceneSnapshot,
+    /// Renderer-neutral compositing facts committed with `scene_snapshot`.
+    pub(crate) layer_topology: crate::LayerTopology,
     pub(crate) scene_lowering: SceneLowering,
     /// parent 単位の retained Paint Order（ADR-0060）。scene lowering / hit-test /
     /// Layer Topology が同じ借用 view を消費する。
@@ -266,6 +271,8 @@ pub struct ElementTree {
     /// 直前に捕捉するので、render 内でマーク→同フレーム drain される継続（カーソル点滅・慣性・
     /// インジケータ fade）も取りこぼさない。
     pub(crate) frame_layer_dirty: HashSet<ElementId>,
+    /// Layout box geometry changed in this commit, mapped to its owning compositing layer.
+    pub(crate) frame_layer_geometry_dirty: HashSet<ElementId>,
     /// 直近 `render()` で transform 係数だけが変わったレイヤ集合（#633）。内容不変＝quad 更新のみ。
     pub(crate) frame_layer_transform_dirty: HashSet<ElementId>,
     /// scroll フレーム（offset 変化・インジケータ fade）だけが理由で dirty な scroll レイヤ（#634）。
@@ -289,13 +296,17 @@ pub struct ElementTree {
 
 impl ElementTree {
     pub fn new() -> Self {
+        let mut scene_cache = SceneGraph::new();
+        let scene_snapshot = scene_cache.snapshot();
         Self {
             elements: HashMap::new(),
             root: None,
             layout: LayoutPass::new(),
             engine: ElementEngine::new(),
             viewport: (800.0, 600.0),
-            scene_cache: SceneGraph::new(),
+            scene_cache,
+            scene_snapshot,
+            layer_topology: crate::LayerTopology::default(),
             scene_lowering: SceneLowering::default(),
             paint_order: PaintOrder::default(),
             #[cfg(any(debug_assertions, feature = "scene-validation"))]
@@ -316,6 +327,7 @@ impl ElementTree {
             last_frame_ms: None,
             frame_layers: Vec::new(),
             frame_layer_dirty: HashSet::new(),
+            frame_layer_geometry_dirty: HashSet::new(),
             frame_layer_transform_dirty: HashSet::new(),
             frame_layer_chrome_dirty: HashSet::new(),
             a11y_generation: 0,
@@ -1759,6 +1771,7 @@ impl ElementTree {
         // ようにする。差分は新しいレイアウトキャッシュができて初めて分かるので
         // commit 後に、かつ `scene_build::update` が `dirty` を消費する前に行う。
         let geometry_dirty = self.engine.drain_layout_geometry_dirty();
+        let geometry_dirty_for_layers = geometry_dirty.clone();
         // bounds が動いた（または出現した）要素は a11y ノードの矩形も変える（#642）。
         if a11y_touched_pre || !geometry_dirty.is_empty() {
             self.bump_a11y_generation();
@@ -1780,7 +1793,7 @@ impl ElementTree {
         self.ensure_toolbar_labels();
         // scene_build が dirty を消費する直前＝このフレームで scene が変わる要素集合が確定した
         // 唯一の点で、present 側 raster gating 用のレイヤ列と layer_dirty を捕捉する（#632）。
-        self.capture_frame_layers(&dirty);
+        self.capture_frame_layers(&dirty, &geometry_dirty_for_layers);
         let mut scene_cache = std::mem::take(&mut self.scene_cache);
         let mut scene_lowering = std::mem::take(&mut self.scene_lowering);
         #[cfg(any(debug_assertions, feature = "scene-validation"))]
@@ -1810,6 +1823,8 @@ impl ElementTree {
         // transform 係数だけの変化（Some→Some）を保持シーンへ patch する（#633）。re-lower なしで
         // 全面 raster 経路（FramePlan が raster を選んだフレーム）の出力を正しく保つ。
         self.patch_transform_groups();
+        self.scene_snapshot = self.scene_cache.snapshot();
+        self.commit_layer_topology();
         #[cfg(any(debug_assertions, feature = "scene-validation"))]
         {
             let changed_roots = validation_elements.into_iter().filter_map(|id| {
@@ -1834,7 +1849,7 @@ impl ElementTree {
 
     /// Advance, settle, and lower one frame into the invariant view consumed by
     /// presentation code. Projections add platform and backend policy separately.
-    pub fn commit_rendered_frame(&mut self, timestamp_ms: f64) -> crate::CommittedFrame<'_> {
+    pub fn commit_rendered_frame(&mut self, timestamp_ms: f64) -> crate::CommittedFrame {
         let _ = self.render(timestamp_ms);
         self.committed_frame()
     }
@@ -1842,14 +1857,11 @@ impl ElementTree {
     /// Borrow the most recently rendered frame as one invariant presentation view without
     /// running layout/lowering again. Native hosts use this after an embedded runtime has already
     /// performed the commit, so every handoff field is captured from that same commit.
-    pub fn committed_frame(&self) -> crate::CommittedFrame<'_> {
+    pub fn committed_frame(&self) -> crate::CommittedFrame {
         let scroll_inputs = self.frame_scroll_compositor_inputs();
         crate::CommittedFrame::new(
-            &self.scene_cache,
-            &self.frame_layers,
-            &self.frame_layer_dirty,
-            &self.frame_layer_chrome_dirty,
-            &self.frame_layer_transform_dirty,
+            self.scene_snapshot.clone(),
+            self.layer_topology.clone(),
             scroll_inputs,
             self.has_pending_visual_work(),
         )
@@ -2754,7 +2766,11 @@ impl ElementTree {
     /// その要素を除外して raster したことがあれば、親のキャッシュはその領域を穴あきのまま
     /// 持っている——降格時に親を dirty にしないと、要素自身の texture は破棄済みなのに親の
     /// 穴あきキャッシュだけが reuse され続け、要素が画面から消えたまま戻らない。
-    fn capture_frame_layers(&mut self, dirty: &LoweringDirtySnapshot) {
+    fn capture_frame_layers(
+        &mut self,
+        dirty: &LoweringDirtySnapshot,
+        geometry_dirty: &HashSet<ElementId>,
+    ) {
         let prev_boundaries: HashSet<ElementId> = self.frame_layers.iter().copied().collect();
         let (mut ordered, mut boundaries) = self.compositing_boundaries();
         if let Some(root) = self.root {
@@ -2796,7 +2812,69 @@ impl ElementTree {
             &boundaries,
             |id| self.elements.get(&id).and_then(|e| e.parent),
         );
+        self.frame_layer_geometry_dirty = if dirty.full_rebuild || !self.scene_lowering.built {
+            boundaries.clone()
+        } else {
+            compositing::derive_layer_dirty(geometry_dirty.iter().copied(), &boundaries, |id| {
+                self.elements.get(&id).and_then(|e| e.parent)
+            })
+        };
         self.frame_layers = ordered;
+    }
+
+    fn commit_layer_topology(&mut self) {
+        let previous_topology = self.layer_topology.clone();
+        let boundaries: HashSet<ElementId> = self.frame_layers.iter().copied().collect();
+        let layer_tree =
+            compositing::build_layer_tree(self.frame_layers.iter().copied(), &boundaries, |id| {
+                self.elements.get(&id).and_then(|element| element.parent)
+            });
+        let previous: HashSet<ElementId> =
+            previous_topology.paint_order().iter().copied().collect();
+        let topology_changed = previous_topology.paint_order() != layer_tree.layers
+            || layer_tree.layers.iter().any(|layer| {
+                previous_topology.parent_of(*layer)
+                    != layer_tree.parent.get(layer).copied().flatten()
+            });
+        let structural_changed = if topology_changed {
+            previous.union(&boundaries).copied().collect()
+        } else {
+            HashSet::new()
+        };
+        let geometry_changed: HashSet<ElementId> = self
+            .frame_layer_geometry_dirty
+            .union(&self.frame_layer_transform_dirty)
+            .copied()
+            .collect();
+        let raster_bounds = if topology_changed
+            || !self.frame_layer_dirty.is_empty()
+            || !self.frame_layer_transform_dirty.is_empty()
+        {
+            crate::layer_raster_bounds::derive_layer_raster_bounds(
+                &self.scene_snapshot,
+                &layer_tree.layers,
+            )
+        } else {
+            previous_topology.raster_bounds().to_vec()
+        };
+        let placements_changed = topology_changed || !geometry_changed.is_empty();
+        let mut topology = crate::LayerTopology::new(
+            self.scene_snapshot.changes().revision(),
+            layer_tree.layers,
+            layer_tree.parent,
+            structural_changed,
+            geometry_changed,
+            self.frame_layer_dirty.clone(),
+            self.frame_layer_chrome_dirty.clone(),
+            self.frame_layer_transform_dirty.clone(),
+            raster_bounds,
+        );
+        if placements_changed {
+            topology.refresh_placements(&self.scene_snapshot);
+        } else {
+            topology.retain_placements_from(&previous_topology);
+        }
+        self.layer_topology = topology;
     }
 
     /// 直近の `render()` が捕捉した compositing layer 列（描画順 = ADR-0021、root 暗黙レイヤ込み）。

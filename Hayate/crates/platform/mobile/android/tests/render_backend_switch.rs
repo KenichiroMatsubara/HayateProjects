@@ -65,8 +65,8 @@ fn aa_method_is_injected_into_the_vello_renderer() {
 fn web_path_stays_default_area_unchanged() {
     let web = web_vello_backend();
     assert!(
-        web.contains("VelloSceneRenderer::new("),
-        "web 経路は VelloSceneRenderer::new（既定 Area）のまま——AA 方式は注入しない（挙動不変）"
+        web.contains("VelloLayerRasterizer::new("),
+        "web 経路は retained Layer Rasterizer の既定 Area を使い、AA 方式を注入しない"
     );
     assert!(
         !web.contains("new_with_options"),

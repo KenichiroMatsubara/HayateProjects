@@ -12,8 +12,8 @@
 //! type.
 //!
 //! **Why the live scroll Group must not be baked into the cache texture:** composite-only reuse
-//! spans multiple offsets, including overscroll frames. `extract_scroll_layer_scene` therefore
-//! removes the profile-resolved scroll Group and rasterizes a canonical absolute content band.
+//! spans multiple offsets, including overscroll frames. `LayerSceneKind::ScrollContent` therefore
+//! projects without the profile-resolved scroll Group and rasterizes a canonical content band.
 //! [`ScrollLayerGeometry::composite_affine_for_band`] reapplies this frame's Group when placing
 //! the cached texture. This keeps ordinary in-band scrolling live and also preserves the
 //! overscroll residual that a clamped coverage coordinate cannot represent: iOS rubber-band
@@ -29,7 +29,7 @@
 //!
 //! [`scroll_layer_geometry_table`] builds one [`ScrollLayerGeometry`] per `ElementKind::ScrollView`
 //! layer, once per frame, from `ElementTree` queries — independent of any renderer backend, so
-//! `present_layers` (which only sees `&SceneGraph` + layer ids, not `&ElementTree`) can be handed
+//! `present_layers` (which sees committed renderer-neutral facts, not `&ElementTree`) can be handed
 //! this small table instead of the whole tree.
 
 use std::collections::HashMap;
@@ -40,7 +40,7 @@ use crate::{scroll_content_visible_top, scroll_layer_extent, tunables, ScrollLay
 
 /// Where a [`crate::LayerRasterizer`] should render a layer's content and how large to make its
 /// cache texture, for a scroll-content band (ADR-0127). `origin_y` is in the same coordinate
-/// space as the canonical extracted `SceneGraph` handed to `rasterize` (the live scroll Group is
+/// space as the canonical `LayerScene` handed to `rasterize` (the live scroll Group is
 /// omitted). The resulting texture's row 0 always holds content-local `band.top`, independent of
 /// scroll position. Content outside `[origin_y, origin_y + height)` simply isn't rendered (vello
 /// has no sub-rect/viewport concept; the texture's own extent *is* the render bounds).
@@ -92,7 +92,7 @@ impl ScrollLayerGeometry {
     /// absolute scene top and never depends on the current offset.
     pub fn raster_band(&self) -> RasterBand {
         RasterBand {
-            // `extract_scroll_layer_scene` removes the live scroll Group, leaving absolute scene
+            // The scroll-content projection removes the live scroll Group, leaving absolute scene
             // coordinates. Cache row 0 therefore starts at the content band's absolute top;
             // the live affine is applied later by `composite_affine_for_band`.
             origin_y: self.absolute_top + self.band.top,

@@ -572,9 +572,9 @@ pub(crate) fn run(app: AndroidApp) {
             let tree_ref = runtime.tree.borrow();
             let frame = tree_ref.committed_frame();
             observation.set_counters(FrameCounters {
-                nodes: frame.scene().len() as u32,
-                layers: frame.layers().len() as u32,
-                dirty_layers: frame.content_dirty_layers().len() as u32,
+                nodes: frame.snapshot().len() as u32,
+                layers: frame.layer_topology().paint_order().len() as u32,
+                dirty_layers: frame.layer_topology().content_changed().len() as u32,
                 cache_hits: 0,
                 cache_misses: 0,
                 allocations: 0,

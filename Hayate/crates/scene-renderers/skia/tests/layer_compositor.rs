@@ -4,22 +4,16 @@
 
 mod support;
 
-use std::collections::HashSet;
-
 use hayate_core::element::style::{Dimension, Shadow, StyleProp};
 use hayate_core::{
-    Color, CommittedFrame, ElementId, ElementKind, ElementTree, LayerRasterBounds, SceneGraph,
-};
-use hayate_layer_compositor::layer_scene::{
-    collect_layer_placements, extract_layer_scene, extract_root_scene,
+    Color, CommittedFrame, ElementId, ElementKind, ElementTree, LayerRasterBounds, LayerScene,
+    LayerSceneKind, SceneGraph,
 };
 use hayate_layer_compositor::{
-    scroll_layer_geometry_from_inputs, CompositeQuad, GpuBudget, LayerCompositor, LayerRasterizer,
-    PresentPlanner, RasterBand,
+    scroll_layer_geometry_from_inputs, GpuBudget, LayerRasterizer, PresentPlanner, RasterBand,
 };
 use hayate_scene_renderer_skia::{
-    new_raster_surface, read_rgba, SkiaCompositeTarget, SkiaLayerCompositor, SkiaLayerPresenter,
-    SkiaLayerRasterizer, SkiaLayerSurfaceFactory, SkiaLayerTexture,
+    new_raster_surface, read_rgba, SkiaLayerPresenter, SkiaLayerRasterizer, SkiaLayerSurfaceFactory,
 };
 
 const W: u32 = 200;
@@ -31,12 +25,12 @@ fn px(v: f32) -> Dimension {
 }
 
 fn render_full(tree: &ElementTree) -> Vec<u8> {
-    support::render_scene_to_pixels_scaled(tree.scene_graph(), W, H, 1.0)
+    support::render_scene_to_pixels_scaled(tree.committed_frame().snapshot(), W, H, 1.0)
 }
 
 fn render_full_at(tree: &ElementTree, scale: f32) -> Vec<u8> {
     support::render_scene_to_pixels_scaled(
-        tree.scene_graph(),
+        tree.committed_frame().snapshot(),
         (W as f32 * scale) as u32,
         (H as f32 * scale) as u32,
         scale,
@@ -46,18 +40,14 @@ fn render_full_at(tree: &ElementTree, scale: f32) -> Vec<u8> {
 fn render_presented_at(tree: &ElementTree, scale: f32) -> Vec<u8> {
     let frame = tree.committed_frame();
     let geometry = scroll_layer_geometry_from_inputs(frame.scroll_inputs());
-    let mut dirty = frame.content_dirty_layers().clone();
-    dirty.extend(frame.chrome_dirty_layers().iter().copied());
     let width = (W as f32 * scale) as u32;
     let height = (H as f32 * scale) as u32;
     let mut presenter = SkiaLayerPresenter::new(width, height, scale);
     let target = new_raster_surface(width as i32, height as i32).unwrap();
     let mut target = presenter
         .present(
-            frame.scene(),
-            frame.layers(),
-            frame.layer_raster_bounds(),
-            &dirty,
+            frame.snapshot(),
+            frame.layer_topology(),
             &geometry,
             CLEAR,
             (0.0, 0.0),
@@ -70,43 +60,8 @@ fn render_presented_at(tree: &ElementTree, scale: f32) -> Vec<u8> {
 
 /// 本 crate の `SkiaLayerRasterizer` / `SkiaLayerCompositor`（trait 実装）で合成する。
 fn render_layered(tree: &ElementTree, root: ElementId) -> Vec<u8> {
-    let graph = tree.scene_graph();
-    let boundaries: HashSet<ElementId> = tree.frame_layers().iter().copied().collect();
-    let placements = collect_layer_placements(graph, root, &boundaries);
-
-    let mut rasterizer = SkiaLayerRasterizer::new(W, H, 1.0);
-    for &layer in tree.frame_layers() {
-        let scene = if layer == root {
-            extract_root_scene(graph, root, &boundaries)
-        } else {
-            match extract_layer_scene(graph, layer, &boundaries) {
-                Some(s) => s,
-                None => continue,
-            }
-        };
-        rasterizer.rasterize(layer, &scene, None).unwrap();
-    }
-
-    let quads: Vec<CompositeQuad<'_, SkiaLayerTexture>> = placements
-        .iter()
-        .filter_map(|p| {
-            rasterizer.texture(p.layer).map(|texture| CompositeQuad {
-                layer: p.layer,
-                transform: p.transform,
-                opacity: 1.0,
-                clip: p.clip,
-                texture,
-            })
-        })
-        .collect();
-
-    let mut compositor = SkiaLayerCompositor::new(1.0);
-    let mut target = SkiaCompositeTarget {
-        surface: new_raster_surface(W as i32, H as i32).unwrap(),
-        clear: CLEAR,
-    };
-    compositor.composite(&mut target, &quads).unwrap();
-    read_rgba(&mut target.surface)
+    let _ = root;
+    render_presented_at(tree, 1.0)
 }
 
 fn assert_pixels_equal(full: &[u8], layered: &[u8], label: &str) {
@@ -161,29 +116,32 @@ impl SkiaLayerSurfaceFactory for RecordingLayerSurfaceFactory {
 #[test]
 fn layer_surface_failure_is_returned_to_the_render_host() {
     let mut rasterizer = SkiaLayerRasterizer::new(W, H, 1.0);
+    let graph = SceneGraph::new();
     let error = rasterizer
         .rasterize_with_layer_surface_factory(
             &mut FailingLayerSurfaceFactory,
             ElementId::from_u64(1),
-            &Default::default(),
+            &graph,
             None,
         )
         .expect_err("surface allocation failure must escape the renderer");
 
-    assert_eq!(error, "layer surface unavailable");
+    assert!(
+        error.contains("layer surface unavailable"),
+        "the shared transaction must preserve the adapter failure: {error}"
+    );
 }
 
 #[test]
-fn presenter_rejects_an_invalid_frame_before_requesting_a_skia_surface() {
-    let layers = [ElementId::from_u64(1), ElementId::from_u64(2)];
+fn presenter_returns_layer_surface_failure_without_fallback() {
+    let (mut tree, _boxed, _inner) = transform_tree();
+    let frame = tree.commit_rendered_frame(0.0);
     let mut presenter = SkiaLayerPresenter::new(W, H, 1.0);
     let mut factory = FailingLayerSurfaceFactory;
     let error = presenter
         .present_with_layer_surface_factory(
-            &SceneGraph::new(),
-            &layers,
-            &[],
-            &Default::default(),
+            frame.snapshot(),
+            frame.layer_topology(),
             &Default::default(),
             CLEAR,
             (0.0, 0.0),
@@ -191,11 +149,11 @@ fn presenter_rejects_an_invalid_frame_before_requesting_a_skia_surface() {
             &mut factory,
             new_raster_surface(W as i32, H as i32).unwrap(),
         )
-        .expect_err("missing non-root Core bounds must fail before Skia allocates a surface");
+        .expect_err("selected Skia layer allocation failure must escape presentation");
 
     assert!(
-        error.contains("InvalidFrame"),
-        "the shared invalid-frame policy must win, got: {error}"
+        error.contains("layer surface unavailable"),
+        "the shared transaction must preserve the adapter failure: {error}"
     );
 }
 
@@ -411,10 +369,8 @@ fn native_shared_presenter_matches_full_raster() {
     let target = new_raster_surface(W as i32, H as i32).unwrap();
     let mut target = presenter
         .present(
-            tree.scene_graph(),
-            tree.frame_layers(),
-            frame.layer_raster_bounds(),
-            tree.frame_layer_dirty(),
+            frame.snapshot(),
+            frame.layer_topology(),
             &Default::default(),
             CLEAR,
             (0.0, 0.0),
@@ -464,10 +420,8 @@ fn presenter_accounts_actual_root_and_bounded_texture_bytes() {
     let target = new_raster_surface(width as i32, height as i32).unwrap();
     let _target = presenter
         .present(
-            frame.scene(),
-            frame.layers(),
-            frame.layer_raster_bounds(),
-            frame.content_dirty_layers(),
+            frame.snapshot(),
+            frame.layer_topology(),
             &Default::default(),
             CLEAR,
             (0.0, 0.0),
@@ -477,9 +431,12 @@ fn presenter_accounts_actual_root_and_bounded_texture_bytes() {
         .unwrap();
 
     let bounded_bytes: u64 = frame
-        .layer_raster_bounds()
+        .layer_topology()
+        .raster_bounds()
         .iter()
-        .filter(|bounds| Some(bounds.layer) != frame.layers().first().copied())
+        .filter(|bounds| {
+            Some(bounds.layer) != frame.layer_topology().paint_order().first().copied()
+        })
         .map(|bounds| {
             let left = (bounds.origin_x * scale).floor() as i32;
             let top = (bounds.origin_y * scale).floor() as i32;
@@ -559,20 +516,16 @@ fn scroll_tree() -> (ElementTree, ElementId) {
 /// Platform wiring と同じ順序で、Core の committed dirty capture を scroll geometry へ
 /// projection し、Native Skia の共有 presenter へ渡す。
 fn present_committed_frame(
-    frame: &CommittedFrame<'_>,
+    frame: &CommittedFrame,
     presenter: &mut SkiaLayerPresenter,
     budget: GpuBudget,
 ) -> Vec<u8> {
     let geometry = scroll_layer_geometry_from_inputs(frame.scroll_inputs());
-    let mut dirty = frame.content_dirty_layers().clone();
-    dirty.extend(frame.chrome_dirty_layers().iter().copied());
     let target = new_raster_surface(W as i32, H as i32).unwrap();
     let mut target = presenter
         .present(
-            frame.scene(),
-            frame.layers(),
-            frame.layer_raster_bounds(),
-            &dirty,
+            frame.snapshot(),
+            frame.layer_topology(),
             &geometry,
             CLEAR,
             (0.0, 0.0),
@@ -595,11 +548,11 @@ fn native_presenter_keeps_app_like_in_band_scroll_composite_only() {
     tree.element_set_scroll_offset(scroll, 0.0, 150.0);
     let frame = tree.commit_rendered_frame(16.0);
     assert!(
-        frame.content_dirty_layers().is_empty(),
+        frame.layer_topology().content_changed().is_empty(),
         "pure scroll must keep both the root and scroll content caches clean"
     );
     assert!(
-        frame.chrome_dirty_layers().contains(&scroll),
+        frame.layer_topology().chrome_changed().contains(&scroll),
         "the scroll offset must still schedule the fixed chrome update"
     );
     let pixels = present_committed_frame(&frame, &mut presenter, budget);
@@ -620,17 +573,13 @@ fn scroll_cache_budget_counts_actual_content_and_chrome_surfaces() {
     let (mut tree, _scroll) = scroll_tree();
     let frame = tree.commit_rendered_frame(0.0);
     let geometry = scroll_layer_geometry_from_inputs(frame.scroll_inputs());
-    let mut dirty = frame.content_dirty_layers().clone();
-    dirty.extend(frame.chrome_dirty_layers().iter().copied());
     let mut presenter = SkiaLayerPresenter::new(W, H, 1.0);
     let mut factory = RecordingLayerSurfaceFactory::default();
     let target = new_raster_surface(W as i32, H as i32).unwrap();
     let _target = presenter
         .present_with_layer_surface_factory(
-            frame.scene(),
-            frame.layers(),
-            frame.layer_raster_bounds(),
-            &dirty,
+            frame.snapshot(),
+            frame.layer_topology(),
             &geometry,
             CLEAR,
             (0.0, 0.0),
@@ -728,7 +677,7 @@ fn native_presenter_rerasters_scroll_content_after_crossing_the_cached_band() {
     tree.element_set_scroll_offset(scroll, 0.0, 900.0);
     let frame = tree.commit_rendered_frame(16.0);
     assert!(
-        frame.content_dirty_layers().is_empty(),
+        frame.layer_topology().content_changed().is_empty(),
         "crossing an overscan band is a presenter cache miss, not a Core content mutation"
     );
     let pixels = present_committed_frame(&frame, &mut presenter, budget);
@@ -760,7 +709,7 @@ fn native_presenter_rerasters_scroll_content_after_a_real_content_change() {
     );
     let frame = tree.commit_rendered_frame(16.0);
     assert!(
-        frame.content_dirty_layers().contains(&scroll),
+        frame.layer_topology().content_changed().contains(&scroll),
         "a descendant pixel change must dirty its enclosing scroll content layer"
     );
     let pixels = present_committed_frame(&frame, &mut presenter, budget);
@@ -789,7 +738,7 @@ fn native_presenter_rerasters_scroll_content_after_geometry_changes() {
     tree.element_set_style(first_row, &[StyleProp::Height(px(140.0))]);
     let frame = tree.commit_rendered_frame(16.0);
     assert!(
-        frame.content_dirty_layers().contains(&scroll),
+        frame.layer_topology().content_changed().contains(&scroll),
         "a descendant reflow must dirty its enclosing scroll content layer"
     );
     let pixels = present_committed_frame(&frame, &mut presenter, budget);
@@ -815,7 +764,7 @@ fn native_presenter_rerasters_clean_layers_after_cache_eviction() {
 
     let frame = tree.commit_rendered_frame(16.0);
     assert!(
-        frame.content_dirty_layers().is_empty(),
+        frame.layer_topology().content_changed().is_empty(),
         "the second frame is clean at the Core seam; only eviction should force work"
     );
     let pixels =
@@ -841,18 +790,17 @@ fn pump(
     ts: f64,
 ) -> usize {
     let _ = tree.render(ts);
-    let graph = tree.scene_graph().clone();
-    let boundaries: HashSet<ElementId> = tree.frame_layers().iter().copied().collect();
-    let root = tree.frame_layers()[0];
-    let plan = planner.plan_layers(tree.frame_layers(), tree.frame_layer_dirty());
+    let frame = tree.committed_frame();
+    let topology = frame.layer_topology();
+    let plan = planner.plan_layers(topology.paint_order(), topology.content_changed());
     for &layer in &plan.raster {
-        let scene = if layer == root {
-            extract_root_scene(&graph, root, &boundaries)
-        } else {
-            match extract_layer_scene(&graph, layer, &boundaries) {
-                Some(s) => s,
-                None => continue,
-            }
+        let Some(scene) = LayerScene::new(
+            frame.snapshot().clone(),
+            topology.clone(),
+            layer,
+            LayerSceneKind::Content,
+        ) else {
+            continue;
         };
         rz.rasterize(layer, &scene, None).unwrap();
         planner.note_layer_rasterized(layer, rz.texture_bytes_per_layer());

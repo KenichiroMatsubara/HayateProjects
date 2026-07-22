@@ -60,7 +60,7 @@
         border-radius: 999px;
         background: var(--rsw-accent, #14b8a6);
       }
-      /* 展開パネル: 1列目=レンダラ選択、2列目=最適化(layer-present)トグル（ADR-0135）。 */
+      /* 展開パネル: レンダラ選択。 */
       .rsw-panel {
         display: none;
         flex-direction: column;
@@ -96,14 +96,6 @@
       .rsw-options button:hover:not(.active) {
         color: var(--rsw-ink, #262130);
         background: var(--rsw-hover, #e0d8c7);
-      }
-      .rsw-optimize-label {
-        padding: 4px 6px 4px 10px;
-        font-size: 10px;
-        font-weight: 700;
-        letter-spacing: 0.03em;
-        color: var(--rsw-text, #6f6878);
-        white-space: nowrap;
       }
     </style>
     <script>
@@ -146,26 +138,12 @@
         <div class="rsw-options" id="renderer-options" role="group" aria-label="レンダラ">
           <button type="button" data-renderer="dom">dom</button>
         </div>
-        <!-- 選択中 renderer に対応する runtime key を使う、単一の比較用トグル。 -->
-        <div
-          class="rsw-options"
-          id="layer-present-options"
-          role="group"
-          aria-label="layer-present 最適化"
-        >
-          <span class="rsw-optimize-label">layer-present</span>
-          <button type="button" data-optimization="0">OFF</button>
-          <button type="button" data-optimization="1">ON</button>
-        </div>
       </div>
     </div>
     <div id="dom-host" hidden></div>
     <canvas id="canvas-stage" hidden></canvas>
     <script type="module">
-      import {
-        WEB_RENDERER_QUERY_VALUES,
-        rendererOptimizationQueryParam,
-      } from '@torimi/hayate-host/renderer-policy';
+      import { WEB_RENDERER_QUERY_VALUES } from '@torimi/hayate-host/renderer-policy';
 
       (function initRendererSwitch() {
         const params = new URLSearchParams(window.location.search);
@@ -204,23 +182,6 @@
           });
         }
 
-        // backend 固有の対応表は Hayate Host が所有し、UI は単一行の表示だけを担う。
-        const optimizationKey = rendererOptimizationQueryParam(current) ?? null;
-        const optimizationRow = document.getElementById('layer-present-options');
-        optimizationRow.hidden = optimizationKey === null;
-        const optimizationOn = optimizationKey !== null && params.get(optimizationKey) !== '0';
-        for (const button of root.querySelectorAll('button[data-optimization]')) {
-          const isOn = button.getAttribute('data-optimization') === '1';
-          if (optimizationKey !== null && isOn === optimizationOn) button.classList.add('active');
-          button.addEventListener('click', () => {
-            if (optimizationKey === null) return;
-            const next = new URLSearchParams(window.location.search);
-            if (isOn) next.delete(optimizationKey);
-            else next.set(optimizationKey, '0');
-            const query = next.toString();
-            window.location.search = query ? `?${query}` : '';
-          });
-        }
       })();
     </script>
     <script type="module" src="/src/main.tsx"></script>

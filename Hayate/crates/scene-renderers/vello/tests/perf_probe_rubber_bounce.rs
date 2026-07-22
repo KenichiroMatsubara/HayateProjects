@@ -194,7 +194,8 @@ fn perf_probe_rubber_bounce() {
 
     // ── 2. present 側: フルエンコード（web backend は毎 render で無条件に実行）──
     let mut ts = (run.frames.len() + 2) as f64 * FRAME_MS;
-    let graph = tree.render(ts).clone();
+    tree.render(ts);
+    let graph = tree.committed_frame().snapshot().clone();
     for scale in [1.0f32, 3.0] {
         let mut samples = Vec::new();
         for _ in 0..100 {
@@ -244,7 +245,8 @@ fn perf_probe_rubber_bounce() {
                 let mut bounce = Vec::new();
                 for _ in 0..12 {
                     ts += FRAME_MS;
-                    let g = tree.render(ts).clone();
+                    tree.render(ts);
+                    let g = tree.committed_frame().snapshot().clone();
                     let t = Instant::now();
                     let px = hayate_scene_test_support::vello::render_scene_to_pixels_scaled(
                         &mut h, &g, w, hgt, scale,

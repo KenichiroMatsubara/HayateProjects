@@ -37,7 +37,7 @@ pub trait PresentTarget {
     type Error;
 
     /// 本フレームの一貫した commit view を提示する。
-    fn present(&mut self, frame: &CommittedFrame<'_>) -> Result<(), Self::Error>;
+    fn present(&mut self, frame: &CommittedFrame) -> Result<(), Self::Error>;
 }
 
 /// `()` を提示先とする no-op `PresentTarget`。headless 実行やテストで使う。
@@ -46,7 +46,7 @@ pub struct HeadlessPresentTarget;
 impl PresentTarget for HeadlessPresentTarget {
     type Error = std::convert::Infallible;
 
-    fn present(&mut self, _frame: &CommittedFrame<'_>) -> Result<(), Self::Error> {
+    fn present(&mut self, _frame: &CommittedFrame) -> Result<(), Self::Error> {
         Ok(())
     }
 }
@@ -184,7 +184,7 @@ pub enum FrameContinuation {
 }
 
 impl FrameContinuation {
-    pub fn after_commit(frame: &CommittedFrame<'_>) -> Self {
+    pub fn after_commit(frame: &CommittedFrame) -> Self {
         if frame.has_pending_visual_work() {
             Self::RequestNextFrame
         } else {
@@ -296,9 +296,9 @@ impl<S: PresentTarget> AppHost<S> {
             self.tree.commit_rendered_frame(timestamp_ms)
         });
         observation.set_counters(FrameCounters {
-            nodes: frame.scene().len() as u32,
-            layers: frame.layers().len() as u32,
-            dirty_layers: frame.content_dirty_layers().len() as u32,
+            nodes: frame.snapshot().len() as u32,
+            layers: frame.layer_topology().paint_order().len() as u32,
+            dirty_layers: frame.layer_topology().content_changed().len() as u32,
             cache_hits: 0,
             cache_misses: 0,
             allocations: 0,
@@ -372,7 +372,7 @@ mod tests {
     impl PresentTarget for CountingSurface {
         type Error = std::convert::Infallible;
 
-        fn present(&mut self, _frame: &CommittedFrame<'_>) -> Result<(), Self::Error> {
+        fn present(&mut self, _frame: &CommittedFrame) -> Result<(), Self::Error> {
             *self.present_count.borrow_mut() += 1;
             Ok(())
         }
@@ -386,7 +386,7 @@ mod tests {
     impl PresentTarget for ReconfigurableSurface {
         type Error = std::convert::Infallible;
 
-        fn present(&mut self, _frame: &CommittedFrame<'_>) -> Result<(), Self::Error> {
+        fn present(&mut self, _frame: &CommittedFrame) -> Result<(), Self::Error> {
             Ok(())
         }
     }
@@ -396,7 +396,7 @@ mod tests {
     impl PresentTarget for FailingSurface {
         type Error = &'static str;
 
-        fn present(&mut self, _frame: &CommittedFrame<'_>) -> Result<(), Self::Error> {
+        fn present(&mut self, _frame: &CommittedFrame) -> Result<(), Self::Error> {
             Err("surface lost")
         }
     }

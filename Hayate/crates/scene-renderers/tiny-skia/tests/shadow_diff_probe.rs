@@ -78,7 +78,8 @@ fn shadow_diff_probe() {
 
     // 影レイヤの面積分布: 大パネル影(blur40, 巨大レイヤ11枚) vs 行影(blur6, 小レイヤ55枚)
     // のどちらが overdraw を支配するかを、rect 面積の降順で覗く。
-    let gg = with.render(0.0).clone();
+    with.render(0.0);
+    let gg = with.committed_frame().snapshot().clone();
     let mut areas: Vec<f64> = gg
         .iter()
         .filter_map(|(_, n)| match &n.kind {
@@ -103,8 +104,10 @@ fn shadow_diff_probe() {
         areas.iter().sum::<f64>() / vp
     );
 
-    let g_with = with.render(0.0).clone();
-    let g_wo = without.render(0.0).clone();
+    with.render(0.0);
+    let g_with = with.committed_frame().snapshot().clone();
+    without.render(0.0);
+    let g_wo = without.committed_frame().snapshot().clone();
     for (label, g) in [("WITH-shadows", &g_with), ("NO-shadows", &g_wo)] {
         let mut px = Pixmap::new(w, h).expect("px");
         let mut r = TinySkiaSceneRenderer::new();

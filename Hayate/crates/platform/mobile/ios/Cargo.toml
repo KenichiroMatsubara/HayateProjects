@@ -21,6 +21,7 @@ crate-type = ["staticlib", "rlib"]
 # objc2/raw-window-metal ⇄ wgpu version-alignment risk. wgpu provides the Metal backend
 # on the iOS target out of the box.
 hayate-core = { path = "../../../core" }
+hayate-layer-compositor = { path = "../../../scene-renderers/compositor" }
 hayate-scene-renderer-vello = { path = "../../../scene-renderers/vello" }
 wgpu = { workspace = true }
 log.workspace = true

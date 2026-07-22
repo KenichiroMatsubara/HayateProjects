@@ -8,20 +8,37 @@
 //! 実行: HAYATE_PERF_PROBE=1 cargo test --release -p hayate-scene-renderer-tiny-skia \
 //!        --test perf_probe -- --nocapture
 
-use std::collections::HashSet;
 use std::time::Instant;
 
-use hayate_core::{ElementId, LayerRasterBounds};
-use hayate_demo_fixtures::{tasks_tree, TASKS_VIEWPORT};
-use hayate_layer_compositor::layer_scene::{
-    collect_layer_placements, extract_layer_scene, extract_root_scene,
+use hayate_core::{
+    ElementId, LayerRasterBounds, LayerScene, LayerSceneKind, Node, NodeId, NodeKind, SceneRead,
+    SceneResources, SceneSnapshot,
 };
+use hayate_demo_fixtures::{tasks_tree, TASKS_VIEWPORT};
 use hayate_layer_compositor::{CompositeQuad, LayerCompositor, LayerRasterizer};
 use hayate_scene_renderer_tiny_skia::{
     premultiplied_to_straight, TinySkiaCompositeTarget, TinySkiaLayerCompositor,
     TinySkiaLayerRasterizer, TinySkiaLayerTexture, TinySkiaSceneRenderer,
 };
 use tiny_skia::Pixmap;
+
+struct WithoutText<'a>(&'a SceneSnapshot);
+
+impl SceneRead for WithoutText<'_> {
+    fn get(&self, id: NodeId) -> Option<&Node> {
+        self.0
+            .get(id)
+            .filter(|node| !matches!(node.kind, NodeKind::TextRun { .. }))
+    }
+
+    fn roots(&self) -> &[NodeId] {
+        self.0.roots()
+    }
+
+    fn resources(&self) -> &SceneResources {
+        self.0.resources()
+    }
+}
 
 fn ms(d: std::time::Duration) -> f64 {
     d.as_secs_f64() * 1000.0
@@ -54,7 +71,8 @@ fn perf_probe() {
     // Promote the app bar into a representative non-root layer so this probe measures the
     // bounded-cache path rather than the fixture's otherwise single-root full-surface path.
     tree.element_set_transform(ElementId::from_u64(2), Some([1.0, 0.0, 0.0, 1.0, 0.0, 0.0]));
-    let graph = tree.render(0.0).clone();
+    let _ = tree.render(0.0);
+    let graph = tree.committed_frame().snapshot().clone();
     let (
         mut rects,
         mut rings,
@@ -113,16 +131,7 @@ fn perf_probe() {
     );
 
     // テキスト run のグリフを空にしたバリアントで、グリフラスタのコストを切り分ける。
-    let mut no_text = graph.clone();
-    let ids: Vec<_> = no_text.iter().map(|(id, _)| id).collect();
-    for id in ids {
-        if no_text
-            .get(id)
-            .is_some_and(|node| matches!(node.kind, hayate_core::NodeKind::TextRun { .. }))
-        {
-            no_text.remove(id);
-        }
-    }
+    let no_text = WithoutText(&graph);
     {
         let w = vw as u32;
         let h = vh as u32;
@@ -158,24 +167,26 @@ fn perf_probe() {
     for scale in [1.0f32, 2.0, 3.0] {
         let w = (vw * scale) as u32;
         let h = (vh * scale) as u32;
-        let boundaries: HashSet<ElementId> = tree.frame_layers().iter().copied().collect();
-        let root = tree.frame_layers()[0];
+        let frame = tree.committed_frame();
+        let topology = frame.layer_topology();
+        let root = topology.paint_order()[0];
         let raster_bounds: std::collections::HashMap<ElementId, LayerRasterBounds> = tree
             .committed_frame()
-            .layer_raster_bounds()
+            .layer_topology()
+            .raster_bounds()
             .iter()
             .map(|bounds| (bounds.layer, *bounds))
             .collect();
         // 全レイヤを一度 raster してキャッシュを温める（composite-only フレームの前提）。
         let mut rasterizer = TinySkiaLayerRasterizer::new(w, h, scale);
-        for &layer in tree.frame_layers() {
-            let scene = if layer == root {
-                extract_root_scene(&graph, root, &boundaries)
-            } else {
-                match extract_layer_scene(&graph, layer, &boundaries) {
-                    Some(s) => s,
-                    None => continue,
-                }
+        for &layer in topology.paint_order() {
+            let Some(scene) = LayerScene::new(
+                graph.clone(),
+                topology.clone(),
+                layer,
+                LayerSceneKind::Content,
+            ) else {
+                continue;
             };
             if layer == root {
                 rasterizer.rasterize(layer, &scene, None).unwrap();
@@ -185,7 +196,7 @@ fn perf_probe() {
                     .unwrap();
             }
         }
-        let placements = collect_layer_placements(&graph, root, &boundaries);
+        let placements = topology.placements();
         let cached_source_px: u64 = placements
             .iter()
             .filter_map(|placement| rasterizer.texture(placement.layer))
@@ -196,8 +207,14 @@ fn perf_probe() {
             "tiny-skia layer cache source px: {cached_source_px} / {full_surface_source_px} ({:.1}% reduction)",
             (1.0 - cached_source_px as f64 / full_surface_source_px as f64) * 100.0
         );
-        if let Some(&layer) = tree.frame_layers().iter().find(|&&layer| layer != root) {
-            let layer_scene = extract_layer_scene(&graph, layer, &boundaries).unwrap();
+        if let Some(&layer) = topology.paint_order().iter().find(|&&layer| layer != root) {
+            let layer_scene = LayerScene::new(
+                graph.clone(),
+                topology.clone(),
+                layer,
+                LayerSceneKind::Content,
+            )
+            .unwrap();
             let mut full_rasterizer = TinySkiaLayerRasterizer::new(w, h, scale);
             bench(
                 &format!("tiny-skia RASTER full-surface layer {w}x{h}"),
