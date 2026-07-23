@@ -33,9 +33,9 @@ pub mod raster_thread;
 pub use raster_thread::{RasterCommand, RasterHandoff, RasterHandoffError, RasterThread};
 pub mod resource_residency;
 pub use resource_residency::{
-    DeviceMemoryClass, ImageResourceId, LayerResourceId, LayerResourcePlane, MemoryPressure,
-    PoolBudgetPolicy, PoolResidencyStats, RenderResourceBudgetPolicy, RenderResourceKey,
-    RenderResourceResidency, ResidencyEvent, ResidencyMutation, ResidencyStats,
+    DeviceMemoryClass, FontFaceResourceId, ImageResourceId, LayerResourceId, LayerResourcePlane,
+    MemoryPressure, PoolBudgetPolicy, PoolResidencyStats, RenderResourceBudgetPolicy,
+    RenderResourceKey, RenderResourceResidency, ResidencyEvent, ResidencyMutation, ResidencyStats,
     ResourceBudgetInputs, ResourceDomain,
 };
 pub mod scroll_geometry;
