@@ -1,8 +1,8 @@
 use hayate_core::{element::id::ElementId, FontInstanceId, TextRunId};
 use hayate_layer_compositor::{
-    ImageResourceId, LayerResourceId, LayerResourcePlane, MemoryPressure, PoolBudgetPolicy,
-    RenderResourceBudgetPolicy, RenderResourceKey, RenderResourceResidency, ResidencyEvent,
-    ResourceDomain,
+    FontFaceResourceId, ImageResourceId, LayerResourceId, LayerResourcePlane, MemoryPressure,
+    PoolBudgetPolicy, RenderResourceBudgetPolicy, RenderResourceKey, RenderResourceResidency,
+    ResidencyEvent, ResourceDomain,
 };
 
 fn image(blob_id: u64) -> RenderResourceKey {
@@ -50,6 +50,7 @@ fn renderer_can_explicitly_clear_one_domain_without_entering_shutdown() {
 #[test]
 fn core_resource_ids_are_constant_sized_renderer_lookup_keys() {
     let keys = [
+        RenderResourceKey::FontFace(FontFaceResourceId::new(1, 0)),
         RenderResourceKey::Font(FontInstanceId::from_raw_parts(1, 2)),
         RenderResourceKey::Text(TextRunId::from_raw_parts(3, 4)),
         RenderResourceKey::Image(ImageResourceId::new(5, 6, 7, 0, 1)),
@@ -61,7 +62,7 @@ fn core_resource_ids_are_constant_sized_renderer_lookup_keys() {
 
     assert_eq!(
         std::mem::size_of_val(&keys),
-        4 * std::mem::size_of::<RenderResourceKey>()
+        5 * std::mem::size_of::<RenderResourceKey>()
     );
     assert!(std::mem::size_of::<RenderResourceKey>() <= 32);
 }

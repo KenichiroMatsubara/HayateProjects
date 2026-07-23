@@ -86,6 +86,23 @@ impl ImageResourceId {
     }
 }
 
+/// Fixed-size identity for one Core font blob and face index, independent of variation,
+/// synthesis, and other [`FontInstanceId`] attributes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct FontFaceResourceId {
+    pub blob_id: u64,
+    pub face_index: u32,
+}
+
+impl FontFaceResourceId {
+    pub const fn new(blob_id: u64, face_index: u32) -> Self {
+        Self {
+            blob_id,
+            face_index,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum LayerResourcePlane {
     Content,
@@ -107,6 +124,7 @@ impl LayerResourceId {
 /// Constant-sized lookup key used by renderer adapters.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum RenderResourceKey {
+    FontFace(FontFaceResourceId),
     Font(FontInstanceId),
     Text(TextRunId),
     Image(ImageResourceId),
@@ -116,20 +134,21 @@ pub enum RenderResourceKey {
 impl RenderResourceKey {
     fn order_parts(self) -> (u8, u64, u64, u64) {
         match self {
+            Self::FontFace(id) => (0, id.blob_id, u64::from(id.face_index), 0),
             Self::Font(id) => {
                 let (arena, slot) = id.to_raw_parts();
-                (0, arena, slot, 0)
+                (1, arena, slot, 0)
             }
             Self::Text(id) => {
                 let (arena, slot) = id.to_raw_parts();
-                (1, arena, slot, 0)
+                (2, arena, slot, 0)
             }
             Self::Image(id) => {
                 let dimensions = u64::from(id.width) << 32 | u64::from(id.height);
                 let interpretation = u64::from(id.format) << 8 | u64::from(id.alpha_type);
-                (2, id.blob_id, dimensions, interpretation)
+                (3, id.blob_id, dimensions, interpretation)
             }
-            Self::Layer(id) => (3, id.layer.to_u64(), id.plane as u64, 0),
+            Self::Layer(id) => (4, id.layer.to_u64(), id.plane as u64, 0),
         }
     }
 }
