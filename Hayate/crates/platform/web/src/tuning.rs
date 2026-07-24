@@ -189,6 +189,7 @@ fn strip_trailing_commas(src: &str) -> String {
 pub struct ScrollJson {
     slop_px: Option<f32>,
     deceleration_rate: Option<f32>,
+    linear_deceleration: Option<f32>,
     max_release_velocity: Option<f32>,
     min_velocity: Option<f32>,
     sample_window_ms: Option<f64>,
@@ -205,6 +206,7 @@ impl ScrollJson {
         let mut d = ScrollPhysicsTuning::default();
         overlay(&mut d.slop_px, self.slop_px);
         overlay(&mut d.deceleration_rate, self.deceleration_rate);
+        overlay(&mut d.linear_deceleration, self.linear_deceleration);
         overlay(&mut d.max_release_velocity, self.max_release_velocity);
         overlay(&mut d.min_velocity, self.min_velocity);
         overlay(&mut d.sample_window_ms, self.sample_window_ms);
@@ -319,10 +321,14 @@ mod tests {
 
     #[test]
     fn only_present_keys_override_the_defaults() {
-        let t = TuningJson::parse(r#"{ "scroll": { "deceleration_rate": 0.99 } }"#).unwrap();
+        let t = TuningJson::parse(
+            r#"{ "scroll": { "deceleration_rate": 0.99, "linear_deceleration": 0.003 } }"#,
+        )
+        .unwrap();
         let s = t.scroll_tuning();
-        // 存在する 1 キーは変わり…
+        // 存在するキーは変わり…
         assert_eq!(s.deceleration_rate, 0.99);
+        assert_eq!(s.linear_deceleration, 0.003);
         // …他はデフォルト const のまま。
         assert_eq!(s.slop_px, ScrollPhysicsTuning::default().slop_px);
         assert_eq!(

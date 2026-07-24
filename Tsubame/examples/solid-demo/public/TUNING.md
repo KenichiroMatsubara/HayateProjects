@@ -33,7 +33,7 @@ The Rust `const`s are authoritative and ship to production; `tuning.jsonc` is a
 value feels right, **bake it back into the Rust const** and commit — that is the
 acceptance criterion for #353 ("最終値を名前付き定数に反映").
 
-- Scroll physics consts: `Hayate/crates/platform/web/src/scroll_drag.rs`
+- Scroll physics consts: `Hayate/crates/core/src/scroll.rs`
 - Chrome consts: `Hayate/crates/core/src/element/scene_build.rs`
 
 ## Keys
@@ -43,9 +43,9 @@ optional — include only the ones you are tuning. Unknown keys are rejected (a
 typo errors out rather than silently doing nothing), and any parse error makes
 the whole file fall back to defaults. Colors are `[r, g, b, a]` in `0..1`.
 
-`scroll.*` — full set is live (slop, deceleration_rate, max_release_velocity,
-min_velocity, sample_window_ms, rubber_band_c, spring_stiffness, spring_damping,
-spring_rest_offset, spring_rest_velocity).
+`scroll.*` — full set is live (slop, deceleration_rate, linear_deceleration,
+max_release_velocity, min_velocity, sample_window_ms, rubber_band_c,
+spring_stiffness, spring_damping, spring_rest_offset, spring_rest_velocity).
 
 `chrome.*` — live: scrollbar thickness / track_margin / min_thumb_length /
 thumb_color / thumb_opacity, indicator thickness / color / opacity,

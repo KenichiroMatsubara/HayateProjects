@@ -113,12 +113,16 @@ impl ScrollGesture {
 /// 各係数を名前付きでチューニング可能なノブとして保つ。fling 上限とばね戻し値は実機で
 /// `tuning.json` オーバーレイ経由でキャリブレーションしここに焼き込んだ。ここを調整すれば全体の感触が変わる。
 pub mod physics {
-    /// 摩擦下でのミリ秒あたりの速度保持率。UIScrollView の「normal」減速率に一致：
-    /// `t` ms 後に fling は速度の `0.998^t` を保ち、おおよそ 1 秒かけて滑らかに減衰する。
-    pub const DECELERATION_RATE: f32 = 0.998;
-    /// 解放 fling 速度の上限（px/ms ≈ 16000 px/s）。激しいフリックでも 1 フレームで
+    /// 摩擦下でのミリ秒あたりの速度保持率。実機チューニング値：
+    /// `t` ms 後に fling は、一定減速を除いて速度の `0.999^t` を保つ
+    /// （1 秒後に約 36.8%）。
+    pub const DECELERATION_RATE: f32 = 0.999;
+    /// 指数摩擦に加えて毎 ms 差し引く一定減速度（px/ms²）。低速域でも速度が確実に
+    /// 落ちるようにし、停止しきい値まで長く這い続けるのを防ぐ。
+    pub const LINEAR_DECELERATION: f32 = 0.002;
+    /// 解放 fling 速度の上限（px/ms ≈ 40000 px/s）。激しいフリックでも 1 フレームで
     /// ドキュメント全体を横切らせないため。実機キャリブレーション済み。
-    pub const MAX_RELEASE_VELOCITY: f32 = 16.0;
+    pub const MAX_RELEASE_VELOCITY: f32 = 40.0;
     /// この速度(px/ms)未満では慣性を停止扱いにして静止へスナップする——60fps フレームで
     /// 約サブピクセル——アニメーションが 0 へ漸近して這い続けず終了するように。
     pub const MIN_VELOCITY: f32 = 0.02;
@@ -165,6 +169,7 @@ pub mod physics {
 pub struct ScrollPhysicsTuning {
     pub slop_px: f32,
     pub deceleration_rate: f32,
+    pub linear_deceleration: f32,
     pub max_release_velocity: f32,
     pub min_velocity: f32,
     pub sample_window_ms: f64,
@@ -182,6 +187,7 @@ impl Default for ScrollPhysicsTuning {
         Self {
             slop_px: SCROLL_SLOP_PX,
             deceleration_rate: physics::DECELERATION_RATE,
+            linear_deceleration: physics::LINEAR_DECELERATION,
             max_release_velocity: physics::MAX_RELEASE_VELOCITY,
             min_velocity: physics::MIN_VELOCITY,
             sample_window_ms: physics::SAMPLE_WINDOW_MS,
@@ -272,13 +278,18 @@ pub fn estimate_release_velocity(
     )
 }
 
-/// 慣性の 1 軸を指数摩擦下で `dt_ms` 進める。今フレーム適用するオフセット差分と、
-/// 次へ持ち越す減衰後の速度を返す（ともにオフセット空間、px と px/ms）。減衰後の速度が
+/// 慣性の 1 軸を指数摩擦＋一定減速下で `dt_ms` 進める。今フレーム適用するオフセット差分と、
+/// 次へ持ち越す減衰後の速度を返す（ともにオフセット空間、px と px/ms）。指数摩擦を適用後、
+/// [`physics::LINEAR_DECELERATION`] × `dt_ms` を速度の絶対値から差し引く。ゼロをまたいで
+/// 逆向きに加速することはない。減衰後の速度が
 /// [`physics::MIN_VELOCITY`] を下回ると `0.0` へスナップするので、呼び出し側は漸近的な
 /// 這いを積分し続けずアニメーションを終えられる。
 pub fn momentum_step(velocity: f32, dt_ms: f32, t: &ScrollPhysicsTuning) -> (f32, f32) {
     let delta = velocity * dt_ms;
-    let next = velocity * t.deceleration_rate.powf(dt_ms);
+    let exponentially_decayed = velocity * t.deceleration_rate.powf(dt_ms);
+    let linear_loss = t.linear_deceleration.max(0.0) * dt_ms;
+    let next =
+        exponentially_decayed.signum() * (exponentially_decayed.abs() - linear_loss).max(0.0);
     if next.abs() < t.min_velocity {
         (delta, 0.0)
     } else {
@@ -412,6 +423,7 @@ mod tests {
         let d = ScrollPhysicsTuning::default();
         assert_eq!(d.slop_px, SCROLL_SLOP_PX);
         assert_eq!(d.deceleration_rate, physics::DECELERATION_RATE);
+        assert_eq!(d.linear_deceleration, physics::LINEAR_DECELERATION);
         assert_eq!(d.max_release_velocity, physics::MAX_RELEASE_VELOCITY);
         assert_eq!(d.min_velocity, physics::MIN_VELOCITY);
         assert_eq!(d.sample_window_ms, physics::SAMPLE_WINDOW_MS);
@@ -586,6 +598,29 @@ mod tests {
     }
 
     #[test]
+    fn momentum_combines_proportional_and_constant_deceleration_symmetrically() {
+        let mut tuning = t();
+        tuning.deceleration_rate = 0.5;
+        tuning.linear_deceleration = 0.1;
+
+        let (_, positive) = momentum_step(4.0, 1.0, &tuning);
+        let (_, negative) = momentum_step(-4.0, 1.0, &tuning);
+        assert!((positive - 1.9).abs() < 1e-6);
+        assert!((negative + 1.9).abs() < 1e-6);
+    }
+
+    #[test]
+    fn constant_deceleration_stops_at_zero_without_reversing_direction() {
+        let mut tuning = t();
+        tuning.deceleration_rate = 1.0;
+        tuning.linear_deceleration = 0.1;
+        tuning.min_velocity = 0.0;
+
+        assert_eq!(momentum_step(0.05, 1.0, &tuning).1, 0.0);
+        assert_eq!(momentum_step(-0.05, 1.0, &tuning).1, -0.0);
+    }
+
+    #[test]
     fn momentum_snaps_to_rest_once_it_drops_below_the_stop_threshold() {
         // 閾値ちょうどから始め、1 つの長いフレームで MIN_VELOCITY 未満まで減衰させ、
         // 永遠に這わず 0 へスナップする。
@@ -597,8 +632,9 @@ mod tests {
     fn physics_coefficients_are_named_constants_gathered_in_one_place() {
         // iOS 風ノブを、積分器に散らばるマジックナンバーでなく単一のチューニング可能ブロックに
         // 保つため固定。
-        assert_eq!(physics::DECELERATION_RATE, 0.998);
-        assert_eq!(physics::MAX_RELEASE_VELOCITY, 16.0);
+        assert_eq!(physics::DECELERATION_RATE, 0.999);
+        assert_eq!(physics::LINEAR_DECELERATION, 0.002);
+        assert_eq!(physics::MAX_RELEASE_VELOCITY, 40.0);
         assert_eq!(physics::MIN_VELOCITY, 0.02);
         assert_eq!(physics::SAMPLE_WINDOW_MS, 100.0);
         // オーバースクロール／ばね戻しのノブも同じブロックにある。
