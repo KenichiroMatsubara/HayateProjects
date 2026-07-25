@@ -41,7 +41,8 @@ export type WorkerMutation =
       texts: string[];
       draws: Float32Array;
     }
-  | { kind: 'background'; r: number; g: number; b: number };
+  | { kind: 'background'; r: number; g: number; b: number }
+  | { kind: 'tuning'; json: string };
 
 /** main → Worker メッセージ（DOM/pointer/IME 入力の橋渡し）。 */
 export type MainToWorker =

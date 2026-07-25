@@ -9,8 +9,7 @@
       "cargoFeatures": { "mode": "inherit", "names": [] },
       "description": "Hayate — GPU-native UI substrate",
       "includeInDefaultBuild": true,
-      "npmName": "@torimi/hayate-adapter-web",
-      "host": { "backend": "vello" }
+      "npmName": "@torimi/hayate-adapter-web"
     },
     {
       "name": "pkg-tiny-skia",
@@ -19,8 +18,7 @@
       "cargoFeatures": { "mode": "exclusive", "names": ["backend-tiny-skia"] },
       "description": "Hayate — GPU-native UI substrate",
       "includeInDefaultBuild": true,
-      "npmName": "@torimi/hayate-adapter-web-cpu",
-      "host": { "backend": "tiny-skia" }
+      "npmName": "@torimi/hayate-adapter-web-cpu"
     },
     {
       "name": "pkg-null",
@@ -30,8 +28,7 @@
       "description": "Hayate — GPU-native UI substrate",
       "includeInDefaultBuild": true,
       "npmName": "hayate-adapter-web-null",
-      "private": true,
-      "host": null
+      "private": true
     }
   ]
 }

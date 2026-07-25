@@ -6,11 +6,11 @@
 
 ---
 
-### WEBA-01 — モードはランタイム自動判定
-**規範文:** モード選択はランタイム自動判定とする。WebGPU と EditContext API の両方が使えれば Canvas Mode、いずれか欠ければ HTML Mode。判定は host（Hayate web host bootstrap = `@torimi/hayate-host`）が行い、Hayate は Canvas/HTML 両レンダラーを独立に export してアプリは意識しない。
-**出典:** ADR-0029, ADR-0037, ADR-0004（host bootstrap の所属確定）, `CONTEXT.md`
-**状況:** 🟢 — Canvas backend の probe・query 解釈・Auto 順序は Hayate 側 host bootstrap **`@torimi/hayate-host`**（`src/resolve-backend.ts`・`web-host.test.ts`）に局在する。Web entry は EditContext 欠如または明示 `dom` のときだけ DOM renderer へ退避し、それ以外を Host へ委譲する。Tsubame app パッケージは backend の名前も選択結果も持たない。
-**備考:** DOM 退避は Web entry が明示 `?renderer=dom` または EditContext 欏如を見て Hayate Host を起動しないことで実現する。Tsubame の helper はこの二値判定だけを持つ。Canvas backend は **Vello → tiny-skia** の2候補に限定する。`?renderer=vello|tiny-skia` の解釈、候補語彙、選択結果はすべて `@torimi/hayate-host` が所有する。`createHayateWebHost` は明示 override＞クエリ強制＞Auto の順で解決し、Auto では WebGPU が使えれば Vello、使えなければ tiny-skia を選び、Vello の初回 init failure 時だけ tiny-skia へ進む。デモページの切替 UI も Host の `renderer-policy` export から選択肢を生成する。
+### WEBA-01 — Canvas Mode は標準 Worker 経路
+**規範文:** Web entry は明示 `?renderer=dom` または EditContext 欠如時だけ HTML Mode を選び、それ以外は Canvas Mode とする。Canvas Mode は opt-in flag なしで OffscreenCanvas＋単一 Worker を使い、Worker が Core・Render Host・Scene Renderer・共通 latest-wins frame pipeline・surface を同じ lifetime で所有する。main thread は DOM input / IME / clock transport のみを担う。
+**出典:** ADR-0029, ADR-0037, ADR-0004, ADR-0128, ADR-0157
+**状況:** ✅ — `@torimi/hayate-host` の `createHayateWebHost` は必ず一つの module Worker を起動して canvas を transfer する。Worker/OffscreenCanvas 不在と renderer 初期化失敗は typed boot failure であり、main-thread Canvas fallback はない。初回 renderer 選択は Worker 内の Rust Render Host が **Vello → tiny-skia** の順で行い、初回 init failure のときだけ次候補へ進む。選択後の render / surface / context failure は terminal で、renderer/Worker を再起動しない。production と test は同じ host 経路を使い、renderer/Worker query flag と旧 oracle は持たない。
+**備考:** HTML Mode は独立経路のまま変更しない。Tsubame app パッケージは DOM への明示 escape と EditContext の二値判定だけを持ち、Canvas renderer の名前や選択結果を持たない。
 
 ### WEBA-02 — Canvas Mode は eager 変更
 **規範文:** Canvas Mode の変更（`element_create` / `element_set_style` / `element_append_child` 等）は `ElementTree` に即時反映する（遅延キューなし）。Tsubame が1フレーム分を JS 側でバッチ化し `apply_mutations` 1回で渡す。
@@ -59,8 +59,7 @@
 ## 集計
 | 状況 | 件数 | ID |
 |---|---|---|
-| ✅実装済み | 6 | WEBA-02〜07 |
-| 🟡部分 | 1 | WEBA-01 |
+| ✅実装済み | 7 | WEBA-01〜07 |
 | ⬜（歴史） | 1 | WEBA-08 |
 
 > Canvas/HTML の Element Layer コードは WASM 専用で native Rust テスト不可（テストは WASM ビルド + JS ランタイム必須）。これは §8 全体に掛かる検証上の制約。

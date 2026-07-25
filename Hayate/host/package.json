@@ -1,7 +1,7 @@
 {
   "name": "@torimi/hayate-host",
   "version": "0.1.0",
-  "description": "Hayate JS host glue — web bootstrap (WebGPU probe / backend 選択 / WASM ロード / surface 取得) と native pump。RawHayate を返し、Tsubame の host-blind HayateRenderer を駆動する合成ルートへ渡す（CONTEXT-MAP / ADR-0117）。",
+  "description": "Hayate JS host glue — web の OffscreenCanvas＋単一 Worker bootstrap と native pump。RawHayate を返し、Tsubame の host-blind HayateRenderer を駆動する合成ルートへ渡す（CONTEXT-MAP / ADR-0117 / ADR-0157）。",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
@@ -45,8 +45,7 @@
   },
   "dependencies": {
     "@torimi/hayate-protocol-spec": "workspace:*",
-    "@torimi/hayate-adapter-web": "workspace:*",
-    "@torimi/hayate-adapter-web-cpu": "workspace:*"
+    "@torimi/hayate-adapter-web": "workspace:*"
   },
   "devDependencies": {
     "happy-dom": "^20.11.0",

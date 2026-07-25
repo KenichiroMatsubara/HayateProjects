@@ -20,6 +20,7 @@ export interface WorkerRawHayate {
     draws: Float32Array,
   ): void;
   set_background_color(r: number, g: number, b: number): void;
+  set_tuning(json: string): void;
   render(timestampMs: number): Promise<void> | undefined;
   resize_surface(width: number, height: number, dpr: number): Promise<void> | undefined;
   complete_active(): Promise<void> | undefined;
@@ -158,6 +159,9 @@ export class WasmWorkerEngine implements WorkerEngine {
         break;
       case 'background':
         raw.set_background_color(command.r, command.g, command.b);
+        break;
+      case 'tuning':
+        raw.set_tuning(command.json);
         break;
     }
   }

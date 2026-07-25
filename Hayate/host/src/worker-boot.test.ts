@@ -1,9 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  WORKER_ENGINE_QUERY_PARAM,
-  WORKER_ENGINE_QUERY_VALUE,
-  shouldUseWorkerEngine,
   bootWorkerEngineBridge,
   workerSurfaceMetrics,
   type WorkerTransport,
@@ -11,7 +8,7 @@ import {
 import type { MainToWorker, WorkerToMain, MainEditContextSink } from './worker-host.js';
 
 /**
- * OffscreenCanvas＋単一 Worker への opt-in 配線（ADR-0128 web 半分・#648）の契約テスト。実 Worker /
+ * Canvas Mode の標準 OffscreenCanvas＋単一 Worker 配線（ADR-0128 / ADR-0157）の契約テスト。実 Worker /
  * OffscreenCanvas を巻き込まず、transport（postMessage）と canvas transfer を注入 seam で差し替えて、
  * main→Worker の input/IME 橋渡しとライフサイクル（init transfer・detach terminate）を観測する。
  */
@@ -66,28 +63,6 @@ function recordingImeSink(): MainEditContextSink & {
   };
 }
 
-describe('shouldUseWorkerEngine (opt-in gate, #648)', () => {
-  it('defaults to the main-thread path when nothing opts in', () => {
-    expect(shouldUseWorkerEngine(undefined, undefined)).toBe(false);
-    expect(shouldUseWorkerEngine(undefined, '')).toBe(false);
-    expect(shouldUseWorkerEngine(undefined, '?foo=bar')).toBe(false);
-  });
-
-  it('honours an explicit boolean flag over the query string', () => {
-    expect(shouldUseWorkerEngine(true, undefined)).toBe(true);
-    expect(shouldUseWorkerEngine(false, `?${WORKER_ENGINE_QUERY_PARAM}=${WORKER_ENGINE_QUERY_VALUE}`)).toBe(
-      false,
-    );
-  });
-
-  it('opts in via the named query parameter', () => {
-    expect(
-      shouldUseWorkerEngine(undefined, `?${WORKER_ENGINE_QUERY_PARAM}=${WORKER_ENGINE_QUERY_VALUE}`),
-    ).toBe(true);
-    expect(shouldUseWorkerEngine(undefined, `?${WORKER_ENGINE_QUERY_PARAM}=off`)).toBe(false);
-  });
-});
-
 describe('worker surface metrics', () => {
   it('converts CSS pixels to a DPR-scaled OffscreenCanvas buffer without zero dimensions', () => {
     expect(workerSurfaceMetrics(320, 180, 2)).toEqual({
@@ -126,6 +101,7 @@ describe('bootWorkerEngineBridge (main<->worker wiring, #648)', () => {
     expect(init?.msg).toEqual({ kind: 'init', canvas: offscreen, width: 800, height: 600, dpr: 2 });
     // OffscreenCanvas は transfer リストで渡す（COOP/COEP 不要）。
     expect(init?.transfer).toContain(offscreen);
+    expect(canvas.style.touchAction).toBe('none');
   });
 
   it('forwards main-thread pointer / wheel / keyboard input to the worker', () => {

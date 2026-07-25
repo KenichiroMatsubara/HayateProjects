@@ -26,18 +26,6 @@ function validateTarget(target) {
   if (typeof target.includeInDefaultBuild !== 'boolean') invalid(target, 'includeInDefaultBuild must be a boolean');
   if (typeof target.npmName !== 'string' || target.npmName === '') invalid(target, 'npmName must be a non-empty string');
 
-  // host maps a target to the CanvasBackend value Hayate/host/src/index.ts's
-  // loadCanvasBackend loads it for (null when nothing in the host imports this
-  // target, e.g. pkg-null is Tsubame-test-only — see #703).
-  if (target.host !== null) {
-    if (typeof target.host !== 'object') invalid(target, 'host must be null or an object');
-    if (typeof target.host.backend !== 'string') invalid(target, 'host.backend must be a string');
-    if (target.host.bootstrap !== undefined) invalid(target, 'host.bootstrap is no longer supported');
-    if (target.host.runtimeLayerPresentArg !== undefined) {
-      invalid(target, 'host.runtimeLayerPresentArg is no longer supported');
-    }
-  }
-
   const { cargoFeatures } = target;
   if (!cargoFeatures || !FEATURE_MODES.has(cargoFeatures.mode)) {
     invalid(target, `cargoFeatures.mode must be one of ${[...FEATURE_MODES].join(', ')}`);
@@ -120,9 +108,13 @@ export const GITIGNORE_CONTENTS = '*\n!package.json\n!README.md\n';
 // closure reads as one system. Manifest-driven like package.json so a new backend
 // gets a README with nothing to hand-maintain.
 export function readmeFor(target) {
+  const rendererVariant =
+    target.cargoFeatures.mode === 'inherit'
+      ? 'standard Worker bundle (Vello → tiny-skia boot order)'
+      : target.cargoFeatures.names.join(', ');
   return `# ${target.npmName}
 
-Hayate — a GPU-native UI substrate — compiled to WebAssembly (web backend: \`${target.host?.backend ?? 'null (test-only)'}\`).
+Hayate — a GPU-native UI substrate — compiled to WebAssembly (\`${rendererVariant}\`).
 This is a low-level adapter loaded by [\`@torimi/hayate-host\`](https://www.npmjs.com/package/@torimi/hayate-host); you normally
 depend on it transitively, not directly.
 
@@ -143,12 +135,11 @@ Alpha (0.x): no backward-compatibility guarantees.
 // wasm-bindgen's snippets.
 //
 // The package name is the target's own npmName, not the shared crate-level
-// npmPackageName (#765). host depends on pkg / pkg-tiny-skia as
-// sibling file: deps under distinct package names. When both package.jsons declared
+// npmPackageName (#765). The release workspace keeps diagnostic/legacy variants
+// under distinct package names. When both package.jsons declared
 // the same name "hayate-adapter-web", pnpm hit a name collision and routed one
 // alias through a .pnpm virtual-store copy that only carried package.json (no
-// .js), so Rolldown failed to resolve the dynamic import('hayate-adapter-web-cpu')
-// in the Pages demo build. Naming each dir after its npmName removes the
+// .js). Naming each dir after its npmName removes the
 // collision so every alias links straight to its source dir.
 // 手元 publish を拒否するガード（ADR-0007 §4）。publish は GitHub Actions のリリース
 // ワークフロー一本で、GITHUB_ACTIONS 環境変数が無い場所からの publish は fail-closed で止める。

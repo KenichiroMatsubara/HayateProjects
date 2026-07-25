@@ -14,6 +14,7 @@ describe('WasmWorkerEngine production path', () => {
       element_remove: () => {},
       apply_mutations: () => {},
       set_background_color: () => {},
+      set_tuning: () => {},
       render: (timestamp) => {
         calls.push(`present(${timestamp})`);
         return undefined;
@@ -79,6 +80,7 @@ describe('WasmWorkerEngine production path', () => {
       element_remove: () => {},
       apply_mutations: () => {},
       set_background_color: () => {},
+      set_tuning: () => {},
       render: (timestamp: number) => {
         admitted.push(timestamp);
         if (started++ === 0) return first;
@@ -142,6 +144,7 @@ describe('WasmWorkerEngine production path', () => {
       element_remove: () => {},
       apply_mutations: () => {},
       set_background_color: () => {},
+      set_tuning: () => {},
       render: () => completion,
       complete_active: () => {
         throw new Error('a failed completion must not advance the pipeline');

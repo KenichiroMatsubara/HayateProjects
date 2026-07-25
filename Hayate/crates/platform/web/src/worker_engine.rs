@@ -5,7 +5,7 @@
 //! main thread only transfers structured-clone-safe transport messages.
 
 use hayate_app_host::render_host::SceneRenderer;
-use hayate_core::{EditIntent, ElementTree, InteractionIntent, PointerKind, PointerRouting};
+use hayate_core::{EditIntent, ElementTree, PointerKind};
 use hayate_frame_pipeline::{
     FrameSubmission, LatestWinsFramePipeline, PipelineCommand, PipelineObservation,
 };
@@ -17,6 +17,7 @@ use web_sys::OffscreenCanvas;
 use crate::backend::{anyhow_to_js, init_worker_render_host, RenderHost};
 use crate::ime_bridge::WebImeBridge;
 use crate::shared::{element_id_from_f64, kind_from_u32};
+use crate::worker_touch_scroll::WorkerTouchScroll;
 
 #[derive(Debug)]
 enum WorkerLifecycle {
@@ -36,6 +37,7 @@ pub struct HayateWorkerEngine {
     tree: ElementTree,
     pipeline: LatestWinsFramePipeline<FrameSubmission, WorkerLifecycle>,
     ime: WebImeBridge,
+    touch_scroll: WorkerTouchScroll,
     background: [f32; 4],
     detached: bool,
 }
@@ -63,6 +65,7 @@ impl HayateWorkerEngine {
             tree,
             pipeline: LatestWinsFramePipeline::new(),
             ime: WebImeBridge::default(),
+            touch_scroll: WorkerTouchScroll::new(),
             background: [0.0, 0.0, 0.0, 1.0],
             detached: false,
         })
@@ -130,6 +133,19 @@ impl HayateWorkerEngine {
         Ok(())
     }
 
+    /// Apply development tuning inside the Worker. Invalid input intentionally keeps compiled
+    /// defaults, matching the pre-cutover host behavior.
+    pub fn set_tuning(&mut self, json: &str) -> Result<(), JsValue> {
+        self.ensure_attached()?;
+        let Ok(parsed) = crate::tuning::TuningJson::parse(json) else {
+            return Ok(());
+        };
+        self.tree.set_scroll_tuning(parsed.scroll_tuning());
+        self.tree.set_chrome_tuning(parsed.chrome_tuning());
+        self.tree.set_scroll_profile(parsed.scroll_profile());
+        Ok(())
+    }
+
     /// Commit one immutable frame, admit it to the common Rust policy, and present admitted work.
     pub fn render(&mut self, timestamp_ms: f64) -> Result<Option<js_sys::Promise>, JsValue> {
         self.ensure_attached()?;
@@ -165,15 +181,8 @@ impl HayateWorkerEngine {
 
     pub fn on_pointer_down_with_kind(&mut self, x: f32, y: f32, kind: u32) -> Result<(), JsValue> {
         self.ensure_attached()?;
-        let _ = self
-            .tree
-            .apply_interaction_intent(InteractionIntent::PointerDown {
-                x,
-                y,
-                modifiers: 0,
-                pointer_kind: PointerKind::from_u32(kind),
-                routing: PointerRouting::CanvasHitTest,
-            });
+        self.touch_scroll
+            .pointer_down(&mut self.tree, x, y, PointerKind::from_u32(kind));
         Ok(())
     }
 
@@ -183,14 +192,8 @@ impl HayateWorkerEngine {
 
     pub fn on_pointer_move_with_kind(&mut self, x: f32, y: f32, kind: u32) -> Result<(), JsValue> {
         self.ensure_attached()?;
-        let _ = self
-            .tree
-            .apply_interaction_intent(InteractionIntent::PointerMove {
-                x,
-                y,
-                pointer_kind: PointerKind::from_u32(kind),
-                routing: PointerRouting::CanvasHitTest,
-            });
+        self.touch_scroll
+            .pointer_move(&mut self.tree, x, y, PointerKind::from_u32(kind));
         Ok(())
     }
 
@@ -200,14 +203,8 @@ impl HayateWorkerEngine {
 
     pub fn on_pointer_up_with_kind(&mut self, x: f32, y: f32, kind: u32) -> Result<(), JsValue> {
         self.ensure_attached()?;
-        let _ = self
-            .tree
-            .apply_interaction_intent(InteractionIntent::PointerUp {
-                x,
-                y,
-                pointer_kind: PointerKind::from_u32(kind),
-                routing: PointerRouting::CanvasHitTest,
-            });
+        self.touch_scroll
+            .pointer_up(&mut self.tree, x, y, PointerKind::from_u32(kind));
         Ok(())
     }
 

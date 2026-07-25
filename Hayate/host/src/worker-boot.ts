@@ -1,13 +1,12 @@
 /**
- * OffscreenCanvas＋単一 Worker への opt-in 配線（ADR-0128 web 半分の実 boot 側・#648）。
+ * Canvas Mode の標準 OffscreenCanvas＋単一 Worker 配線。
  *
  * `worker-host.ts` が定義する main↔Worker のメッセージ契約（{@link MainThreadShim} /
  * {@link WorkerEngineDispatcher}）を、実際の boot 経路から掴む「main スレッド側の橋渡し」を組む。
  * canvas を `transferControlToOffscreen()` で Worker へ transfer し、DOM の pointer/wheel/keyboard 入力を
  * shim 経由で Worker へ流し、Worker からの IME presentation を main の EditContext へ適用する。エンジン
  * 一式（WASM core・Render Host・selected Scene Renderer・common frame pipeline）は Worker 側で走り、
- * main は transport shim に徹する（診断 要因 2）。**既定は OFF・計測ゲート**（ADR-0128
- * 「native コミット・web は計測ゲート」）で、opt-in 時のみこの経路が起きる。
+ * main は transport shim に徹する。
  */
 
 import {
@@ -19,10 +18,6 @@ import {
   type WorkerToMain,
 } from './worker-host.js';
 import type { RawHayate } from './raw-hayate.js';
-
-/** opt-in を有効化するクエリパラメータ名と値（`?hayate-engine=worker`）。既定 OFF・計測ゲート。 */
-export const WORKER_ENGINE_QUERY_PARAM = 'hayate-engine';
-export const WORKER_ENGINE_QUERY_VALUE = 'worker';
 
 /**
  * `KeyboardEvent` の修飾キーを shim の `key(key, modifiers)` へ渡す bitmask（名前付き。マジックナンバー
@@ -119,19 +114,6 @@ export function workerSurfaceMetrics(
   };
 }
 
-/**
- * opt-in（明示フラグ or クエリパラメータ）で Worker エンジン経路を使うか判定する。明示フラグが与えられ
- * ればそれを優先し、無ければ `location.search` の {@link WORKER_ENGINE_QUERY_PARAM} を見る。既定 OFF。
- */
-export function shouldUseWorkerEngine(
-  explicit: boolean | undefined,
-  search: string | undefined,
-): boolean {
-  if (explicit != null) return explicit;
-  if (!search) return false;
-  return new URLSearchParams(search).get(WORKER_ENGINE_QUERY_PARAM) === WORKER_ENGINE_QUERY_VALUE;
-}
-
 /** `KeyboardEvent` から shim へ渡す修飾 bitmask を組む。 */
 function keyModifiers(e: KeyboardEvent): number {
   return (
@@ -194,6 +176,8 @@ export function bootWorkerEngineBridge(
   shim.init(offscreen, initialMetrics.width, initialMetrics.height, initialMetrics.dpr);
 
   // 入力を Worker へ橋渡しする main スレッドリスナ。座標は canvas ローカル（offsetX/offsetY）。
+  // Canvas Mode owns touch scrolling; browser page panning must not compete with the Worker.
+  canvas.style.touchAction = 'none';
   const pointerKind = (event: PointerEvent): 'mouse' | 'touch' | 'pen' =>
     event.pointerType === 'touch' || event.pointerType === 'pen'
       ? event.pointerType
@@ -264,7 +248,6 @@ export function bootWorkerEngineBridge(
  * Worker state を main に複製しないため安全な既定を返す。
  */
 export function createWorkerInputProxy(shim: MainThreadShim): RawHayate {
-  const noop = (): void => undefined;
   let frameId = 0;
   const prepared = new Map<number, number>();
   return {
@@ -302,7 +285,7 @@ export function createWorkerInputProxy(shim: MainThreadShim): RawHayate {
     },
     set_background_color: (r, g, b) =>
       shim.mutation({ kind: 'background', r, g, b }),
-    set_tuning: noop,
+    set_tuning: (json) => shim.mutation({ kind: 'tuning', json }),
     register_listener: () => 0,
     // query 面は Worker 側 state を持たないので安全な既定（main は状態を持たない）。
     element_get_text: () => '',

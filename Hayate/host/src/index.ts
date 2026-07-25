@@ -1,18 +1,8 @@
 import manifest from '@torimi/hayate-protocol-spec/manifest' with { type: 'json' };
 import {
-  resolveCanvasBackendAttemptOrder,
-  type CanvasBackend,
-} from './resolve-backend.js';
-import { loadCanvasBackend } from './load-canvas-backend.generated.js';
-import {
-  attachAccessibilityMirror,
-  type AccessibilityMirror,
-} from './accessibility-mirror.js';
-import {
   bootWorkerEngineBridge,
-  createWorkerInputProxy,
   createBrowserWorkerTransport,
-  shouldUseWorkerEngine,
+  createWorkerInputProxy,
   WorkerBootError,
   type WorkerTransport,
 } from './worker-boot.js';
@@ -23,16 +13,12 @@ import type {
 } from './worker-host.js';
 import type { RawHayate } from './raw-hayate.js';
 
-export type { CanvasBackend } from './resolve-backend.js';
 export type { RawHayate, HayateEffectiveVisual, HayateColorRecord } from './raw-hayate.js';
 export { MainThreadShim, WorkerEngineDispatcher } from './worker-host.js';
 export {
   bootWorkerEngineBridge,
   createWorkerInputProxy,
   createBrowserWorkerTransport,
-  shouldUseWorkerEngine,
-  WORKER_ENGINE_QUERY_PARAM,
-  WORKER_ENGINE_QUERY_VALUE,
   WORKER_ENTRY_URL,
   WORKER_NAME,
   WORKER_DETACH_TIMEOUT_MS,
@@ -71,87 +57,37 @@ export {
   type AccessibilityMirror,
 } from './accessibility-mirror.js';
 
-/**
- * このホストに焼き込まれた decoder の wire 定数バージョン。Torimi はこれをバンドルの encoder
- * 版数と起動時に突き合わせ、一致時のみ mount する（#530 / CONTEXT「Protocol Version」）。decoder
- * （WASM）と同じ `@torimi/hayate-protocol-spec` の manifest version を source of truth とする。
- */
+/** Decoder version compiled into this host. */
 export const HOST_PROTOCOL_VERSION: number = manifest.version;
 
 /**
- * web bootstrap が確立して合成ルートへ渡す host。`raw` は Hayate ランタイムのポート、
- * `requestFrame`/`cancelFrame` は host が確立した frame-clock。App はこれを
- * `new HayateRenderer({ raw, requestFrame, cancelFrame })` に渡して mount する。
- * browser / native は同じ形（`./native` の {@link import('./native.js').NativeHost}）。
+ * Canvas Mode host. The main/DOM thread owns only the clock and structured-clone transport;
+ * OffscreenCanvas, Core, Render Host, selected Scene Renderer, and the shared frame pipeline all
+ * live in one Worker.
  */
 export interface WebHost {
   readonly raw: RawHayate;
   readonly requestFrame: (cb: FrameRequestCallback) => number;
   readonly cancelFrame: (handle: number) => void;
-  /** Shared Latest-Wins Pipeline counters. Main-thread mode reports an idle zero snapshot. */
   readonly pipelineObservation: () => Promise<FramePipelineObservation>;
-  /**
-   * host のライフサイクル teardown。main path は Accessibility Mirror を外し、Worker path は
-   * Shutdown barrier 完了後に renderer/surface を解放して Worker を停止する。
-   */
   readonly detach: () => void;
 }
 
 export interface CreateHayateWebHostOptions {
-  /** WebGPU プローブ結果に関わらずロードする WASM バックエンド。 */
-  backend?: CanvasBackend;
-  /** 開発時専用の `tuning.json` テキスト。指定すると WASM レンダラに渡して味付け
-   * 定数のデフォルトを上書きする。不正な JSON は無視され、ビルド時のデフォルトが
-   * 維持される。未指定なら上書きしない。 */
+  /** Development-only tuning JSON applied inside the Worker before the first app frame. */
   tuning?: string;
-  /** clock 源。未指定ならブラウザの rAF。clock 源の確立は host bootstrap の責務。 */
+  /** Clock injection seam. Rendering still executes in the Worker. */
   requestFrame?: (cb: FrameRequestCallback) => number;
   cancelFrame?: (handle: number) => void;
-  /** テスト注入 seam。既定は `navigator.gpu` プローブ。 */
-  probeWebGPU?: () => Promise<boolean>;
-  /** テスト注入 seam。既定は `hayate-adapter-web*` の動的 import + `init`。 */
-  loadBackend?: (
-    backend: CanvasBackend,
-    canvas: HTMLCanvasElement,
-  ) => Promise<RawHayate>;
-  /**
-   * テスト注入 seam。既定は `@torimi/hayate-host` の {@link attachAccessibilityMirror}（ADR-0124）。
-   * canvas boot のたびに `(raw, canvas)` で呼ぶ。返った {@link AccessibilityMirror} の `poll` は
-   * host が frame-clock に相乗りさせ（#645）、`detach` を `WebHost.detach` に通す。
-   */
-  attachMirror?: (
-    raw: RawHayate,
-    canvas: HTMLCanvasElement,
-  ) => AccessibilityMirror;
-  /**
-   * OffscreenCanvas＋単一 Worker へエンジンを載せる opt-in（ADR-0128 web 半分・#648）。明示 true で
-   * 有効、false で無効、未指定なら {@link locationSearch} のクエリパラメータで判定する。**既定は OFF**
-   * （計測ゲート）。boot 不能時は {@link WorkerBootError} を返し、main-thread renderer へ fallback しない。
-   */
-  workerEngine?: boolean;
-  /** opt-in 判定に使う query 文字列。既定は `location.search`。テスト注入 seam。 */
-  locationSearch?: string;
-  /** Worker モードの transport 注入 seam。未指定なら production module Worker を一つ生成する。 */
+  /** Transport injection seam. Production creates exactly one module Worker. */
   spawnWorker?: () => WorkerTransport;
-  /** Worker モードで Worker→main の IME presentation を適用する EditContext 面（ADR-0069）。既定 no-op。 */
+  /** Main-thread EditContext sink (ADR-0069). */
   imeSink?: MainEditContextSink;
-  /** `canvas.transferControlToOffscreen()` の注入 seam。既定は実 API。 */
+  /** OffscreenCanvas transfer injection seam. */
   transferControlToOffscreen?: (canvas: HTMLCanvasElement) => CanvasHandle;
 }
 
-/** `navigator.gpu` で WebGPU の利用可否を判定する。 */
-export async function probeWebGPU(): Promise<boolean> {
-  try {
-    const gpu = (navigator as { gpu?: { requestAdapter(): Promise<unknown> } }).gpu;
-    if (!gpu) return false;
-    const adapter = await gpu.requestAdapter();
-    return adapter != null;
-  } catch {
-    return false;
-  }
-}
-
-/** Worker の IME presentation を main-thread-only EditContext へ適用する production sink。 */
+/** Worker IME presentation is the only engine fact projected back onto the DOM thread. */
 function createMainEditContextSink(canvas: HTMLCanvasElement): MainEditContextSink {
   const EditContextCtor = (
     globalThis as unknown as { EditContext?: new () => object }
@@ -186,24 +122,36 @@ function createMainEditContextSink(canvas: HTMLCanvasElement): MainEditContextSi
 }
 
 /**
- * Worker エンジン経路を組む。canvas を単一 Worker へ transfer し、入力/IME/mutation transport を
- * 橋渡しする shim を配線した {@link WebHost} を返す。WASM core、Render Host、Scene Renderer、
- * common frame pipeline は Worker が所有する。boot 不能時は typed failure を返し main renderer へ
- * fallback しない。
+ * Start the sole Canvas Mode execution path. Missing Worker/OffscreenCanvas capabilities and
+ * renderer initialization errors remain typed boot failures; no main-thread Canvas renderer is
+ * constructed as a fallback.
  */
-async function createWorkerEngineHost(
+export async function createHayateWebHost(
   canvas: HTMLCanvasElement,
-  options: CreateHayateWebHostOptions,
+  options: CreateHayateWebHostOptions = {},
 ): Promise<WebHost> {
-  const spawn = options.spawnWorker ?? createBrowserWorkerTransport;
-
+  const transport = (options.spawnWorker ?? createBrowserWorkerTransport)();
   const transferControlToOffscreen =
     options.transferControlToOffscreen ??
-    ((c: HTMLCanvasElement) =>
-      (c as unknown as { transferControlToOffscreen(): CanvasHandle }).transferControlToOffscreen());
-  const dpr = typeof globalThis.devicePixelRatio === 'number' ? globalThis.devicePixelRatio : 1;
+    ((surface: HTMLCanvasElement) => {
+      const transfer = (
+        surface as HTMLCanvasElement & {
+          transferControlToOffscreen?: () => CanvasHandle;
+        }
+      ).transferControlToOffscreen;
+      if (typeof transfer !== 'function') {
+        throw new WorkerBootError(
+          'offscreen-canvas-unavailable',
+          'transferControlToOffscreen is unavailable',
+        );
+      }
+      return transfer.call(surface);
+    });
+  const dpr =
+    typeof globalThis.devicePixelRatio === 'number'
+      ? globalThis.devicePixelRatio
+      : 1;
 
-  const transport = spawn();
   let bridge;
   try {
     bridge = bootWorkerEngineBridge(canvas, {
@@ -222,133 +170,18 @@ async function createWorkerEngineHost(
     );
   }
 
-  const requestFrame =
-    options.requestFrame ?? ((cb: FrameRequestCallback) => globalThis.requestAnimationFrame(cb));
-  const cancelFrame =
-    options.cancelFrame ?? ((handle: number) => globalThis.cancelAnimationFrame(handle));
-
-  return {
-    raw: createWorkerInputProxy(bridge.shim),
-    requestFrame,
-    cancelFrame,
-    pipelineObservation: bridge.pipelineObservation,
-    detach: bridge.detach,
-  };
-}
-
-/**
- * Hayate の web Render Host を起動する：WebGPU をプローブし、Renderer Selection Policy
- * で backend を選び、WASM をロードして surface 上にレンダラを初期化し、{@link WebHost}
- * （`raw` + frame-clock）を返す。
- *
- * pointer / wheel 入力・resize 追従・IME は `hayate-adapter-web` が `HayateElementRenderer::init`
- * 内で自前配線・自己同期する（ADR-0080 / ADR-0069）。host は surface・clock を確立する
- * だけで、Tsubame の host-blind コアは raw + clock しか受け取らない（#476, #477）。
- */
-export async function createHayateWebHost(
-  canvas: HTMLCanvasElement,
-  options?: CreateHayateWebHostOptions,
-): Promise<WebHost> {
-  // #648: OffscreenCanvas＋単一 Worker 経路の opt-in（既定 OFF・計測ゲート、ADR-0128）。有効時は main で
-  // WASM をロードせず、canvas を Worker へ transfer してエンジンを Worker 側で走らせ、main は入力/IME を
-  // 橋渡しする薄い shim に徹する（診断 要因 2）。無効時は以降の従来 main スレッド経路のまま挙動不変。
-  const search =
-    options?.locationSearch ??
-    (typeof location !== 'undefined' ? location.search : undefined);
-  const effectiveOptions: CreateHayateWebHostOptions = { ...options };
-  if (shouldUseWorkerEngine(effectiveOptions.workerEngine, search)) {
-    return createWorkerEngineHost(canvas, effectiveOptions);
-  }
-
-  const probe = effectiveOptions.probeWebGPU ?? probeWebGPU;
-  const load =
-    effectiveOptions.loadBackend ??
-    ((backend: CanvasBackend, canvas: HTMLCanvasElement) =>
-      loadCanvasBackend(backend, canvas));
-  const attachMirror = effectiveOptions.attachMirror ?? attachAccessibilityMirror;
-
-  const webgpuAvailable = await probe();
-  // backend 選択（どの WASM バンドル＝ Scene Renderer をロードするか）を「どれを / なぜ」
-  // の両方で決める。`search` を渡すことで host 自体が `?renderer=vello|tiny-skia`
-  // のディープリンク（Android の `am start -e hayate.renderer` 相当）に追従する。選択は
-  // ネイティブの `selected scene renderer:` ログに倣い console に観測点を残す（WASM 側は
-  // 初期化後に Rust の `render_host.rs` が最終選択レンダラ／却下理由を console_log へ出す）。
-  const attempts = resolveCanvasBackendAttemptOrder(effectiveOptions, webgpuAvailable, search ?? '');
-  let raw: RawHayate | undefined;
-  let lastError: unknown;
-  for (const selection of attempts) {
-    console.info(
-      `hayate host: scene renderer bundle = ${selection.backend} (${selection.reason})`,
-    );
-    try {
-      raw = await load(selection.backend, canvas);
-      break;
-    } catch (error) {
-      lastError = error;
-      console.warn(
-        `hayate host: scene renderer init failed = ${selection.backend} (${selection.reason})`,
-        error,
-      );
-    }
-  }
-  if (!raw) {
-    throw new Error('createHayateWebHost: no scene renderer could be initialized', {
-      cause: lastError,
-    });
-  }
-
-  // 開発時専用の味付け定数の上書き。最初のフレーム前に一度だけ適用する。不正な JSON は
-  // WASM のセッタ内で throw するが、握りつぶしてコンパイル済みデフォルトへフォール
-  // バックさせ、アプリを壊さない。
-  if (effectiveOptions.tuning != null) {
-    try {
-      raw.set_tuning(effectiveOptions.tuning);
-    } catch (err) {
-      console.warn('createHayateWebHost: ignoring invalid tuning.json', err);
-    }
-  }
-
-  // 既定 clock はブラウザの rAF。lookup は tick 時まで遅延させ、非ブラウザ環境での
-  // 構築（テスト等）が落ちないようにする。clock 源の確立は host bootstrap の責務。
-  const baseRequestFrame =
-    effectiveOptions.requestFrame ?? ((cb: FrameRequestCallback) => globalThis.requestAnimationFrame(cb));
-  const cancelFrame =
-    effectiveOptions.cancelFrame ?? ((handle: number) => globalThis.cancelAnimationFrame(handle));
-
-  // Accessibility Mirror（ADR-0124）の attach 点。canvas+raw を握るこの 1 箇所で attach し、
-  // teardown 用の detach を host に通す。本体は #592 が実装し、全 Canvas アプリへ自動で効く。
-  const mirror = attachMirror(raw, canvas);
-
-  // #645: ミラーはもう独立 rAF ループを持たない。host が返す frame-clock を包み、レンダラの各フレーム
-  // コールバック末尾でミラーを 1 回 poll する（相乗り）。レンダラが idle に落ちて frame を出さなければ
-  // ミラーの tick も走らず、frame-clock がアプリ全体で 1 本になる（診断 要因 1 / ADR-0126）。ミラー poll
-  // は #642 の dirty ゲートで変更なしフレームはほぼ無償。フレーム後に poll するのでレイアウト後の bounds
-  // を読める。
-  const requestFrame = (cb: FrameRequestCallback): number =>
-    baseRequestFrame((timestamp) => {
-      cb(timestamp);
-      mirror.poll();
-    });
-
-  let detached = false;
-  const detach = (): void => {
-    if (detached) return;
-    detached = true;
-    mirror.detach();
-  };
+  const raw = createWorkerInputProxy(bridge.shim);
+  if (options.tuning != null) raw.set_tuning(options.tuning);
 
   return {
     raw,
-    requestFrame,
-    cancelFrame,
-    pipelineObservation: async () => ({
-      accepted: 0,
-      coalesced: 0,
-      dropped: 0,
-      active: false,
-      pending: 0,
-      failure: false,
-    }),
-    detach,
+    requestFrame:
+      options.requestFrame ??
+      ((cb: FrameRequestCallback) => globalThis.requestAnimationFrame(cb)),
+    cancelFrame:
+      options.cancelFrame ??
+      ((handle: number) => globalThis.cancelAnimationFrame(handle)),
+    pipelineObservation: bridge.pipelineObservation,
+    detach: bridge.detach,
   };
 }
