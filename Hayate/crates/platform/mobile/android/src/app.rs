@@ -736,7 +736,7 @@ impl GpuSurface {
 /// 送るだけ（raster/composite は UI スレッド外で走る）。surface 作成は window ハンドルを要するため
 /// UI スレッドで行い、生成後の surface をここで move する（move-after-creation。window をスレッド
 /// 境界へ送らない）。TerminateWindow / reload では `Option` を `None` にして drop → 安全に join。
-pub(crate) type RasterHandle = RasterThread<RasterCommand>;
+pub(crate) type RasterHandle = RasterThread;
 
 /// 生成済み `GpuSurface` を所有する Raster スレッドを起動する（#635）。sink は Frame を present、
 /// Resize を surface 再構成へ写す。surface が失われている間（SurfaceLost〜RebuildSurface）は

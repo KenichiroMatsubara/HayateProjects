@@ -13,6 +13,7 @@ crate-type = ["rlib"]
 
 [dependencies]
 hayate-core = { path = "../../core" }
+hayate-frame-pipeline = { path = "../../frame-pipeline" }
 
 [dev-dependencies]
 # レイヤ分解（extract + quad 合成）の出力パリティを CPU でホスト固定するため（#633）。

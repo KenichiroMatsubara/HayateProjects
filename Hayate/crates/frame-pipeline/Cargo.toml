@@ -1,0 +1,13 @@
+[package]
+name = "hayate-frame-pipeline"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Platform-free latest-wins committed-frame pipeline for Hayate"
+repository.workspace = true
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+hayate-core = { path = "../core" }

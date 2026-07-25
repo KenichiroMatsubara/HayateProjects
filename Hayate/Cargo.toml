@@ -5,6 +5,7 @@ members = [
     "crates/core",
     "crates/app-host",
     "crates/demo-fixtures",
+    "crates/frame-pipeline",
     "crates/scene-renderers/vello",
     "crates/scene-renderers/tiny-skia",
     "crates/scene-renderers/skia",
