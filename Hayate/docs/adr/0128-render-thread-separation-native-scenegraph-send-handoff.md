@@ -5,6 +5,8 @@
 **Date: 2026-06-30**
 
 > 2026-07-20: Android の UI→Raster handoffにおけるsingle-flight・latest-wins・dirty union・lifecycle順序はADR-0154でaccepted decisionとして確定した。Web Workerを含む本ADRの他のdraft範囲は変更しない。
+>
+> 2026-07-25: ADR-0157はWeb/Nativeの非対称をthread・Worker・wake・surface等の実行機構だけに限定し、Raster Handoff以降のlatest-wins、dirty union、lifecycle、failure semanticsを単一の共通moduleへ移した。本ADRのOffscreenCanvas＋単一Worker配置は維持するが、optimization semanticsの非対称を許容する部分はADR-0157が上書きする。
 
 ## Context
 

@@ -158,12 +158,16 @@ _Avoid_: SceneGraph 全体、Layer Presentation の retained state、renderer �
 _Avoid_: `Committed Frame` の一部とする理解、renderer 固有資源の所有者、失敗した frame を成功状態へ反映する設計
 
 **Platform Front（プラットフォームフロント）**:
-OS のフレームループ（web `requestAnimationFrame` / Android `Choreographer`）を所有する per-platform な駆動・入口層。App Host を構築して `request_redraw` クロージャを渡し、毎フレーム `App Host::tick(timestamp_ms)` を呼ぶ。Android は`Latest-Wins Frame Scheduling`でwakeとoverloadを扱う。web binding / native binding が体現する。App Host の裏の trait として収まる Platform Adapter（`Surface`/`FontFetcher`/IME/入力）とは別軸で並立する（ADR-0117、ADR-0154）。
+OS のフレームループ（web `requestAnimationFrame` / Android `Choreographer`）を所有する per-platform な駆動・入口層。App Host を構築して `request_redraw` クロージャを渡し、毎フレーム `App Host::tick(timestamp_ms)` を呼ぶ。wakeと一vsync内の集約を担い、commit済みframe以降のoverload制御は共通`Latest-Wins Frame Pipeline`へ委ねる。web binding / native binding が体現する。App Host の裏の trait として収まる Platform Adapter（`Surface`/`FontFetcher`/IME/入力）とは別軸で並立する（ADR-0117、ADR-0154、ADR-0157）。
 _Avoid_: Platform Adapter との同一視、App Host がこれを兼ねる理解、継続フレーム判定をここが持つ理解（判定は App Host、スケジューリングのみ Platform Front）、timer polling
 
 **Latest-Wins Frame Scheduling（最新優先フレームスケジューリング）**:
-Androidで複数wakeを一つのvsyncへ集約し、Raster Thread処理中は最新のpending `Committed Frame`だけを保持するoverload policy。置換されたframeの未反映変更は失わず、surface lifecycleの順序は置換を跨がせない（ADR-0154）。
+Platform Frontによるplatform固有のwake/vsync集約と、共通`Latest-Wins Frame Pipeline`によるcommit済みframeのoverload制御を組み合わせたend-to-end policy。Native/Webでclockとexecution mechanismは異なるが、frame置換、未反映workの保持、surface lifecycle順序は同じmoduleが決める（ADR-0154、ADR-0157）。
 _Avoid_: frame FIFO、無制限queue、UI threadのraster待ち、dirtyを失うlatest-only drop
+
+**Latest-Wins Frame Pipeline（最新優先フレームパイプライン）**:
+`Committed Frame`の受理からraster完了までを所有するplatform-freeなdeep module。active commandに対して置換可能なpending frameを最大一件だけ保持し、最新の`Scene Snapshot`/`Layer Topology`へ置換しながらdirtyと未反映workをunionする。lifecycle barrier、terminal failure、overload observabilityも同じRust implementationが所有し、Native thread adapterとWeb Worker/event-loop adapterがこれを駆動する（ADR-0157）。
+_Avoid_: `RasterThread`との同一視、Web専用Frame Admission、adapterごとのcoalescing、thread/Worker/surface/renderer resourceの所有者
 
 **DeliverySink**:
 consumer が mount 時に App Host へ渡す Event Delivery の受け口。App Host は `poll_events()` が返す `{listener_id, event}` batch の drain を所有し続け、delivery が空でも毎フレームこの flush 点を駆動する。consumer は handler 由来・非同期由来（Resource / Store / timer）を問わず reactive graph をここで flush する。in-process projection は drain 済み batch を同期 callback へ渡し、handler 実行・flush・Element Layer mutation が return 前に完了してから commit/present へ進む。wire projection は同じ意味順序を二相 frame contract で表し、preparation が batch を返して Rust 呼び出しを終え、JS の handler 実行と mutation flush 後に commit/present する（ADR-0150）。

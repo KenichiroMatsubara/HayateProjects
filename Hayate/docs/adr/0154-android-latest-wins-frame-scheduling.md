@@ -4,6 +4,8 @@ status: accepted
 
 # Android Latest-Wins Frame Scheduling
 
+> 2026-07-25: ADR-0157は本ADRのRaster Handoff以降のpolicyをWeb/Native共通`Latest-Wins Frame Pipeline`へ一般化した。Android Choreographerによるwake/vsync駆動の決定は本ADRに残る。
+
 AndroidのPlatform FrontからRaster Handoffまでを一つのlatest-wins single-flight policyとして扱う。16ms timer polling、unbounded/FIFO frame queue、UI threadのraster待ちは採らない。Platform Frontはpending Choreographer callbackを最大一つだけ所有し、複数の`request_redraw`を次のvsyncへ集約する。Choreographerの`frameTimeNanos`をframe timestampの正本とし、一回のcallbackでApp Hostを最大一回だけcommitする。次vsyncを予約するのはApp Hostがpending visual workを返した場合に限り、idle時はcallback、timer、renderを発生させない。
 
 UI threadはRaster Threadを待たず、handoffは処理中frame一件と置換可能なpending frame一件を上限とする。新しいCommitted FrameはpendingのScene SnapshotとLayer Topologyを最新へ置換する一方、置換されるframeのcontent/chrome dirty、topology変更、Layer Presentationの未反映workをunionして失わない。これにより古いanimation frameを後から再生せず、処理可能な最新stateを表示する。
