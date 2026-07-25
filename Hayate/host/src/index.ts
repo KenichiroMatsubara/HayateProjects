@@ -16,7 +16,11 @@ import {
   WorkerBootError,
   type WorkerTransport,
 } from './worker-boot.js';
-import type { CanvasHandle, MainEditContextSink } from './worker-host.js';
+import type {
+  CanvasHandle,
+  FramePipelineObservation,
+  MainEditContextSink,
+} from './worker-host.js';
 import type { RawHayate } from './raw-hayate.js';
 
 export type { CanvasBackend } from './resolve-backend.js';
@@ -47,6 +51,7 @@ export {
 } from './worker-boot.js';
 export type {
   CanvasHandle,
+  FramePipelineObservation,
   ImePresentation,
   MainEditContextSink,
   MainToWorker,
@@ -83,6 +88,8 @@ export interface WebHost {
   readonly raw: RawHayate;
   readonly requestFrame: (cb: FrameRequestCallback) => number;
   readonly cancelFrame: (handle: number) => void;
+  /** Shared Latest-Wins Pipeline counters. Main-thread mode reports an idle zero snapshot. */
+  readonly pipelineObservation: () => Promise<FramePipelineObservation>;
   /**
    * host のライフサイクル teardown。main path は Accessibility Mirror を外し、Worker path は
    * Shutdown barrier 完了後に renderer/surface を解放して Worker を停止する。
@@ -224,6 +231,7 @@ async function createWorkerEngineHost(
     raw: createWorkerInputProxy(bridge.shim),
     requestFrame,
     cancelFrame,
+    pipelineObservation: bridge.pipelineObservation,
     detach: bridge.detach,
   };
 }
@@ -329,5 +337,18 @@ export async function createHayateWebHost(
     mirror.detach();
   };
 
-  return { raw, requestFrame, cancelFrame, detach };
+  return {
+    raw,
+    requestFrame,
+    cancelFrame,
+    pipelineObservation: async () => ({
+      accepted: 0,
+      coalesced: 0,
+      dropped: 0,
+      active: false,
+      pending: 0,
+      failure: false,
+    }),
+    detach,
+  };
 }

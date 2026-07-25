@@ -11,6 +11,7 @@ use hayate_frame_pipeline::{
 };
 use hayate_layer_compositor::ResidencyEvent;
 use wasm_bindgen::prelude::*;
+use wasm_bindgen_futures::future_to_promise;
 use web_sys::OffscreenCanvas;
 
 use crate::backend::{anyhow_to_js, init_worker_render_host, RenderHost};
@@ -130,7 +131,7 @@ impl HayateWorkerEngine {
     }
 
     /// Commit one immutable frame, admit it to the common Rust policy, and present admitted work.
-    pub fn render(&mut self, timestamp_ms: f64) -> Result<(), JsValue> {
+    pub fn render(&mut self, timestamp_ms: f64) -> Result<Option<js_sys::Promise>, JsValue> {
         self.ensure_attached()?;
         let frame = self.tree.commit_rendered_frame(timestamp_ms);
         self.pipeline
@@ -138,10 +139,15 @@ impl HayateWorkerEngine {
                 FrameSubmission::from_committed_frame(&frame),
             ))
             .map_err(|_| JsValue::from_str("frame pipeline is terminal"))?;
-        self.execute_admitted()
+        self.start_admitted()
     }
 
-    pub fn resize_surface(&mut self, width: u32, height: u32, dpr: f32) -> Result<(), JsValue> {
+    pub fn resize_surface(
+        &mut self,
+        width: u32,
+        height: u32,
+        dpr: f32,
+    ) -> Result<Option<js_sys::Promise>, JsValue> {
         self.ensure_attached()?;
         self.pipeline
             .admit(PipelineCommand::Barrier(WorkerLifecycle::Resize {
@@ -150,7 +156,7 @@ impl HayateWorkerEngine {
                 content_scale: dpr.max(1.0),
             }))
             .map_err(|_| JsValue::from_str("frame pipeline is terminal"))?;
-        self.execute_admitted()
+        self.start_admitted()
     }
 
     pub fn on_pointer_down(&mut self, x: f32, y: f32) -> Result<(), JsValue> {
@@ -261,14 +267,33 @@ impl HayateWorkerEngine {
     }
 
     /// Admit a Shutdown barrier before releasing renderer/surface resources.
-    pub fn detach(&mut self) -> Result<(), JsValue> {
+    pub fn detach(&mut self) -> Result<Option<js_sys::Promise>, JsValue> {
         if self.detached {
-            return Ok(());
+            return Ok(None);
         }
         self.pipeline
             .admit(PipelineCommand::Barrier(WorkerLifecycle::Shutdown))
             .map_err(|_| JsValue::from_str("frame pipeline is terminal"))?;
-        self.execute_admitted()
+        self.start_admitted()
+    }
+
+    /// Notify the common pipeline that the active renderer/lifecycle command completed.
+    pub fn complete_active(&mut self) -> Result<Option<js_sys::Promise>, JsValue> {
+        self.pipeline
+            .complete_active()
+            .map_err(|_| JsValue::from_str("frame pipeline completed without an active command"))?;
+        self.start_admitted()
+    }
+
+    /// Latch an asynchronous GPU/context failure. A selected Worker renderer is never restarted.
+    pub fn fail_active(&mut self, _message: &str) {
+        self.backend
+            .handle_resource_lifecycle(ResidencyEvent::ContextLost);
+        self.pipeline.fail();
+    }
+
+    pub fn is_detached(&self) -> bool {
+        self.detached
     }
 
     /// `[accepted, coalesced, dropped, active, pending, failure]`.
@@ -302,53 +327,49 @@ impl HayateWorkerEngine {
         }
     }
 
-    fn execute_admitted(&mut self) -> Result<(), JsValue> {
-        while let Some(command) = self.pipeline.start_next() {
-            let result = match command {
-                PipelineCommand::Frame(frame) => {
-                    let scroll_geometry =
-                        hayate_layer_compositor::scroll_layer_geometry_from_inputs(
-                            &frame.scroll_inputs,
-                        );
-                    self.backend
-                        .present_layers(
-                            &frame.scene,
-                            &frame.topology,
-                            &scroll_geometry,
-                            self.background,
-                        )
-                        .map_err(anyhow_to_js)
-                }
-                PipelineCommand::Barrier(WorkerLifecycle::Resize {
-                    width,
-                    height,
-                    content_scale,
-                }) => {
-                    self.canvas.set_width(width);
-                    self.canvas.set_height(height);
-                    self.tree
-                        .set_viewport(width as f32 / content_scale, height as f32 / content_scale);
-                    self.backend.resize(width, height, content_scale);
-                    Ok(())
-                }
-                PipelineCommand::Barrier(WorkerLifecycle::Shutdown) => {
-                    self.backend
-                        .handle_resource_lifecycle(ResidencyEvent::Shutdown);
-                    self.detached = true;
-                    Ok(())
-                }
-            };
-            match result {
-                Ok(()) => self.pipeline.complete_active().map_err(|_| {
-                    JsValue::from_str("frame pipeline completed without an active command")
-                })?,
-                Err(error) => {
+    fn start_admitted(&mut self) -> Result<Option<js_sys::Promise>, JsValue> {
+        let Some(command) = self.pipeline.start_next() else {
+            return Ok(None);
+        };
+        let completion = match command {
+            PipelineCommand::Frame(frame) => {
+                let scroll_geometry = hayate_layer_compositor::scroll_layer_geometry_from_inputs(
+                    &frame.scroll_inputs,
+                );
+                if let Err(error) = self.backend.present_layers(
+                    &frame.scene,
+                    &frame.topology,
+                    &scroll_geometry,
+                    self.background,
+                ) {
                     self.pipeline.fail();
-                    return Err(error);
+                    return Err(anyhow_to_js(error));
                 }
+                self.backend.submission_completion()
             }
-        }
+            PipelineCommand::Barrier(WorkerLifecycle::Resize {
+                width,
+                height,
+                content_scale,
+            }) => {
+                self.canvas.set_width(width);
+                self.canvas.set_height(height);
+                self.tree
+                    .set_viewport(width as f32 / content_scale, height as f32 / content_scale);
+                self.backend.resize(width, height, content_scale);
+                Box::pin(std::future::ready(Ok(())))
+            }
+            PipelineCommand::Barrier(WorkerLifecycle::Shutdown) => {
+                self.backend
+                    .handle_resource_lifecycle(ResidencyEvent::Shutdown);
+                self.detached = true;
+                Box::pin(std::future::ready(Ok(())))
+            }
+        };
         self.tree.drive_ime(&mut self.ime);
-        Ok(())
+        Ok(Some(future_to_promise(async move {
+            completion.await.map_err(anyhow_to_js)?;
+            Ok(JsValue::UNDEFINED)
+        })))
     }
 }

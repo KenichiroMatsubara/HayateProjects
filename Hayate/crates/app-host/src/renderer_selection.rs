@@ -67,6 +67,7 @@ pub const WEB_RENDERER_ORDER: &[SceneRendererKind] =
 )))]
 pub fn web_renderer_selection_policy() -> RendererSelectionPolicy {
     RendererSelectionPolicy::new(WEB_RENDERER_ORDER, WEB_RENDERER_ORDER)
+        .with_terminal_runtime_failures()
 }
 
 /// C3/実ブラウザ検査の `backend-null` 専用ビルドは、本番 Web renderer を一つも
@@ -78,6 +79,7 @@ pub fn web_renderer_selection_policy() -> RendererSelectionPolicy {
 ))]
 pub fn web_renderer_selection_policy() -> RendererSelectionPolicy {
     RendererSelectionPolicy::new(PRODUCTION_RENDERERS, PRODUCTION_RENDERERS)
+        .with_terminal_runtime_failures()
 }
 
 /// `Render Host` がレンダラを採用しなかった、あるいは切り替えた理由。
@@ -182,6 +184,7 @@ impl RendererSelectionPlan {
 pub struct RendererSelectionPolicy {
     allowed_renderers: &'static [SceneRendererKind],
     preferred_renderer_order: &'static [SceneRendererKind],
+    terminal_runtime_failures: bool,
 }
 
 impl RendererSelectionPolicy {
@@ -192,7 +195,18 @@ impl RendererSelectionPolicy {
         Self {
             allowed_renderers,
             preferred_renderer_order,
+            terminal_runtime_failures: false,
         }
+    }
+
+    /// Keep initialization fallback but latch every failure after a renderer has been selected.
+    pub const fn with_terminal_runtime_failures(mut self) -> Self {
+        self.terminal_runtime_failures = true;
+        self
+    }
+
+    pub const fn runtime_failures_are_terminal(self) -> bool {
+        self.terminal_runtime_failures
     }
 
     pub fn allows(self, renderer: SceneRendererKind) -> bool {

@@ -1,5 +1,6 @@
 import type {
   CanvasHandle,
+  FramePipelineObservation,
   ImePresentation,
   WorkerEngine,
   WorkerMutation,
@@ -19,8 +20,12 @@ export interface WorkerRawHayate {
     draws: Float32Array,
   ): void;
   set_background_color(r: number, g: number, b: number): void;
-  render(timestampMs: number): void;
-  resize_surface(width: number, height: number, dpr: number): void;
+  render(timestampMs: number): Promise<void> | undefined;
+  resize_surface(width: number, height: number, dpr: number): Promise<void> | undefined;
+  complete_active(): Promise<void> | undefined;
+  fail_active(message: string): void;
+  pipeline_observation(): Float64Array;
+  is_detached(): boolean;
   on_pointer_down(x: number, y: number): void;
   on_pointer_move(x: number, y: number): void;
   on_pointer_up(x: number, y: number): void;
@@ -33,7 +38,7 @@ export interface WorkerRawHayate {
   on_text_input(target: number, text: string): void;
   ime_wants_keyboard(): boolean;
   ime_character_bounds(): Float32Array;
-  detach(): void;
+  detach(): Promise<void> | undefined;
 }
 
 export type LoadWorkerWasm = (
@@ -82,7 +87,8 @@ export class WasmWorkerEngine implements WorkerEngine {
   }
 
   resize(width: number, height: number, dpr: number): void {
-    this.engine().resize_surface(width, height, dpr);
+    const raw = this.engine();
+    this.drive(raw, raw.resize_surface(width, height, dpr));
   }
 
   onPointer(
@@ -96,32 +102,32 @@ export class WasmWorkerEngine implements WorkerEngine {
     if (action === 'down') raw.on_pointer_down_with_kind(x, y, kind);
     else if (action === 'move') raw.on_pointer_move_with_kind(x, y, kind);
     else raw.on_pointer_up_with_kind(x, y, kind);
-    raw.render(this.now());
+    this.drive(raw, raw.render(this.now()));
   }
 
   onWheel(x: number, y: number, deltaX: number, deltaY: number): void {
     const raw = this.engine();
     raw.on_wheel(x, y, deltaX, deltaY);
-    raw.render(this.now());
+    this.drive(raw, raw.render(this.now()));
   }
 
   onKey(key: string, modifiers: number): void {
     const raw = this.engine();
     raw.on_key_down(key, modifiers);
-    raw.render(this.now());
+    this.drive(raw, raw.render(this.now()));
   }
 
   dispatchEditIntent(targetId: number, intent: Float64Array): number {
     const raw = this.engine();
     const outcome = raw.dispatch_edit_intent(targetId, intent);
-    raw.render(this.now());
+    this.drive(raw, raw.render(this.now()));
     return outcome;
   }
 
   onComposition(targetId: number, text: string): void {
     const raw = this.engine();
     raw.on_text_input(targetId, text);
-    raw.render(this.now());
+    this.drive(raw, raw.render(this.now()));
   }
 
   applyMutation(command: WorkerMutation): void {
@@ -157,7 +163,8 @@ export class WasmWorkerEngine implements WorkerEngine {
   }
 
   render(timestampMs: number): void {
-    this.engine().render(timestampMs);
+    const raw = this.engine();
+    this.drive(raw, raw.render(timestampMs));
   }
 
   imePresentation(): ImePresentation {
@@ -177,9 +184,55 @@ export class WasmWorkerEngine implements WorkerEngine {
     };
   }
 
-  detach(): void {
-    this.raw?.detach();
-    this.raw = undefined;
+  pipelineObservation(): FramePipelineObservation {
+    const values = this.engine().pipeline_observation();
+    return {
+      accepted: values[0] ?? 0,
+      coalesced: values[1] ?? 0,
+      dropped: values[2] ?? 0,
+      active: (values[3] ?? 0) !== 0,
+      pending: values[4] ?? 0,
+      failure: (values[5] ?? 0) !== 0,
+    };
+  }
+
+  async detach(): Promise<void> {
+    const raw = this.raw;
+    if (!raw) return;
+    this.drive(raw, raw.detach());
+    if (!raw.is_detached() || this.completionActive) {
+      await new Promise<void>((resolve) => this.detachWaiters.push(resolve));
+    }
+    if (this.raw === raw) this.raw = undefined;
+  }
+
+  private completionActive = false;
+  private readonly detachWaiters: Array<() => void> = [];
+
+  private drive(raw: WorkerRawHayate, completion: Promise<void> | undefined): void {
+    if (!completion) {
+      this.resolveDetached(raw);
+      return;
+    }
+    this.completionActive = true;
+    void completion.then(
+      () => {
+        if (this.raw !== raw) return;
+        this.completionActive = false;
+        this.drive(raw, raw.complete_active());
+      },
+      (error: unknown) => {
+        if (this.raw !== raw) return;
+        this.completionActive = false;
+        raw.fail_active(error instanceof Error ? error.message : String(error));
+        this.resolveDetached(raw);
+      },
+    );
+  }
+
+  private resolveDetached(raw: WorkerRawHayate): void {
+    if (this.completionActive || !raw.is_detached()) return;
+    for (const resolve of this.detachWaiters.splice(0)) resolve();
   }
 
   private engine(): WorkerRawHayate {

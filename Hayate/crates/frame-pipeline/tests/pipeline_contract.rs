@@ -9,6 +9,8 @@ use hayate_frame_pipeline::{
     PipelineCommand,
 };
 
+const SLOW_EXECUTOR_STRESS_FRAMES: u64 = 50;
+
 #[derive(Debug, PartialEq, Eq)]
 struct TestFrame {
     snapshot: u64,
@@ -51,7 +53,7 @@ fn active_frame_and_many_new_frames_stay_bounded_to_one_coalesced_pending_frame(
         Some(PipelineCommand::Frame(TestFrame::new(0, [0])))
     );
 
-    for snapshot in 1..=50 {
+    for snapshot in 1..=SLOW_EXECUTOR_STRESS_FRAMES {
         pipeline
             .admit(PipelineCommand::Frame(TestFrame::new(snapshot, [snapshot])))
             .unwrap();
@@ -60,15 +62,18 @@ fn active_frame_and_many_new_frames_stay_bounded_to_one_coalesced_pending_frame(
     let observation = pipeline.observation();
     assert!(observation.active);
     assert_eq!(observation.pending, 1);
-    assert_eq!(observation.accepted, 51);
-    assert_eq!(observation.coalesced, 49);
+    assert_eq!(observation.accepted, SLOW_EXECUTOR_STRESS_FRAMES + 1);
+    assert_eq!(observation.coalesced, SLOW_EXECUTOR_STRESS_FRAMES - 1);
     assert_eq!(observation.dropped, 0);
     assert!(!observation.failure);
 
     pipeline.complete_active().unwrap();
     assert_eq!(
         pipeline.start_next(),
-        Some(PipelineCommand::Frame(TestFrame::new(50, 1..=50)))
+        Some(PipelineCommand::Frame(TestFrame::new(
+            SLOW_EXECUTOR_STRESS_FRAMES,
+            1..=SLOW_EXECUTOR_STRESS_FRAMES
+        )))
     );
 }
 
@@ -167,6 +172,60 @@ fn committed_frames_union_transform_dirty_work() {
     assert_eq!(dirty, BTreeSet::from([1, 2]));
 }
 
+fn committed_frame_with_chrome_dirty(raw: u64) -> CommittedFrame {
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(u64::MAX, ElementKind::View);
+    let scroll = tree.element_create(raw, ElementKind::ScrollView);
+    let content = tree.element_create(raw + 1_000, ElementKind::View);
+    tree.set_root(root);
+    tree.element_append_child(root, scroll);
+    tree.element_append_child(scroll, content);
+    tree.set_viewport(100.0, 100.0);
+    tree.element_set_style(
+        scroll,
+        &[
+            StyleProp::Width(Dimension::px(100.0)),
+            StyleProp::Height(Dimension::px(100.0)),
+        ],
+    );
+    tree.element_set_style(
+        content,
+        &[
+            StyleProp::Width(Dimension::px(100.0)),
+            StyleProp::Height(Dimension::px(300.0)),
+        ],
+    );
+    let _initial = tree.commit_rendered_frame(0.0);
+    tree.element_set_scroll_offset(scroll, 0.0, 40.0);
+    tree.commit_rendered_frame(16.0)
+}
+
+#[test]
+fn committed_frames_union_superseded_scroll_chrome_work() {
+    let mut pipeline = LatestWinsFramePipeline::<FrameSubmission, ()>::new();
+    pipeline
+        .admit(PipelineCommand::Frame(
+            FrameSubmission::from_committed_frame(&committed_frame_with_chrome_dirty(1)),
+        ))
+        .unwrap();
+    pipeline
+        .admit(PipelineCommand::Frame(
+            FrameSubmission::from_committed_frame(&committed_frame_with_chrome_dirty(2)),
+        ))
+        .unwrap();
+
+    let Some(PipelineCommand::Frame(merged)) = pipeline.start_next() else {
+        panic!("a coalesced frame must be executable");
+    };
+    let dirty: BTreeSet<u64> = merged
+        .topology
+        .chrome_changed()
+        .iter()
+        .map(|id| id.to_u64())
+        .collect();
+    assert_eq!(dirty, BTreeSet::from([1, 2]));
+}
+
 #[test]
 fn committed_frames_keep_old_scroll_dirty_on_the_latest_geometry() {
     let layer = ElementId::from_u64(7);
@@ -201,6 +260,38 @@ fn committed_frames_keep_old_scroll_dirty_on_the_latest_geometry() {
     assert_eq!(merged.scroll_inputs[0].scroll_offset, 40.0);
     assert_eq!(merged.scroll_inputs[0].scroll_affine[5], -40.0);
     assert!(merged.scroll_inputs[0].content_dirty);
+}
+
+#[test]
+fn slow_executor_keeps_superseded_unapplied_visual_work_on_the_latest_frame() {
+    let mut older =
+        FrameSubmission::from_committed_frame(&committed_frame_with_content_dirty(&[1]));
+    older.pending_visual_work = true;
+    let latest = FrameSubmission::from_committed_frame(&committed_frame_with_content_dirty(&[2]));
+    let latest_snapshot_len = latest.scene.len();
+    let mut pipeline = LatestWinsFramePipeline::<FrameSubmission, ()>::new();
+
+    pipeline
+        .admit(PipelineCommand::Frame(
+            FrameSubmission::from_committed_frame(&committed_frame_with_content_dirty(&[])),
+        ))
+        .unwrap();
+    assert!(
+        pipeline.start_next().is_some(),
+        "slow executor owns one active frame"
+    );
+    pipeline.admit(PipelineCommand::Frame(older)).unwrap();
+    pipeline.admit(PipelineCommand::Frame(latest)).unwrap();
+
+    pipeline.complete_active().unwrap();
+    let Some(PipelineCommand::Frame(coalesced)) = pipeline.start_next() else {
+        panic!("the latest pending frame must run after GPU completion");
+    };
+    assert_eq!(coalesced.scene.len(), latest_snapshot_len);
+    assert!(
+        coalesced.pending_visual_work,
+        "work known only by a superseded pending frame must not disappear"
+    );
 }
 
 #[test]

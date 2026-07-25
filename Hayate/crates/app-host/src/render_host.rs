@@ -12,6 +12,8 @@
 use std::collections::HashMap;
 #[cfg(test)]
 use std::collections::HashSet;
+use std::future::Future;
+use std::pin::Pin;
 
 use anyhow::Error;
 use hayate_core::element::id::ElementId;
@@ -27,6 +29,9 @@ use crate::renderer_selection::{
 };
 
 pub type ClearColor = [f32; 4];
+/// Completion of renderer work submitted by the most recent present. The execution adapter awaits
+/// this value and reports success or failure to the shared frame pipeline.
+pub type SubmissionCompletion = Pin<Box<dyn Future<Output = Result<(), Error>> + 'static>>;
 
 /// 個々の Scene Renderer バックエンド（Vello / tiny-skia / recording / null 等）が
 /// 実装する描画契約。`Render Host` はこの trait 越しにバックエンドを一様に扱う
@@ -37,6 +42,12 @@ pub trait SceneRenderer {
     fn configure_resource_residency(&mut self, _policy: RenderResourceBudgetPolicy) {}
     fn handle_resource_lifecycle(&mut self, _event: ResidencyEvent) {}
     fn clear(&mut self, clear_color: ClearColor) -> Result<(), Error>;
+
+    /// Resolve after work submitted by the preceding present is complete. CPU renderers use the
+    /// ready default; GPU renderers override this without exposing their queue type at the seam.
+    fn submission_completion(&self) -> SubmissionCompletion {
+        Box::pin(std::future::ready(Ok(())))
+    }
 
     /// Present one committed snapshot and its renderer-neutral layer topology.
     ///
@@ -109,6 +120,7 @@ pub struct RenderHost<S: Surface, I: RendererInit<S>> {
     /// skia-safe の選択後 failure。設定後は renderer を二度と呼ばず、同じ terminal
     /// category を App Host へ返し続ける（暗黙 retry/restart を型の状態として封じる）。
     terminal_failure: Option<String>,
+    terminal_runtime_failures: bool,
     resource_budget_policy: RenderResourceBudgetPolicy,
     device_memory_class: DeviceMemoryClass,
     shutdown_sent: bool,
@@ -125,6 +137,7 @@ impl<S: Surface, I: RendererInit<S>> RenderHost<S, I> {
         init: I,
     ) -> Result<Self, Error> {
         let plan = selection_policy.choose(capabilities);
+        let terminal_runtime_failures = selection_policy.runtime_failures_are_terminal();
         let resource_budget_inputs = init.resource_budget_inputs(&surface);
         let resource_budget_policy = RenderResourceBudgetPolicy::for_device(resource_budget_inputs);
 
@@ -155,6 +168,7 @@ impl<S: Surface, I: RendererInit<S>> RenderHost<S, I> {
                         selection_plan: plan,
                         init,
                         terminal_failure: None,
+                        terminal_runtime_failures,
                         resource_budget_policy,
                         device_memory_class: resource_budget_inputs.memory_class,
                         shutdown_sent: false,
@@ -193,7 +207,7 @@ impl<S: Surface, I: RendererInit<S>> RenderHost<S, I> {
         if let Some(renderer) = self.renderer.as_mut() {
             renderer.handle_resource_lifecycle(lifecycle);
         }
-        if has_terminal_runtime_failure(failed_kind) {
+        if self.terminal_runtime_failures || has_terminal_runtime_failure(failed_kind) {
             let failure = format!(
                 "terminal scene renderer failure: {} ({reason:?}): {error}",
                 failed_kind.name(),
@@ -316,6 +330,15 @@ impl<S: Surface, I: RendererInit<S>> SceneRenderer for RenderHost<S, I> {
         }
     }
 
+    fn submission_completion(&self) -> SubmissionCompletion {
+        let Some(renderer) = self.renderer.as_ref() else {
+            return Box::pin(std::future::ready(Err(anyhow::anyhow!(
+                "RenderHost has no active scene renderer"
+            ))));
+        };
+        renderer.submission_completion()
+    }
+
     fn resize(&mut self, width: u32, height: u32, content_scale: f32) {
         if self.terminal_failure.is_some() {
             return;
@@ -338,7 +361,13 @@ mod tests {
         DeviceMemoryClass, RenderResourceBudgetPolicy, ResourceBudgetInputs,
     };
     use std::cell::RefCell;
+    use std::future::poll_fn;
     use std::rc::Rc;
+    use std::sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    };
+    use std::task::Poll;
 
     #[derive(Clone)]
     struct FakeSurface {
@@ -453,6 +482,103 @@ mod tests {
 
     fn policy() -> RendererSelectionPolicy {
         RendererSelectionPolicy::new(PREFERRED, PREFERRED)
+    }
+
+    struct CompletionRenderer {
+        ready: Arc<AtomicBool>,
+    }
+
+    impl SceneRenderer for CompletionRenderer {
+        fn kind(&self) -> SceneRendererKind {
+            SceneRendererKind::Vello
+        }
+
+        fn clear(&mut self, _clear_color: ClearColor) -> Result<(), Error> {
+            Ok(())
+        }
+
+        fn present_layers(
+            &mut self,
+            _scene: &SceneSnapshot,
+            _topology: &LayerTopology,
+            _scroll_geometry: &HashMap<ElementId, ScrollLayerGeometry>,
+            _clear_color: ClearColor,
+        ) -> Result<(), Error> {
+            Ok(())
+        }
+
+        fn submission_completion(&self) -> SubmissionCompletion {
+            let ready = self.ready.clone();
+            Box::pin(poll_fn(move |_| {
+                if ready.load(Ordering::SeqCst) {
+                    Poll::Ready(Ok(()))
+                } else {
+                    Poll::Pending
+                }
+            }))
+        }
+    }
+
+    struct CompletionInit {
+        ready: Arc<AtomicBool>,
+    }
+
+    impl RendererInit<FakeSurface> for CompletionInit {
+        async fn try_init(
+            &self,
+            _kind: SceneRendererKind,
+            _surface: FakeSurface,
+        ) -> Result<Box<dyn SceneRenderer>, Error> {
+            Ok(Box::new(CompletionRenderer {
+                ready: self.ready.clone(),
+            }))
+        }
+
+        fn try_init_sync_for_fallback(
+            &self,
+            _kind: SceneRendererKind,
+            _surface: FakeSurface,
+        ) -> Result<Box<dyn SceneRenderer>, Error> {
+            unreachable!("completion test does not exercise fallback")
+        }
+
+        fn classify_init_error(
+            &self,
+            _kind: SceneRendererKind,
+            _error: &Error,
+        ) -> RendererSelectionReason {
+            RendererSelectionReason::RendererInitFailed
+        }
+    }
+
+    #[test]
+    fn render_host_exposes_the_selected_renderers_submission_completion() {
+        let ready = Arc::new(AtomicBool::new(false));
+        let host = pollster::block_on(RenderHost::init_with_policy(
+            FakeSurface {
+                width: 100,
+                height: 100,
+            },
+            RendererSelectionPolicy::new(&[SceneRendererKind::Vello], &[SceneRendererKind::Vello]),
+            RendererCapabilities {
+                webgpu_available: true,
+            },
+            CompletionInit {
+                ready: ready.clone(),
+            },
+        ))
+        .unwrap();
+
+        let mut completion = host.submission_completion();
+        assert!(
+            pollster::block_on(poll_fn(|cx| match completion.as_mut().poll(cx) {
+                Poll::Pending => Poll::Ready(true),
+                Poll::Ready(_) => Poll::Ready(false),
+            })),
+            "completion remains pending while GPU work is active"
+        );
+        ready.store(true, Ordering::SeqCst);
+        pollster::block_on(completion).unwrap();
     }
 
     #[test]
@@ -578,6 +704,46 @@ mod tests {
             assert_eq!(host.kind(), SceneRendererKind::TinySkia);
             assert_eq!(*sync_init_calls.borrow(), vec![SceneRendererKind::TinySkia]);
             assert_eq!(*resized.borrow(), vec![SceneRendererKind::TinySkia]);
+        });
+    }
+
+    #[test]
+    fn terminal_runtime_policy_never_falls_back_after_web_renderer_selection() {
+        pollster::block_on(async {
+            let fails = Rc::new(RefCell::new(HashSet::from([SceneRendererKind::Vello])));
+            let sync_init_calls = Rc::new(RefCell::new(Vec::new()));
+            let init = FakeInit {
+                fails: fails.clone(),
+                unavailable: HashSet::new(),
+                resized: Rc::new(RefCell::new(Vec::new())),
+                sync_init_calls: sync_init_calls.clone(),
+            };
+            let mut host = RenderHost::init_with_policy(
+                FakeSurface {
+                    width: 800,
+                    height: 600,
+                },
+                policy().with_terminal_runtime_failures(),
+                RendererCapabilities {
+                    webgpu_available: true,
+                },
+                init,
+            )
+            .await
+            .expect("Vello may be selected after successful initialization");
+
+            assert!(host.clear([0.0, 0.0, 0.0, 1.0]).is_err());
+            assert_eq!(host.kind(), SceneRendererKind::Vello);
+            assert!(
+                sync_init_calls.borrow().is_empty(),
+                "runtime failure must not initialize tiny-skia"
+            );
+
+            fails.borrow_mut().clear();
+            assert!(
+                host.clear([0.0, 0.0, 0.0, 1.0]).is_err(),
+                "terminal failure remains latched instead of restarting Vello"
+            );
         });
     }
 

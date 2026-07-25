@@ -31,6 +31,14 @@ function recordingEngine(presentation: ImePresentation = { keyboardVisible: fals
       return 0;
     },
     onComposition: (t, text) => calls.push(`composition(${t},${text})`),
+    pipelineObservation: () => ({
+      accepted: 0,
+      coalesced: 0,
+      dropped: 0,
+      active: false,
+      pending: 0,
+      failure: false,
+    }),
     imePresentation: () => presentation,
   };
   return { engine, calls };
@@ -97,6 +105,43 @@ describe('OffscreenCanvas + Worker host bridge (ADR-0128 web)', () => {
     ]);
   });
 
+  it('reports a terminal runtime failure and still serves pipeline observations', async () => {
+    const posted: WorkerToMain[] = [];
+    const engine = recordingEngine().engine;
+    engine.render = () => {
+      throw new Error('WebGPU submit failed');
+    };
+    engine.pipelineObservation = () => ({
+      accepted: 1,
+      coalesced: 0,
+      dropped: 0,
+      active: false,
+      pending: 0,
+      failure: true,
+    });
+    const dispatcher = new WorkerEngineDispatcher(engine, (message) => posted.push(message));
+
+    await dispatcher.handle({ kind: 'frame', timestampMs: 16 });
+    await dispatcher.handle({ kind: 'observe-pipeline', requestId: 7 });
+
+    expect(posted).toContainEqual({
+      kind: 'runtime-failure',
+      failure: { code: 'renderer-runtime-failed', message: 'WebGPU submit failed' },
+    });
+    expect(posted).toContainEqual({
+      kind: 'pipeline-observation',
+      requestId: 7,
+      observation: {
+        accepted: 1,
+        coalesced: 0,
+        dropped: 0,
+        active: false,
+        pending: 0,
+        failure: true,
+      },
+    });
+  });
+
   it('init transfers the canvas to the worker and the engine boots, replying ready', async () => {
     const { shim, calls, toMain } = wireBridge();
     const canvas = { token: 'offscreen' };
@@ -142,6 +187,38 @@ describe('OffscreenCanvas + Worker host bridge (ADR-0128 web)', () => {
     expect(toMain).toContainEqual({ kind: 'ime', presentation });
     expect(imeSink.keyboardVisible).toBe(true);
     expect(imeSink.caretRect).toEqual({ x: 12, y: 34, width: 2, height: 18 });
+  });
+
+  it('returns the common pipeline counters through the Worker host interface', async () => {
+    const { shim, engine } = wireBridge();
+    (
+      engine as WorkerEngine & {
+        pipelineObservation(): {
+          accepted: number;
+          coalesced: number;
+          dropped: number;
+          active: boolean;
+          pending: number;
+          failure: boolean;
+        };
+      }
+    ).pipelineObservation = () => ({
+      accepted: 51,
+      coalesced: 49,
+      dropped: 0,
+      active: true,
+      pending: 1,
+      failure: false,
+    });
+
+    await expect(shim.pipelineObservation()).resolves.toEqual({
+      accepted: 51,
+      coalesced: 49,
+      dropped: 0,
+      active: true,
+      pending: 1,
+      failure: false,
+    });
   });
 
   it('keeps the main shim engine-free so rendering never blocks the main/DOM thread', () => {

@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use super::{js_to_anyhow, CanvasBackend, ClearColor, SceneRendererKind, WebCanvasSurface};
+use hayate_app_host::render_host::SubmissionCompletion;
 use hayate_core::{ElementId, LayerTopology, SceneSnapshot};
 use hayate_layer_compositor::{
     CompositeQuad, DeviceMemoryClass, GpuBudget, LayerCompositor, LayerPresentation,
@@ -362,6 +363,18 @@ impl CanvasBackend for SelectedBackend {
         let budget = GpuBudget::from_bytes(self.resource_policy.gpu.max_bytes);
         state.presentation.enforce_budget(budget, &mut adapter);
         Ok(())
+    }
+
+    fn submission_completion(&self) -> SubmissionCompletion {
+        let (sender, receiver) = futures_channel::oneshot::channel();
+        self.surface_host.queue.on_submitted_work_done(move || {
+            let _ = sender.send(());
+        });
+        Box::pin(async move {
+            receiver
+                .await
+                .map_err(|_| anyhow::anyhow!("WebGPU submission completion was cancelled"))
+        })
     }
 
     fn resize(&mut self, width: u32, height: u32, content_scale: f32) {

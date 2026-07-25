@@ -13,6 +13,7 @@
 import {
   MainThreadShim,
   type CanvasHandle,
+  type FramePipelineObservation,
   type MainEditContextSink,
   type MainToWorker,
   type WorkerToMain,
@@ -73,6 +74,7 @@ export interface WorkerEngineBridgeHandle {
   readonly shim: MainThreadShim;
   /** Worker 内の WASM core / Render Host / Scene Renderer が使用可能になるまで待つ。 */
   readonly ready: Promise<void>;
+  readonly pipelineObservation: () => Promise<FramePipelineObservation>;
   readonly detach: () => void;
 }
 
@@ -247,7 +249,12 @@ export function bootWorkerEngineBridge(
     detachTimer = setTimeout(terminate, WORKER_DETACH_TIMEOUT_MS);
   };
 
-  return { shim, ready, detach };
+  return {
+    shim,
+    ready,
+    pipelineObservation: () => shim.pipelineObservation(),
+    detach,
+  };
 }
 
 /**

@@ -17,6 +17,16 @@
 export type CanvasHandle = unknown;
 export type WorkerPointerKind = 'mouse' | 'touch' | 'pen';
 
+/** Native と同じ意味で共通 Pipeline が公開する overload / terminal-state counters. */
+export interface FramePipelineObservation {
+  accepted: number;
+  coalesced: number;
+  dropped: number;
+  active: boolean;
+  pending: number;
+  failure: boolean;
+}
+
 /** Worker 内の WASM core に適用する structured-clone-safe mutation command。 */
 export type WorkerMutation =
   | { kind: 'element-create'; id: number; elementKind: number }
@@ -50,6 +60,7 @@ export type MainToWorker =
   | { kind: 'composition'; targetId: number; text: string }
   | { kind: 'mutation'; command: WorkerMutation }
   | { kind: 'frame'; timestampMs: number }
+  | { kind: 'observe-pipeline'; requestId: number }
   | { kind: 'detach' };
 
 /** レイアウト後の IME presentation（ADR-0069）。Worker が決め、main の EditContext へ橋渡しする。 */
@@ -67,7 +78,16 @@ export type WorkerToMain =
       kind: 'boot-failure';
       failure: { code: 'renderer-init-failed'; message: string };
     }
+  | {
+      kind: 'runtime-failure';
+      failure: { code: 'renderer-runtime-failed'; message: string };
+    }
   | { kind: 'ime'; presentation: ImePresentation }
+  | {
+      kind: 'pipeline-observation';
+      requestId: number;
+      observation: FramePipelineObservation;
+    }
   | { kind: 'detached' };
 
 /**
@@ -89,7 +109,8 @@ export interface WorkerEngine {
   onComposition(targetId: number, text: string): void;
   applyMutation?(command: WorkerMutation): void;
   render?(timestampMs: number): void;
-  detach?(): void;
+  detach?(): void | Promise<void>;
+  pipelineObservation(): FramePipelineObservation;
   /** レイアウト後の IME presentation（ADR-0069）。main の EditContext へブリッジする。 */
   imePresentation(): ImePresentation;
 }
@@ -106,54 +127,71 @@ export class WorkerEngineDispatcher {
 
   /** main から届いた 1 メッセージを処理する。 */
   async handle(msg: MainToWorker): Promise<void> {
-    switch (msg.kind) {
-      case 'init':
-        try {
-          await this.engine.init(msg.canvas, msg.width, msg.height, msg.dpr);
-          this.postToMain({ kind: 'ready' });
-        } catch (error) {
+    try {
+      switch (msg.kind) {
+        case 'init':
+          try {
+            await this.engine.init(msg.canvas, msg.width, msg.height, msg.dpr);
+            this.postToMain({ kind: 'ready' });
+          } catch (error) {
+            this.postToMain({
+              kind: 'boot-failure',
+              failure: {
+                code: 'renderer-init-failed',
+                message: error instanceof Error ? error.message : String(error),
+              },
+            });
+          }
+          break;
+        case 'resize':
+          this.engine.resize(msg.width, msg.height, msg.dpr);
+          break;
+        case 'pointer':
+          this.engine.onPointer(msg.action, msg.x, msg.y, msg.pointerKind);
+          this.emitIme();
+          break;
+        case 'wheel':
+          this.engine.onWheel(msg.x, msg.y, msg.deltaX, msg.deltaY);
+          break;
+        case 'key':
+          this.engine.onKey(msg.key, msg.modifiers);
+          this.emitIme();
+          break;
+        case 'edit-intent':
+          this.engine.dispatchEditIntent?.(msg.targetId, new Float64Array(msg.intent));
+          this.emitIme();
+          break;
+        case 'composition':
+          this.engine.onComposition(msg.targetId, msg.text);
+          this.emitIme();
+          break;
+        case 'mutation':
+          this.engine.applyMutation?.(msg.command);
+          break;
+        case 'frame':
+          this.engine.render?.(msg.timestampMs);
+          this.emitIme();
+          break;
+        case 'observe-pipeline':
           this.postToMain({
-            kind: 'boot-failure',
-            failure: {
-              code: 'renderer-init-failed',
-              message: error instanceof Error ? error.message : String(error),
-            },
+            kind: 'pipeline-observation',
+            requestId: msg.requestId,
+            observation: this.engine.pipelineObservation(),
           });
-        }
-        break;
-      case 'resize':
-        this.engine.resize(msg.width, msg.height, msg.dpr);
-        break;
-      case 'pointer':
-        this.engine.onPointer(msg.action, msg.x, msg.y, msg.pointerKind);
-        this.emitIme();
-        break;
-      case 'wheel':
-        this.engine.onWheel(msg.x, msg.y, msg.deltaX, msg.deltaY);
-        break;
-      case 'key':
-        this.engine.onKey(msg.key, msg.modifiers);
-        this.emitIme();
-        break;
-      case 'edit-intent':
-        this.engine.dispatchEditIntent?.(msg.targetId, new Float64Array(msg.intent));
-        this.emitIme();
-        break;
-      case 'composition':
-        this.engine.onComposition(msg.targetId, msg.text);
-        this.emitIme();
-        break;
-      case 'mutation':
-        this.engine.applyMutation?.(msg.command);
-        break;
-      case 'frame':
-        this.engine.render?.(msg.timestampMs);
-        this.emitIme();
-        break;
-      case 'detach':
-        this.engine.detach?.();
-        this.postToMain({ kind: 'detached' });
-        break;
+          break;
+        case 'detach':
+          await this.engine.detach?.();
+          this.postToMain({ kind: 'detached' });
+          break;
+      }
+    } catch (error) {
+      this.postToMain({
+        kind: 'runtime-failure',
+        failure: {
+          code: 'renderer-runtime-failed',
+          message: error instanceof Error ? error.message : String(error),
+        },
+      });
     }
   }
 
@@ -176,6 +214,11 @@ export interface MainEditContextSink {
  */
 export class MainThreadShim {
   private detached = false;
+  private observationRequestId = 0;
+  private readonly observationRequests = new Map<
+    number,
+    (observation: FramePipelineObservation) => void
+  >();
 
   constructor(
     private readonly sendToWorker: (msg: MainToWorker, transfer?: Transferable[]) => void,
@@ -225,6 +268,17 @@ export class MainThreadShim {
     this.post({ kind: 'frame', timestampMs });
   }
 
+  pipelineObservation(): Promise<FramePipelineObservation> {
+    if (this.detached) {
+      return Promise.reject(new Error('worker engine is detached'));
+    }
+    const requestId = ++this.observationRequestId;
+    return new Promise((resolve) => {
+      this.observationRequests.set(requestId, resolve);
+      this.post({ kind: 'observe-pipeline', requestId });
+    });
+  }
+
   detach(): void {
     if (this.detached) return;
     this.sendToWorker({ kind: 'detach' });
@@ -236,6 +290,10 @@ export class MainThreadShim {
     if (msg.kind === 'ime') {
       this.ime.setKeyboardVisible(msg.presentation.keyboardVisible);
       this.ime.setCaretRect(msg.presentation.caretRect);
+    } else if (msg.kind === 'pipeline-observation') {
+      const resolve = this.observationRequests.get(msg.requestId);
+      this.observationRequests.delete(msg.requestId);
+      resolve?.(msg.observation);
     }
   }
 

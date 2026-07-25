@@ -283,6 +283,7 @@ describe('createHayateWebHost', () => {
         terminate: vi.fn(),
       },
       sent,
+      emit: (message: WorkerToMain) => onMessage?.(message),
     };
   }
   const workerCanvas = {
@@ -339,6 +340,41 @@ describe('createHayateWebHost', () => {
       { kind: 'mutation', command: { kind: 'set-root', id: 1 } },
       { kind: 'frame', timestampMs: 16 },
     ]);
+  });
+
+  it('exposes the shared pipeline observation from the Worker-backed Web host', async () => {
+    const { transport, sent, emit } = fakeWorkerTransport();
+    const host = await createHayateWebHost(workerCanvas, {
+      workerEngine: true,
+      spawnWorker: () => transport,
+      transferControlToOffscreen: () => ({}),
+    });
+
+    const observation = host.pipelineObservation();
+    const request = sent.find(
+      (message) => (message as MainToWorker).kind === 'observe-pipeline',
+    ) as Extract<MainToWorker, { kind: 'observe-pipeline' }>;
+    emit({
+      kind: 'pipeline-observation',
+      requestId: request.requestId,
+      observation: {
+        accepted: 80,
+        coalesced: 72,
+        dropped: 0,
+        active: true,
+        pending: 1,
+        failure: false,
+      },
+    });
+
+    await expect(observation).resolves.toEqual({
+      accepted: 80,
+      coalesced: 72,
+      dropped: 0,
+      active: true,
+      pending: 1,
+      failure: false,
+    });
   });
 
   it('rejects with a typed boot failure and never falls back to a main-thread renderer', async () => {

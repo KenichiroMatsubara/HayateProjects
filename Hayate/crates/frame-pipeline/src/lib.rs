@@ -27,6 +27,8 @@ pub struct FrameSubmission {
     pub topology: LayerTopology,
     /// Latest scroll geometry with superseded content invalidations carried forward.
     pub scroll_inputs: Vec<ScrollCompositorInput>,
+    /// Whether this frame or a superseded pending frame still has visual continuation work.
+    pub pending_visual_work: bool,
 }
 
 impl FrameSubmission {
@@ -36,6 +38,7 @@ impl FrameSubmission {
             scene: frame.snapshot().clone(),
             topology: frame.layer_topology().clone(),
             scroll_inputs: frame.scroll_inputs().to_vec(),
+            pending_visual_work: frame.has_pending_visual_work(),
         }
     }
 }
@@ -54,6 +57,7 @@ impl CoalescingFrame for FrameSubmission {
             input.content_dirty |= self.topology.content_changed().contains(&input.layer)
                 || older_scroll_dirty.contains(&input.layer);
         }
+        self.pending_visual_work |= older.pending_visual_work;
     }
 }
 

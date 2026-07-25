@@ -28,6 +28,7 @@ tiny-skia = { workspace = true, optional = true }
 slotmap.workspace = true
 wasm-bindgen.workspace = true
 wasm-bindgen-futures.workspace = true
+futures-channel.workspace = true
 js-sys.workspace = true
 web-sys = { workspace = true, features = [
     "HtmlCanvasElement",
