@@ -754,6 +754,7 @@ pub(crate) fn spawn_raster_thread(mut surface: GpuSurface) -> RasterHandle {
                     scene,
                     topology,
                     scroll_inputs,
+                    ..
                 } = handoff;
                 if let Err(err) = surface.render_frame(&scene, &topology, &scroll_inputs) {
                     let message = err.to_string();
@@ -800,6 +801,7 @@ pub(crate) fn spawn_skia_raster_thread(
                     scene,
                     topology,
                     scroll_inputs,
+                    ..
                 } = handoff;
                 if let Err(err) = surface.render_frame(&scene, &topology, &scroll_inputs) {
                     log_terminal_skia_failure(&err);
@@ -848,6 +850,7 @@ pub(crate) fn spawn_skia_gl_raster_thread(
                     scene,
                     topology,
                     scroll_inputs,
+                    ..
                 } = handoff;
                 if let Err(err) = surface.render_frame(&scene, &topology, &scroll_inputs) {
                     log_terminal_skia_failure(&err);
