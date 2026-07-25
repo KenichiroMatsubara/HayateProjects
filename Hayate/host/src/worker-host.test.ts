@@ -34,6 +34,7 @@ function recordingEngine(presentation: ImePresentation = { keyboardVisible: fals
     registerListener: () => 1,
     unregisterListener: () => {},
     pollEvents: () => [],
+    setFrameProduced: () => {},
     pipelineObservation: () => ({
       accepted: 0,
       coalesced: 0,
@@ -205,6 +206,24 @@ describe('OffscreenCanvas + Worker host bridge (ADR-0128 web)', () => {
     shim.frame(16);
 
     expect(shim.drainEventDeliveries()).toEqual([[41, 17, 7, 120, 80]]);
+  });
+
+  it('returns deliveries produced by a Worker-owned continuation frame', () => {
+    const posted: WorkerToMain[] = [];
+    const engine = recordingEngine().engine;
+    let frameProduced: (() => void) | undefined;
+    engine.setFrameProduced = (callback) => {
+      frameProduced = callback;
+    };
+    engine.pollEvents = () => [[41, 17, 7, 120, 96]];
+    new WorkerEngineDispatcher(engine, (message) => posted.push(message));
+
+    frameProduced?.();
+
+    expect(posted).toContainEqual({
+      kind: 'event-deliveries',
+      rows: [[41, 17, 7, 120, 96]],
+    });
   });
 
   it('routes semantic EditIntent to the worker engine without a main-thread keymap', () => {

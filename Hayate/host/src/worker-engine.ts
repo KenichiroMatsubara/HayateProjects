@@ -36,6 +36,10 @@ export interface WorkerRawHayate {
   on_pointer_down_with_kind(x: number, y: number, kind: number): void;
   on_pointer_move_with_kind(x: number, y: number, kind: number): void;
   on_pointer_up_with_kind(x: number, y: number, kind: number): void;
+  on_pointer_down_with_kind_at(x: number, y: number, kind: number, timestampMs: number): void;
+  on_pointer_move_with_kind_at(x: number, y: number, kind: number, timestampMs: number): void;
+  on_pointer_up_with_kind_at(x: number, y: number, kind: number, timestampMs: number): void;
+  has_pending_visual_work(): boolean;
   on_wheel(x: number, y: number, deltaX: number, deltaY: number): void;
   on_key_down(key: string, modifiers: number): void;
   dispatch_edit_intent(target: number, intent: Float64Array): number;
@@ -51,6 +55,17 @@ export type LoadWorkerWasm = (
   height: number,
   dpr: number,
 ) => Promise<WorkerRawHayate>;
+
+/** Worker-owned vsync seam. Tests inject a manual clock; production uses Worker rAF. */
+export interface WorkerFrameClock {
+  request(callback: FrameRequestCallback): number;
+  cancel(handle: number): void;
+}
+
+const DEFAULT_WORKER_FRAME_CLOCK: WorkerFrameClock = {
+  request: (callback) => requestAnimationFrame(callback),
+  cancel: (handle) => cancelAnimationFrame(handle),
+};
 
 /** Production WASM loader. The Render Host inside Rust chooses the compiled Scene Renderer. */
 export async function loadWorkerWasm(
@@ -80,10 +95,13 @@ export async function loadWorkerWasm(
  */
 export class WasmWorkerEngine implements WorkerEngine {
   private raw: WorkerRawHayate | undefined;
+  private continuationFrame: number | undefined;
+  private frameProduced: (() => void) | undefined;
 
   constructor(
     private readonly load: LoadWorkerWasm = loadWorkerWasm,
     private readonly now: () => number = () => performance.now(),
+    private readonly frameClock: WorkerFrameClock = DEFAULT_WORKER_FRAME_CLOCK,
   ) {}
 
   async init(canvas: CanvasHandle, width: number, height: number, dpr: number): Promise<void> {
@@ -103,35 +121,36 @@ export class WasmWorkerEngine implements WorkerEngine {
   ): void {
     const raw = this.engine();
     const kind = pointerKind === 'touch' ? 1 : pointerKind === 'pen' ? 2 : 0;
-    if (action === 'down') raw.on_pointer_down_with_kind(x, y, kind);
-    else if (action === 'move') raw.on_pointer_move_with_kind(x, y, kind);
-    else raw.on_pointer_up_with_kind(x, y, kind);
-    this.drive(raw, raw.render(this.now()));
+    const timestampMs = this.now();
+    if (action === 'down') raw.on_pointer_down_with_kind_at(x, y, kind, timestampMs);
+    else if (action === 'move') raw.on_pointer_move_with_kind_at(x, y, kind, timestampMs);
+    else raw.on_pointer_up_with_kind_at(x, y, kind, timestampMs);
+    this.commitFrame(raw, timestampMs);
   }
 
   onWheel(x: number, y: number, deltaX: number, deltaY: number): void {
     const raw = this.engine();
     raw.on_wheel(x, y, deltaX, deltaY);
-    this.drive(raw, raw.render(this.now()));
+    this.commitFrame(raw, this.now());
   }
 
   onKey(key: string, modifiers: number): void {
     const raw = this.engine();
     raw.on_key_down(key, modifiers);
-    this.drive(raw, raw.render(this.now()));
+    this.commitFrame(raw, this.now());
   }
 
   dispatchEditIntent(targetId: number, intent: Float64Array): number {
     const raw = this.engine();
     const outcome = raw.dispatch_edit_intent(targetId, intent);
-    this.drive(raw, raw.render(this.now()));
+    this.commitFrame(raw, this.now());
     return outcome;
   }
 
   onComposition(targetId: number, text: string): void {
     const raw = this.engine();
     raw.on_text_input(targetId, text);
-    this.drive(raw, raw.render(this.now()));
+    this.commitFrame(raw, this.now());
   }
 
   registerListener(elementId: number, eventKind: number): number {
@@ -144,6 +163,10 @@ export class WasmWorkerEngine implements WorkerEngine {
 
   pollEvents(): unknown[][] {
     return this.engine().poll_events();
+  }
+
+  setFrameProduced(callback: () => void): void {
+    this.frameProduced = callback;
   }
 
   applyMutation(command: WorkerMutation): void {
@@ -183,7 +206,7 @@ export class WasmWorkerEngine implements WorkerEngine {
 
   render(timestampMs: number): void {
     const raw = this.engine();
-    this.drive(raw, raw.render(timestampMs));
+    this.commitFrame(raw, timestampMs);
   }
 
   imePresentation(): ImePresentation {
@@ -218,6 +241,7 @@ export class WasmWorkerEngine implements WorkerEngine {
   async detach(): Promise<void> {
     const raw = this.raw;
     if (!raw) return;
+    this.cancelContinuation();
     this.drive(raw, raw.detach());
     if (!raw.is_detached() || this.completionActive) {
       await new Promise<void>((resolve) => this.detachWaiters.push(resolve));
@@ -227,6 +251,31 @@ export class WasmWorkerEngine implements WorkerEngine {
 
   private completionActive = false;
   private readonly detachWaiters: Array<() => void> = [];
+
+  private commitFrame(raw: WorkerRawHayate, timestampMs: number, autonomous = false): void {
+    this.drive(raw, raw.render(timestampMs));
+    this.updateContinuation(raw);
+    if (autonomous) this.frameProduced?.();
+  }
+
+  private updateContinuation(raw: WorkerRawHayate): void {
+    if (this.raw !== raw || !raw.has_pending_visual_work()) {
+      this.cancelContinuation();
+      return;
+    }
+    if (this.continuationFrame != null) return;
+    this.continuationFrame = this.frameClock.request((timestampMs) => {
+      this.continuationFrame = undefined;
+      if (this.raw !== raw) return;
+      this.commitFrame(raw, timestampMs, true);
+    });
+  }
+
+  private cancelContinuation(): void {
+    if (this.continuationFrame == null) return;
+    this.frameClock.cancel(this.continuationFrame);
+    this.continuationFrame = undefined;
+  }
 
   private drive(raw: WorkerRawHayate, completion: Promise<void> | undefined): void {
     if (!completion) {
@@ -243,6 +292,7 @@ export class WasmWorkerEngine implements WorkerEngine {
       (error: unknown) => {
         if (this.raw !== raw) return;
         this.completionActive = false;
+        this.cancelContinuation();
         raw.fail_active(error instanceof Error ? error.message : String(error));
         this.resolveDetached(raw);
       },

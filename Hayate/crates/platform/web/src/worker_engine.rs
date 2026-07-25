@@ -140,7 +140,9 @@ impl HayateWorkerEngine {
         let Ok(parsed) = crate::tuning::TuningJson::parse(json) else {
             return Ok(());
         };
-        self.tree.set_scroll_tuning(parsed.scroll_tuning());
+        let scroll_tuning = parsed.scroll_tuning();
+        self.tree.set_scroll_tuning(scroll_tuning);
+        self.touch_scroll.set_tuning(scroll_tuning);
         self.tree.set_chrome_tuning(parsed.chrome_tuning());
         self.tree.set_scroll_profile(parsed.scroll_profile());
         Ok(())
@@ -165,6 +167,10 @@ impl HayateWorkerEngine {
 
     pub fn poll_events(&mut self) -> js_sys::Array {
         crate::generated::encode_deliveries(&self.tree.poll_deliveries())
+    }
+
+    pub fn has_pending_visual_work(&self) -> bool {
+        self.tree.has_pending_visual_work()
     }
 
     /// Commit one immutable frame, admit it to the common Rust policy, and present admitted work.
@@ -201,9 +207,24 @@ impl HayateWorkerEngine {
     }
 
     pub fn on_pointer_down_with_kind(&mut self, x: f32, y: f32, kind: u32) -> Result<(), JsValue> {
+        self.on_pointer_down_with_kind_at(x, y, kind, 0.0)
+    }
+
+    pub fn on_pointer_down_with_kind_at(
+        &mut self,
+        x: f32,
+        y: f32,
+        kind: u32,
+        timestamp_ms: f64,
+    ) -> Result<(), JsValue> {
         self.ensure_attached()?;
-        self.touch_scroll
-            .pointer_down(&mut self.tree, x, y, PointerKind::from_u32(kind));
+        self.touch_scroll.pointer_down(
+            &mut self.tree,
+            x,
+            y,
+            PointerKind::from_u32(kind),
+            timestamp_ms,
+        );
         Ok(())
     }
 
@@ -212,9 +233,24 @@ impl HayateWorkerEngine {
     }
 
     pub fn on_pointer_move_with_kind(&mut self, x: f32, y: f32, kind: u32) -> Result<(), JsValue> {
+        self.on_pointer_move_with_kind_at(x, y, kind, 0.0)
+    }
+
+    pub fn on_pointer_move_with_kind_at(
+        &mut self,
+        x: f32,
+        y: f32,
+        kind: u32,
+        timestamp_ms: f64,
+    ) -> Result<(), JsValue> {
         self.ensure_attached()?;
-        self.touch_scroll
-            .pointer_move(&mut self.tree, x, y, PointerKind::from_u32(kind));
+        self.touch_scroll.pointer_move(
+            &mut self.tree,
+            x,
+            y,
+            PointerKind::from_u32(kind),
+            timestamp_ms,
+        );
         Ok(())
     }
 
@@ -223,9 +259,24 @@ impl HayateWorkerEngine {
     }
 
     pub fn on_pointer_up_with_kind(&mut self, x: f32, y: f32, kind: u32) -> Result<(), JsValue> {
+        self.on_pointer_up_with_kind_at(x, y, kind, 0.0)
+    }
+
+    pub fn on_pointer_up_with_kind_at(
+        &mut self,
+        x: f32,
+        y: f32,
+        kind: u32,
+        timestamp_ms: f64,
+    ) -> Result<(), JsValue> {
         self.ensure_attached()?;
-        self.touch_scroll
-            .pointer_up(&mut self.tree, x, y, PointerKind::from_u32(kind));
+        self.touch_scroll.pointer_up(
+            &mut self.tree,
+            x,
+            y,
+            PointerKind::from_u32(kind),
+            timestamp_ms,
+        );
         Ok(())
     }
 

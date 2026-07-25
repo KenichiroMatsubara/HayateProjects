@@ -115,6 +115,8 @@ export interface WorkerEngine {
   registerListener(elementId: number, eventKind: number): number;
   unregisterListener(listenerId: number): void;
   pollEvents(): unknown[][];
+  /** Worker-owned continuation frame committed without a new main-thread message. */
+  setFrameProduced(callback: () => void): void;
   applyMutation?(command: WorkerMutation): void;
   render?(timestampMs: number): void;
   detach?(): void | Promise<void>;
@@ -131,7 +133,12 @@ export class WorkerEngineDispatcher {
   constructor(
     private readonly engine: WorkerEngine,
     private readonly postToMain: (msg: WorkerToMain) => void,
-  ) {}
+  ) {
+    this.engine.setFrameProduced(() => {
+      this.emitEventDeliveries();
+      this.emitIme();
+    });
+  }
 
   /** main から届いた 1 メッセージを処理する。 */
   async handle(msg: MainToWorker): Promise<void> {
