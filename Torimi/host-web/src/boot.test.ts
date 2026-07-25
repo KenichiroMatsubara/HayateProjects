@@ -13,6 +13,14 @@ function fakeHost(): WebHost {
     raw: {} as WebHost['raw'],
     requestFrame: () => 0,
     cancelFrame: () => undefined,
+    pipelineObservation: async () => ({
+      accepted: 0,
+      coalesced: 0,
+      dropped: 0,
+      active: false,
+      pending: 0,
+      failure: false,
+    }),
     detach: () => undefined,
   };
 }

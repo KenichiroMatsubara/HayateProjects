@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
-use super::{js_to_anyhow, CanvasBackend, ClearColor, SceneRendererKind};
+use super::{js_to_anyhow, CanvasBackend, ClearColor, SceneRendererKind, WebCanvasSurface};
+use hayate_app_host::render_host::SubmissionCompletion;
 use hayate_core::{ElementId, LayerTopology, SceneSnapshot};
 use hayate_layer_compositor::{
     CompositeQuad, DeviceMemoryClass, GpuBudget, LayerCompositor, LayerPresentation,
@@ -12,7 +13,6 @@ use hayate_scene_renderer_vello::layer_compositor::{
     CompositeTarget, LayerTexture, VelloLayerRasterizer, WgpuQuadCompositor,
 };
 use wasm_bindgen::prelude::*;
-use web_sys::HtmlCanvasElement;
 
 /// Vello resources owned by the retained Layer Presentation path and initialized at boot.
 struct LayerPresentState {
@@ -61,7 +61,7 @@ struct VelloSurfaceHost {
 }
 
 impl SelectedBackend {
-    pub(crate) async fn init(canvas: HtmlCanvasElement) -> Result<Self, JsValue> {
+    pub(crate) async fn init(canvas: WebCanvasSurface) -> Result<Self, JsValue> {
         let surface_host = VelloSurfaceHost::init(canvas).await?;
         let layer_present = LayerPresentState::new(
             surface_host.device().clone(),
@@ -98,7 +98,7 @@ impl SelectedBackend {
 }
 
 impl VelloSurfaceHost {
-    async fn init(canvas: HtmlCanvasElement) -> Result<Self, JsValue> {
+    async fn init(canvas: WebCanvasSurface) -> Result<Self, JsValue> {
         let width = canvas.width();
         let height = canvas.height();
 
@@ -107,8 +107,12 @@ impl VelloSurfaceHost {
             ..wgpu::InstanceDescriptor::new_without_display_handle()
         });
 
+        let target = match canvas {
+            WebCanvasSurface::Html(canvas) => wgpu::SurfaceTarget::Canvas(canvas),
+            WebCanvasSurface::Offscreen(canvas) => wgpu::SurfaceTarget::OffscreenCanvas(canvas),
+        };
         let surface = instance
-            .create_surface(wgpu::SurfaceTarget::Canvas(canvas))
+            .create_surface(target)
             .map_err(|e| JsValue::from_str(&e.to_string()))?;
 
         let adapter = instance
@@ -359,6 +363,18 @@ impl CanvasBackend for SelectedBackend {
         let budget = GpuBudget::from_bytes(self.resource_policy.gpu.max_bytes);
         state.presentation.enforce_budget(budget, &mut adapter);
         Ok(())
+    }
+
+    fn submission_completion(&self) -> SubmissionCompletion {
+        let (sender, receiver) = futures_channel::oneshot::channel();
+        self.surface_host.queue.on_submitted_work_done(move || {
+            let _ = sender.send(());
+        });
+        Box::pin(async move {
+            receiver
+                .await
+                .map_err(|_| anyhow::anyhow!("WebGPU submission completion was cancelled"))
+        })
     }
 
     fn resize(&mut self, width: u32, height: u32, content_scale: f32) {

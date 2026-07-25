@@ -119,22 +119,15 @@ test('packageJsonFor reproduces the legacy canonical package.json, per-target de
   // closure via `private`, never `publishConfig.access` (ADR-0007 §1).
   assert.equal(JSON.parse(packageJsonFor(byName['pkg-null'], manifest)).private, true);
   assert.equal(JSON.parse(packageJsonFor(byName['pkg-null'], manifest)).publishConfig, undefined);
-  // Each pkg dir's package name is its own npmName, NOT the shared crate name
-  // (#765). When sibling file: deps (host imports pkg / pkg-tiny-skia) both
-  // declared name "hayate-adapter-web", pnpm saw a name
-  // collision and routed one alias (hayate-adapter-web-cpu) through a
-  // .pnpm virtual-store copy that only carried package.json — Rolldown then
-  // failed to resolve the dynamic import in the Pages demo build. Distinct
-  // names make every alias link straight to its source dir.
+  // Each pkg dir's package name is its own npmName, NOT the shared crate name (#765).
+  // Distinct release/diagnostic variant names avoid workspace package collisions.
   assert.equal(JSON.parse(packageJsonFor(byName['pkg-tiny-skia'], manifest)).name, '@torimi/hayate-adapter-web-cpu');
   assert.equal(JSON.parse(packageJsonFor(byName['pkg-null'], manifest)).name, 'hayate-adapter-web-null');
 
   assert.equal(GITIGNORE_CONTENTS, '*\n!package.json\n!README.md\n');
 });
 
-// No args = today's `pnpm run build` (the 5 non-layer-present backends);
-// an explicit name = today's `pnpm run build:layer-present` (one target only).
-// This is what lets the two legacy scripts collapse into one CLI.
+// No args selects every default-build target; an explicit name selects that target only.
 test('selectTargets: no names selects the default-build set, in manifest order', () => {
   const manifest = loadManifest();
   const selected = selectTargets(manifest, []);
@@ -173,22 +166,14 @@ test('selectTargets: { all: true } selects every target, default or opt-in', () 
   ]);
 });
 
-// Pins the exact npmName/host mapping loadCanvasBackend's codegen depends on (#703) —
-// including the real naming mismatch (pkg-tiny-skia's bare specifier is "-cpu", not
-// "-tiny-skia"), pkg-null having no host consumer, and each per-layer-present opt-in
-// target naming its own init() runtime arg (ADR-0138/ADR-0140, #710/#717/#718).
-test('npmName/host mapping matches what Hayate/host/src actually imports', () => {
+// Package identities remain stable even though the standard Host imports only the combined pkg.
+test('npmName mapping remains stable for release and diagnostic variants', () => {
   const manifest = loadManifest();
   const byName = Object.fromEntries(manifest.targets.map((t) => [t.name, t]));
 
   assert.equal(byName['pkg'].npmName, '@torimi/hayate-adapter-web');
-  assert.deepEqual(byName['pkg'].host, { backend: 'vello' });
-
   assert.equal(byName['pkg-tiny-skia'].npmName, '@torimi/hayate-adapter-web-cpu');
-  assert.deepEqual(byName['pkg-tiny-skia'].host, { backend: 'tiny-skia' });
-
   assert.equal(byName['pkg-null'].npmName, 'hayate-adapter-web-null');
-  assert.equal(byName['pkg-null'].host, null);
 });
 
 function validManifestFixture(overrides = {}) {
@@ -204,7 +189,6 @@ function validManifestFixture(overrides = {}) {
         description: 'x',
         includeInDefaultBuild: true,
         npmName: 'hayate-adapter-web',
-        host: { backend: 'vello' },
       },
     ],
     ...overrides,
@@ -222,7 +206,6 @@ test('validateManifest rejects an exclusive-mode target with no feature names', 
         description: 'x',
         includeInDefaultBuild: true,
         npmName: 'hayate-adapter-web-broken',
-        host: null,
       },
     ],
   });
@@ -236,28 +219,6 @@ test('validateManifest rejects a target missing npmName', () => {
   const manifest = validManifestFixture({ targets: [target] });
 
   assert.throws(() => validateManifest(manifest), /npmName/);
-});
-
-test('validateManifest accepts host: null (no host-side consumer, e.g. pkg-null)', () => {
-  const manifest = validManifestFixture({ targets: [{ ...validManifestFixture().targets[0], host: null }] });
-
-  assert.doesNotThrow(() => validateManifest(manifest));
-});
-
-test('validateManifest rejects the retired runtime layer-present argument', () => {
-  const manifest = validManifestFixture({
-    targets: [{ ...validManifestFixture().targets[0], host: { backend: 'vello', runtimeLayerPresentArg: 'layerPresent' } }],
-  });
-
-  assert.throws(() => validateManifest(manifest), /runtimeLayerPresentArg.*no longer supported/);
-});
-
-test('validateManifest rejects an unknown host bootstrap', () => {
-  const manifest = validManifestFixture({
-    targets: [{ ...validManifestFixture().targets[0], host: { backend: 'vello', bootstrap: 'unknown' } }],
-  });
-
-  assert.throws(() => validateManifest(manifest), /host\.bootstrap/);
 });
 
 test('validateManifest rejects duplicate target names', () => {
@@ -282,7 +243,6 @@ test('a brand new manifest entry needs no special-casing in any helper', () => {
         description: 'Hayate — quantum backend (hypothetical)',
         includeInDefaultBuild: false,
         npmName: 'hayate-adapter-web-quantum',
-        host: null,
       },
     ],
   });

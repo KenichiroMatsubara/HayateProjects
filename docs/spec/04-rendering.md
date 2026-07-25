@@ -72,7 +72,7 @@
 **規範文:** どの renderer を許可しどの順で試すかは `Renderer Selection Policy` が決める。Vello を preferred default、tiny-skia を standard alternative とし、recording/null は非標準（診断）として分離する。各 backend の `name` / `try_init` / `try_init_sync_for_fallback` / `classify_init_error` は `SceneRendererKind` に集約し、`RenderHost` は policy の preference list を回すのみ。
 **出典:** ADR-0050
 **状況:** ✅ — `SceneRendererKind::{name, try_init, try_init_sync_for_fallback, classify_init_error}`（`backend/mod.rs`）；`RenderHost::init_with_policy` が preference list を反復。
-**備考:** 新 backend 追加は enum variant + `SceneRendererKind` impl の1箇所 + backend crate。[更新 2026-07-18] web もネイティブ（REND-15）と同じくランタイム上書きを持つ：`?renderer=vello|tiny-skia`（`SceneRendererKind::name()` と同一語彙）を `@torimi/hayate-host` の `resolveCanvasBackendSelection` が deep-link として honor し、選択 renderer と選択理由を console へ出す（Rust 側 `render_host.rs` の `selected scene renderer:` / `scene renderer rejected:` ログが console_log 経由でブラウザに届く）。web は「1バイナリ1レンダラ」排他（REND-11）なので上書きはロードする WASM バンドルの選択として効く。
+**備考:** 新 backend 追加は enum variant + `SceneRendererKind` impl の1箇所 + backend crate。web は標準 Worker 内の Rust Render Host が初回選択を所有し、`selected scene renderer:` / `scene renderer rejected:` を console へ出す。renderer query override と JS 側選択 oracle は持たず、本番 WASM は Vello と tiny-skia を同梱する。
 
 ### REND-10 — Vello を主候補 renderer とする
 **規範文:** GPU 描画の主候補 renderer は Vello（Linebender, wgpu ベース）とし、`SceneGraph`→Vello Scene 変換は薄い独立 crate（`scene-renderers/vello`）に置く。公開 API は `render_scene` のみ。
@@ -85,6 +85,9 @@
 **出典:** ADR-0048, ADR-0146
 **状況:** ✅ — `scene-renderers/tiny-skia`（`TinySkiaPainter` + `render_scene`）。`backend-vello` / `backend-tiny-skia` feature。実装は従来から web のみで、住み分けと整合。
 **備考:** GPU バックエンドではなく CPU 代替（§1 CORE-02 と整合）。[更新 2026-07-10] ADR-0146 がネイティブの standard alternative を skia-safe と定め、tiny-skia の守備範囲を web 専用へ明文化（旧規範文は環境を限定していなかった）。
+
+Canvas Mode では Vello/tiny-skia とも初回選択後の runtime failure を terminal とする。別 renderer
+への fallback と Worker restart は行わず、共通 frame pipeline の failure latch を外部観測へ返す。
 
 ---
 

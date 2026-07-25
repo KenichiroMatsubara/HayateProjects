@@ -96,7 +96,9 @@ export interface RawHayate {
   request_pump?(): void;
   /** @deprecated legacy direct WASM consumers; prepare_frame returns deliveries. */
   poll_events(): unknown[];
-  register_listener(element_id: number, event_kind: number): number;
+  register_listener(element_id: number, event_kind: number): number | Promise<number>;
+  /** Worker transports may release the runtime registration eagerly on unsubscribe. */
+  unregister_listener?(listener_id: number): void;
   set_background_color(r: number, g: number, b: number): void;
   /** 開発専用: `tuning.json` の味付け定数オーバーライドを重ねる。不正な JSON や
    * 未知のキーで throw するが、ホストは握りつぶしコンパイル済み既定を残す。

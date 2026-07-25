@@ -5,6 +5,7 @@ members = [
     "crates/core",
     "crates/app-host",
     "crates/demo-fixtures",
+    "crates/frame-pipeline",
     "crates/scene-renderers/vello",
     "crates/scene-renderers/tiny-skia",
     "crates/scene-renderers/skia",
@@ -66,6 +67,7 @@ log = "0.4.33"
 # desktop demo バイナリのログ出力（RUST_LOG を実際に効かせる・#777）
 env_logger = "0.11.11"
 pollster = "1.0.1"
+futures-channel = "0.3.31"
 bytemuck = { version = "1.25.2", features = ["derive"] }
 accesskit = { version = "0.24.1", features = ["serde"] }
 

@@ -19,7 +19,9 @@ import {
 function recordingEngine(presentation: ImePresentation = { keyboardVisible: false, caretRect: null }) {
   const calls: string[] = [];
   const engine: WorkerEngine = {
-    init: (_c, w, h, d) => calls.push(`init(${w},${h},${d})`),
+    init: (_c, w, h, d) => {
+      calls.push(`init(${w},${h},${d})`);
+    },
     resize: (w, h, d) => calls.push(`resize(${w},${h},${d})`),
     onPointer: (a, x, y) => calls.push(`pointer(${a},${x},${y})`),
     onWheel: (x, y, dx, dy) => calls.push(`wheel(${x},${y},${dx},${dy})`),
@@ -29,6 +31,18 @@ function recordingEngine(presentation: ImePresentation = { keyboardVisible: fals
       return 0;
     },
     onComposition: (t, text) => calls.push(`composition(${t},${text})`),
+    registerListener: () => 1,
+    unregisterListener: () => {},
+    pollEvents: () => [],
+    setFrameProduced: () => {},
+    pipelineObservation: () => ({
+      accepted: 0,
+      coalesced: 0,
+      dropped: 0,
+      active: false,
+      pending: 0,
+      failure: false,
+    }),
     imePresentation: () => presentation,
   };
   return { engine, calls };
@@ -68,10 +82,75 @@ function wireBridge(opts?: { presentation?: ImePresentation }) {
 }
 
 describe('OffscreenCanvas + Worker host bridge (ADR-0128 web)', () => {
-  it('init transfers the canvas to the worker and the engine boots, replying ready', () => {
+  it('reports a typed boot failure instead of ready when worker engine initialization fails', async () => {
+    const posted: WorkerToMain[] = [];
+    const engine = recordingEngine().engine;
+    engine.init = async () => {
+      throw new Error('renderer unavailable');
+    };
+    const dispatcher = new WorkerEngineDispatcher(engine, (message) => posted.push(message));
+
+    await dispatcher.handle({
+      kind: 'init',
+      canvas: { token: 'offscreen' },
+      width: 800,
+      height: 600,
+      dpr: 2,
+    });
+
+    expect(posted).toEqual([
+      {
+        kind: 'boot-failure',
+        failure: {
+          code: 'renderer-init-failed',
+          message: 'renderer unavailable',
+        },
+      },
+    ]);
+  });
+
+  it('reports a terminal runtime failure and still serves pipeline observations', async () => {
+    const posted: WorkerToMain[] = [];
+    const engine = recordingEngine().engine;
+    engine.render = () => {
+      throw new Error('WebGPU submit failed');
+    };
+    engine.pipelineObservation = () => ({
+      accepted: 1,
+      coalesced: 0,
+      dropped: 0,
+      active: false,
+      pending: 0,
+      failure: true,
+    });
+    const dispatcher = new WorkerEngineDispatcher(engine, (message) => posted.push(message));
+
+    await dispatcher.handle({ kind: 'frame', timestampMs: 16 });
+    await dispatcher.handle({ kind: 'observe-pipeline', requestId: 7 });
+
+    expect(posted).toContainEqual({
+      kind: 'runtime-failure',
+      failure: { code: 'renderer-runtime-failed', message: 'WebGPU submit failed' },
+    });
+    expect(posted).toContainEqual({
+      kind: 'pipeline-observation',
+      requestId: 7,
+      observation: {
+        accepted: 1,
+        coalesced: 0,
+        dropped: 0,
+        active: false,
+        pending: 0,
+        failure: true,
+      },
+    });
+  });
+
+  it('init transfers the canvas to the worker and the engine boots, replying ready', async () => {
     const { shim, calls, toMain } = wireBridge();
     const canvas = { token: 'offscreen' };
     shim.init(canvas, 800, 600, 2);
+    await Promise.resolve();
 
     expect(calls).toContain('init(800,600,2)');
     expect(toMain).toContainEqual({ kind: 'ready' });
@@ -90,6 +169,61 @@ describe('OffscreenCanvas + Worker host bridge (ADR-0128 web)', () => {
       'wheel(5,5,0,-120)',
       'key(a,0)',
     ]);
+  });
+
+  it('round-trips a Worker-owned listener id and drains its click delivery exactly once', async () => {
+    const { shim, engine } = wireBridge();
+    engine.registerListener = (elementId, eventKind) => {
+      expect({ elementId, eventKind }).toEqual({ elementId: 7, eventKind: 0 });
+      return 41;
+    };
+    engine.pollEvents = () => [[41, 0, 7, 12, 18]];
+
+    await expect(shim.registerListener(7, 0)).resolves.toBe(41);
+    shim.pointer('up', 12, 18);
+
+    expect(shim.drainEventDeliveries()).toEqual([[41, 0, 7, 12, 18]]);
+    expect(shim.drainEventDeliveries()).toEqual([]);
+  });
+
+  it('forwards listener cleanup to the Worker engine', async () => {
+    const { shim, engine } = wireBridge();
+    engine.registerListener = () => 41;
+    engine.unregisterListener = vi.fn();
+
+    const listenerId = await shim.registerListener(7, 0);
+    shim.unregisterListener(listenerId);
+
+    expect(engine.unregisterListener).toHaveBeenCalledOnce();
+    expect(engine.unregisterListener).toHaveBeenCalledWith(41);
+  });
+
+  it('returns deliveries produced by a Worker frame commit', () => {
+    const { shim, engine } = wireBridge();
+    engine.render = vi.fn();
+    engine.pollEvents = () => [[41, 17, 7, 120, 80]];
+
+    shim.frame(16);
+
+    expect(shim.drainEventDeliveries()).toEqual([[41, 17, 7, 120, 80]]);
+  });
+
+  it('returns deliveries produced by a Worker-owned continuation frame', () => {
+    const posted: WorkerToMain[] = [];
+    const engine = recordingEngine().engine;
+    let frameProduced: (() => void) | undefined;
+    engine.setFrameProduced = (callback) => {
+      frameProduced = callback;
+    };
+    engine.pollEvents = () => [[41, 17, 7, 120, 96]];
+    new WorkerEngineDispatcher(engine, (message) => posted.push(message));
+
+    frameProduced?.();
+
+    expect(posted).toContainEqual({
+      kind: 'event-deliveries',
+      rows: [[41, 17, 7, 120, 96]],
+    });
   });
 
   it('routes semantic EditIntent to the worker engine without a main-thread keymap', () => {
@@ -114,6 +248,38 @@ describe('OffscreenCanvas + Worker host bridge (ADR-0128 web)', () => {
     expect(imeSink.caretRect).toEqual({ x: 12, y: 34, width: 2, height: 18 });
   });
 
+  it('returns the common pipeline counters through the Worker host interface', async () => {
+    const { shim, engine } = wireBridge();
+    (
+      engine as WorkerEngine & {
+        pipelineObservation(): {
+          accepted: number;
+          coalesced: number;
+          dropped: number;
+          active: boolean;
+          pending: number;
+          failure: boolean;
+        };
+      }
+    ).pipelineObservation = () => ({
+      accepted: 51,
+      coalesced: 49,
+      dropped: 0,
+      active: true,
+      pending: 1,
+      failure: false,
+    });
+
+    await expect(shim.pipelineObservation()).resolves.toEqual({
+      accepted: 51,
+      coalesced: 49,
+      dropped: 0,
+      active: true,
+      pending: 1,
+      failure: false,
+    });
+  });
+
   it('keeps the main shim engine-free so rendering never blocks the main/DOM thread', () => {
     // main shim はエンジン参照を持たず、入力は postMessage に変換するだけ（描画は Worker で走る）。
     const posted: MainToWorker[] = [];
@@ -128,7 +294,7 @@ describe('OffscreenCanvas + Worker host bridge (ADR-0128 web)', () => {
 
     // main 側は同期描画を一切走らせず、メッセージ列だけを生む。
     expect(posted).toEqual([
-      { kind: 'pointer', action: 'down', x: 1, y: 2 },
+      { kind: 'pointer', action: 'down', pointerKind: 'mouse', x: 1, y: 2 },
       { kind: 'resize', width: 640, height: 480, dpr: 1 },
     ]);
   });

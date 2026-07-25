@@ -32,9 +32,6 @@ importers:
       '@torimi/hayate-adapter-web':
         specifier: workspace:*
         version: link:../wasm-pkgs/pkg
-      '@torimi/hayate-adapter-web-cpu':
-        specifier: workspace:*
-        version: link:../wasm-pkgs/pkg-tiny-skia
       '@torimi/hayate-protocol-spec':
         specifier: workspace:*
         version: link:../proto

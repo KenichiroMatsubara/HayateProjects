@@ -17,14 +17,12 @@ and `/* … */` comments — in 日本語 — and leave trailing commas. The bun
 2. Run the dev server and open Canvas Mode on the device:
    ```
    pnpm --filter @tsubame/example-solid-demo dev -- --host 0.0.0.0
-   # phone (same LAN, plain http → WebGPU off, so force the CPU backend):
-   #   http://<PC-IP>:<port>/?renderer=tiny-skia
+   # Canvas Mode requires a secure context on a phone; use the HTTPS dev endpoint.
    ```
 3. Edit a value in `public/tuning.jsonc`, **F5** the page. Delete the file and
    F5 to fall back to the compiled defaults.
 
-The physics is backend-independent, so values tuned under `tiny-skia` apply
-unchanged under `vello`.
+The tuning is applied inside the standard Worker before the first app frame.
 
 ## Source of truth
 

@@ -10,7 +10,7 @@ const otherWebDemos = await Promise.all([
 ]);
 
 describe('Web renderer switch', () => {
-  it('sources backend choices from Hayate Host in every Web demo', () => {
+  it('offers only standard Canvas auto and explicit HTML Mode in every Web demo', () => {
     for (const demoHtml of [html, ...otherWebDemos]) {
       expect(demoHtml).toContain('@torimi/hayate-host/renderer-policy');
       expect(demoHtml).not.toMatch(/data-renderer="(?:vello|tiny-skia)"/);

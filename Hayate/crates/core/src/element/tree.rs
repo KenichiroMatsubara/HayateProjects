@@ -2098,6 +2098,10 @@ impl ElementTree {
         self.runtime.register_listener(element_id, kind)
     }
 
+    pub fn unregister_listener(&mut self, listener_id: ListenerId) -> bool {
+        self.runtime.unregister_listener(listener_id)
+    }
+
     pub fn dispatch_event(&mut self, kind: DocumentEventKind, event: Event) {
         let mut path = Vec::new();
         let mut node = document_runtime::event_target(&event);

@@ -48,7 +48,7 @@ export interface BootTorimiHostOptions {
   readonly hostProtocolVersion: number;
   /** dev-server 上のバンドルルート。既定は {@link devServerContract} の bundleRoute。 */
   readonly bundleRoute?: string;
-  /** `createHayateWebHost` に渡す backend / tuning 等。auto モードでは省略可。 */
+  /** 標準 Worker host に渡す tuning / clock 等。通常は省略可。 */
   readonly hostOptions?: CreateHayateWebHostOptions;
 
   // ── テスト注入 seam ──────────────────────────────────────────────────────

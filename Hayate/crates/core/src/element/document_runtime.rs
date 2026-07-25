@@ -256,6 +256,26 @@ mod tests {
     }
 
     #[test]
+    fn unregistered_listener_receives_no_later_delivery() {
+        let mut tree = ElementTree::new();
+        let btn = tree.element_create(31, ElementKind::Button);
+        tree.set_root(btn);
+        let listener = tree.register_listener(btn, DocumentEventKind::Click);
+
+        assert!(tree.unregister_listener(listener));
+        tree.dispatch_event(
+            DocumentEventKind::Click,
+            Event::Click {
+                target_id: btn,
+                x: 0.0,
+                y: 0.0,
+            },
+        );
+
+        assert!(tree.poll_deliveries().is_empty());
+    }
+
+    #[test]
     fn apply_wheel_delta_clamps_at_bounds() {
         let (mut tree, sv, child) = scroll_tree(300.0);
         tree.element_set_scroll_offset(sv, 0.0, 180.0);

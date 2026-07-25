@@ -1,8 +1,6 @@
-// Browser UI が backend 名を複製せずに選択肢を構築するための軽量な public entry。
-// Host bootstrap や backend loader は import しない。
-export {
-  RENDERER_QUERY_PARAM,
-  RENDERER_VALUE_VELLO,
-  RENDERER_VALUE_TINY_SKIA,
-  WEB_RENDERER_QUERY_VALUES,
-} from './resolve-backend.js';
+/**
+ * Canvas Mode no longer exposes a runtime Scene Renderer selector. `auto` always boots the single
+ * Worker bundle and its Rust Render Host owns initial renderer selection. HTML Mode remains the
+ * separately authored `dom` choice in each Web entry.
+ */
+export const WEB_RENDERER_QUERY_VALUES = ['auto'] as const;

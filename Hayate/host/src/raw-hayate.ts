@@ -37,8 +37,11 @@ export interface RawHayate {
    * renderer-hayate` の `RawHayate` ポート）はこれを必須とする — web（canvas.rs）/
    * native（js_host.rs）とも実装済みで、生成物の契約にも載る。 */
   has_pending_visual_work(): boolean;
+  /** Worker delivery arrival wakes the consumer's on-demand frame loop. */
+  set_request_redraw?(cb: () => void): void;
   poll_events(): unknown[];
-  register_listener(element_id: number, event_kind: number): number;
+  register_listener(element_id: number, event_kind: number): number | Promise<number>;
+  unregister_listener?(listener_id: number): void;
   set_background_color(r: number, g: number, b: number): void;
   /** 開発専用: `tuning.json` の味付け定数オーバーライドを重ねる。不正な JSON や
    * 未知のキーで throw するが、host は握りつぶしコンパイル済み既定を残す。 */

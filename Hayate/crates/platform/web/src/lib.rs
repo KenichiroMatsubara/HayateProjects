@@ -38,6 +38,10 @@ mod shared;
 mod style_packet;
 #[cfg(target_arch = "wasm32")]
 mod wasm_impl;
+#[cfg(target_arch = "wasm32")]
+mod worker_engine;
+#[cfg(any(target_arch = "wasm32", test))]
+mod worker_touch_scroll;
 
 #[cfg(target_arch = "wasm32")]
 pub use canvas::*;
