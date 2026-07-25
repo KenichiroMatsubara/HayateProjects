@@ -2,9 +2,9 @@
  * Web の OffscreenCanvas＋単一 Worker ホスト（ADR-0128 の Web 近似形）。
  *
  * native の UI/Raster 内部二分割（ADR-0128）を Web で再現するには SharedArrayBuffer（COOP/COEP）が
- * 必須で、ADR-0003 が却下した非実践パス。Web ではこれを真似ず、**エンジン丸ごと**（WASM コア＋
- * Vello raster＋compositor＋Tsubame reactivity）を **OffscreenCanvas＋単一 Worker** に載せ、main
- * スレッドは「DOM/pointer/IME を postMessage で Worker へ橋渡しする薄い shim」にする。COOP/COEP 不要
+ * 必須で、ADR-0003 が却下した非実践パス。Web ではこれを真似ず、**エンジン丸ごと**（WASM core＋
+ * Render Host＋selected Scene Renderer＋common frame pipeline）を **OffscreenCanvas＋単一 Worker** に
+ * 載せ、main スレッドは transport shim にする。COOP/COEP 不要
  * （SharedArrayBuffer 非依存）。Web では SceneGraph はスレッドを跨がない（Worker 内に core も raster も
  * 同居）。**IME(EditContext) は main 結合（ADR-0069）なので main↔Worker の IME ブリッジ**が Web 固有税。
  *
@@ -15,16 +15,42 @@
 
 /** OffscreenCanvas のハンドル。実環境では transfer される `OffscreenCanvas`、テストではトークン。 */
 export type CanvasHandle = unknown;
+export type WorkerPointerKind = 'mouse' | 'touch' | 'pen';
+
+/** Worker 内の WASM core に適用する structured-clone-safe mutation command。 */
+export type WorkerMutation =
+  | { kind: 'element-create'; id: number; elementKind: number }
+  | { kind: 'set-root'; id: number }
+  | { kind: 'append-child'; parent: number; child: number }
+  | { kind: 'insert-before'; parent: number; child: number; before: number }
+  | { kind: 'remove'; id: number }
+  | {
+      kind: 'apply-mutations';
+      ops: Float64Array;
+      styles: Float32Array;
+      texts: string[];
+      draws: Float32Array;
+    }
+  | { kind: 'background'; r: number; g: number; b: number };
 
 /** main → Worker メッセージ（DOM/pointer/IME 入力の橋渡し）。 */
 export type MainToWorker =
   | { kind: 'init'; canvas: CanvasHandle; width: number; height: number; dpr: number }
   | { kind: 'resize'; width: number; height: number; dpr: number }
-  | { kind: 'pointer'; action: 'down' | 'move' | 'up'; x: number; y: number }
+  | {
+      kind: 'pointer';
+      action: 'down' | 'move' | 'up';
+      pointerKind: WorkerPointerKind;
+      x: number;
+      y: number;
+    }
   | { kind: 'wheel'; x: number; y: number; deltaX: number; deltaY: number }
   | { kind: 'key'; key: string; modifiers: number }
   | { kind: 'edit-intent'; targetId: number; intent: number[] }
-  | { kind: 'composition'; targetId: number; text: string };
+  | { kind: 'composition'; targetId: number; text: string }
+  | { kind: 'mutation'; command: WorkerMutation }
+  | { kind: 'frame'; timestampMs: number }
+  | { kind: 'detach' };
 
 /** レイアウト後の IME presentation（ADR-0069）。Worker が決め、main の EditContext へ橋渡しする。 */
 export interface ImePresentation {
@@ -37,20 +63,33 @@ export interface ImePresentation {
 /** Worker → main メッセージ。Web 固有税の IME presentation を main へ戻す。 */
 export type WorkerToMain =
   | { kind: 'ready' }
-  | { kind: 'ime'; presentation: ImePresentation };
+  | {
+      kind: 'boot-failure';
+      failure: { code: 'renderer-init-failed'; message: string };
+    }
+  | { kind: 'ime'; presentation: ImePresentation }
+  | { kind: 'detached' };
 
 /**
  * Worker 内のエンジン（WASM コア＋raster＋compositor）。main からのメッセージで駆動される最小面。
  * 描画（`render`）は Worker 上で走り、main/DOM スレッドをブロックしない。
  */
 export interface WorkerEngine {
-  init(canvas: CanvasHandle, width: number, height: number, dpr: number): void;
+  init(canvas: CanvasHandle, width: number, height: number, dpr: number): void | Promise<void>;
   resize(width: number, height: number, dpr: number): void;
-  onPointer(action: 'down' | 'move' | 'up', x: number, y: number): void;
+  onPointer(
+    action: 'down' | 'move' | 'up',
+    x: number,
+    y: number,
+    pointerKind?: WorkerPointerKind,
+  ): void;
   onWheel(x: number, y: number, deltaX: number, deltaY: number): void;
   onKey(key: string, modifiers: number): void;
   dispatchEditIntent?(targetId: number, intent: Float64Array): number;
   onComposition(targetId: number, text: string): void;
+  applyMutation?(command: WorkerMutation): void;
+  render?(timestampMs: number): void;
+  detach?(): void;
   /** レイアウト後の IME presentation（ADR-0069）。main の EditContext へブリッジする。 */
   imePresentation(): ImePresentation;
 }
@@ -66,17 +105,27 @@ export class WorkerEngineDispatcher {
   ) {}
 
   /** main から届いた 1 メッセージを処理する。 */
-  handle(msg: MainToWorker): void {
+  async handle(msg: MainToWorker): Promise<void> {
     switch (msg.kind) {
       case 'init':
-        this.engine.init(msg.canvas, msg.width, msg.height, msg.dpr);
-        this.postToMain({ kind: 'ready' });
+        try {
+          await this.engine.init(msg.canvas, msg.width, msg.height, msg.dpr);
+          this.postToMain({ kind: 'ready' });
+        } catch (error) {
+          this.postToMain({
+            kind: 'boot-failure',
+            failure: {
+              code: 'renderer-init-failed',
+              message: error instanceof Error ? error.message : String(error),
+            },
+          });
+        }
         break;
       case 'resize':
         this.engine.resize(msg.width, msg.height, msg.dpr);
         break;
       case 'pointer':
-        this.engine.onPointer(msg.action, msg.x, msg.y);
+        this.engine.onPointer(msg.action, msg.x, msg.y, msg.pointerKind);
         this.emitIme();
         break;
       case 'wheel':
@@ -93,6 +142,17 @@ export class WorkerEngineDispatcher {
       case 'composition':
         this.engine.onComposition(msg.targetId, msg.text);
         this.emitIme();
+        break;
+      case 'mutation':
+        this.engine.applyMutation?.(msg.command);
+        break;
+      case 'frame':
+        this.engine.render?.(msg.timestampMs);
+        this.emitIme();
+        break;
+      case 'detach':
+        this.engine.detach?.();
+        this.postToMain({ kind: 'detached' });
         break;
     }
   }
@@ -115,39 +175,60 @@ export interface MainEditContextSink {
  * 描画は Worker 上で走り、main/DOM スレッドは描画でブロックされない。SharedArrayBuffer は使わない。
  */
 export class MainThreadShim {
+  private detached = false;
+
   constructor(
-    private readonly postToWorker: (msg: MainToWorker, transfer?: Transferable[]) => void,
+    private readonly sendToWorker: (msg: MainToWorker, transfer?: Transferable[]) => void,
     private readonly ime: MainEditContextSink,
   ) {}
 
   /** OffscreenCanvas を Worker へ transfer して初期化する（COOP/COEP 不要）。 */
   init(canvas: CanvasHandle, width: number, height: number, dpr: number): void {
     // 実環境では canvas（OffscreenCanvas）を transfer リストで渡す。テストでは transport が無視する。
-    this.postToWorker({ kind: 'init', canvas, width, height, dpr }, [canvas as Transferable]);
+    this.post({ kind: 'init', canvas, width, height, dpr }, [canvas as Transferable]);
   }
 
   resize(width: number, height: number, dpr: number): void {
-    this.postToWorker({ kind: 'resize', width, height, dpr });
+    this.post({ kind: 'resize', width, height, dpr });
   }
 
-  pointer(action: 'down' | 'move' | 'up', x: number, y: number): void {
-    this.postToWorker({ kind: 'pointer', action, x, y });
+  pointer(
+    action: 'down' | 'move' | 'up',
+    x: number,
+    y: number,
+    pointerKind: WorkerPointerKind = 'mouse',
+  ): void {
+    this.post({ kind: 'pointer', action, pointerKind, x, y });
   }
 
   wheel(x: number, y: number, deltaX: number, deltaY: number): void {
-    this.postToWorker({ kind: 'wheel', x, y, deltaX, deltaY });
+    this.post({ kind: 'wheel', x, y, deltaX, deltaY });
   }
 
   key(key: string, modifiers: number): void {
-    this.postToWorker({ kind: 'key', key, modifiers });
+    this.post({ kind: 'key', key, modifiers });
   }
 
   editIntent(targetId: number, intent: Float64Array): void {
-    this.postToWorker({ kind: 'edit-intent', targetId, intent: Array.from(intent) });
+    this.post({ kind: 'edit-intent', targetId, intent: Array.from(intent) });
   }
 
   composition(targetId: number, text: string): void {
-    this.postToWorker({ kind: 'composition', targetId, text });
+    this.post({ kind: 'composition', targetId, text });
+  }
+
+  mutation(command: WorkerMutation): void {
+    this.post({ kind: 'mutation', command });
+  }
+
+  frame(timestampMs: number): void {
+    this.post({ kind: 'frame', timestampMs });
+  }
+
+  detach(): void {
+    if (this.detached) return;
+    this.sendToWorker({ kind: 'detach' });
+    this.detached = true;
   }
 
   /** Worker からのメッセージを処理する。IME presentation を main の EditContext へ適用する。 */
@@ -156,5 +237,9 @@ export class MainThreadShim {
       this.ime.setKeyboardVisible(msg.presentation.keyboardVisible);
       this.ime.setCaretRect(msg.presentation.caretRect);
     }
+  }
+
+  private post(msg: MainToWorker, transfer?: Transferable[]): void {
+    if (!this.detached) this.sendToWorker(msg, transfer);
   }
 }

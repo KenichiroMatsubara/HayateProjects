@@ -6,6 +6,7 @@ import {
 } from './index.js';
 import type { CanvasBackend } from './resolve-backend.js';
 import type { RawHayate } from './raw-hayate.js';
+import type { MainToWorker, WorkerToMain } from './worker-host.js';
 
 /**
  * Real WASM を巻き込まずに web bootstrap の配線を検証する契約テスト。WebGPU プローブと
@@ -261,12 +262,24 @@ describe('createHayateWebHost', () => {
   });
 
   // ── OffscreenCanvas + Worker opt-in（ADR-0128 web 半分・#648）──────────────────
-  function fakeWorkerTransport() {
+  function fakeWorkerTransport(
+    bootReply: WorkerToMain = { kind: 'ready' },
+  ) {
     const sent: unknown[] = [];
+    let onMessage: ((message: WorkerToMain) => void) | undefined;
     return {
       transport: {
-        postMessage: (msg: unknown) => sent.push(msg),
-        onMessage: () => {},
+        postMessage: (msg: unknown) => {
+          sent.push(msg);
+          if ((msg as MainToWorker).kind === 'init') {
+            queueMicrotask(() => onMessage?.(bootReply));
+          } else if ((msg as MainToWorker).kind === 'detach') {
+            queueMicrotask(() => onMessage?.({ kind: 'detached' }));
+          }
+        },
+        onMessage: (callback: (message: WorkerToMain) => void) => {
+          onMessage = callback;
+        },
         terminate: vi.fn(),
       },
       sent,
@@ -277,6 +290,7 @@ describe('createHayateWebHost', () => {
     height: 600,
     addEventListener: () => {},
     removeEventListener: () => {},
+    getBoundingClientRect: () => ({ width: 0, height: 0 }),
   } as unknown as HTMLCanvasElement;
 
   it('opt-in off (default): loads a main-thread backend, spawns no worker (#648)', async () => {
@@ -294,7 +308,7 @@ describe('createHayateWebHost', () => {
   });
 
   it('opt-in on (flag): boots the worker engine and does not load a main-thread backend (#648)', async () => {
-    const { transport } = fakeWorkerTransport();
+    const { transport, sent } = fakeWorkerTransport();
     const spawnWorker = vi.fn(() => transport);
     const loadBackend = vi.fn(async () => fakeRaw());
     const transferControlToOffscreen = vi.fn(() => ({ token: 'offscreen' }));
@@ -313,6 +327,61 @@ describe('createHayateWebHost', () => {
     // main の raw は input proxy：入力面は関数、drive/query は不活性の既定。
     expect(typeof host.raw.on_pointer_down).toBe('function');
     expect(host.raw.poll_events()).toEqual([]);
+
+    host.raw.element_create(1, 0);
+    host.raw.set_root(1);
+    host.raw.render(16);
+    expect(sent.slice(1)).toEqual([
+      {
+        kind: 'mutation',
+        command: { kind: 'element-create', id: 1, elementKind: 0 },
+      },
+      { kind: 'mutation', command: { kind: 'set-root', id: 1 } },
+      { kind: 'frame', timestampMs: 16 },
+    ]);
+  });
+
+  it('rejects with a typed boot failure and never falls back to a main-thread renderer', async () => {
+    const { transport } = fakeWorkerTransport({
+      kind: 'boot-failure',
+      failure: {
+        code: 'renderer-init-failed',
+        message: 'OffscreenCanvas renderer unavailable',
+      },
+    });
+    const loadBackend = vi.fn(async () => fakeRaw());
+
+    await expect(
+      createHayateWebHost(workerCanvas, {
+        workerEngine: true,
+        spawnWorker: () => transport,
+        transferControlToOffscreen: () => ({ token: 'offscreen' }),
+        loadBackend,
+      }),
+    ).rejects.toMatchObject({
+      name: 'WorkerBootError',
+      code: 'renderer-init-failed',
+      message: 'OffscreenCanvas renderer unavailable',
+    });
+    expect(loadBackend).not.toHaveBeenCalled();
+  });
+
+  it('reports OffscreenCanvas transfer failure and terminates the unused worker', async () => {
+    const { transport } = fakeWorkerTransport();
+
+    await expect(
+      createHayateWebHost(workerCanvas, {
+        workerEngine: true,
+        spawnWorker: () => transport,
+        transferControlToOffscreen: () => {
+          throw new Error('transferControlToOffscreen is unavailable');
+        },
+      }),
+    ).rejects.toMatchObject({
+      name: 'WorkerBootError',
+      code: 'offscreen-canvas-unavailable',
+    });
+    expect(transport.terminate).toHaveBeenCalledTimes(1);
   });
 
   it('opt-in on (query param): boots the worker path (#648)', async () => {
@@ -328,19 +397,23 @@ describe('createHayateWebHost', () => {
     expect(spawnWorker).toHaveBeenCalledTimes(1);
   });
 
-  it('opt-in on but no spawnWorker: falls back to the main-thread path (#648)', async () => {
+  it('opt-in on but no spawnWorker: rejects without a silent main-thread fallback', async () => {
     const loadBackend = vi.fn(async () => fakeRaw());
-    const host = await createHayateWebHost(workerCanvas, {
-      workerEngine: true,
-      probeWebGPU: async () => false,
-      loadBackend,
+    await expect(
+      createHayateWebHost(workerCanvas, {
+        workerEngine: true,
+        probeWebGPU: async () => false,
+        loadBackend,
+      }),
+    ).rejects.toMatchObject({
+      name: 'WorkerBootError',
+      code: 'worker-unavailable',
     });
 
-    expect(loadBackend).toHaveBeenCalledTimes(1);
-    expect(host.raw).toBeDefined();
+    expect(loadBackend).not.toHaveBeenCalled();
   });
 
-  it('worker host detach terminates the worker (safe teardown / rebuild, #648)', async () => {
+  it('worker host detach waits for the worker shutdown barrier before termination', async () => {
     const { transport } = fakeWorkerTransport();
     const host = await createHayateWebHost(workerCanvas, {
       workerEngine: true,
@@ -349,6 +422,8 @@ describe('createHayateWebHost', () => {
     });
 
     host.detach();
+    expect(transport.terminate).not.toHaveBeenCalled();
+    await Promise.resolve();
     expect(transport.terminate).toHaveBeenCalledTimes(1);
   });
 });

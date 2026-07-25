@@ -38,6 +38,8 @@ mod shared;
 mod style_packet;
 #[cfg(target_arch = "wasm32")]
 mod wasm_impl;
+#[cfg(target_arch = "wasm32")]
+mod worker_engine;
 
 #[cfg(target_arch = "wasm32")]
 pub use canvas::*;

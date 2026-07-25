@@ -20,6 +20,7 @@ backend-null = ["hayate-app-host/backend-null"]
 hayate-core = { path = "../../core" }
 hayate-app-host = { path = "../../app-host" }
 hayate-layer-compositor = { path = "../../scene-renderers/compositor" }
+hayate-frame-pipeline = { path = "../../frame-pipeline" }
 hayate-scene-renderer-vello = { path = "../../scene-renderers/vello", optional = true }
 hayate-scene-renderer-tiny-skia = { path = "../../scene-renderers/tiny-skia", optional = true }
 wgpu = { workspace = true, optional = true }
@@ -30,6 +31,8 @@ wasm-bindgen-futures.workspace = true
 js-sys.workspace = true
 web-sys = { workspace = true, features = [
     "HtmlCanvasElement",
+    "OffscreenCanvas",
+    "OffscreenCanvasRenderingContext2d",
     "HtmlImageElement",
     "HtmlInputElement",
     "HtmlTextAreaElement",

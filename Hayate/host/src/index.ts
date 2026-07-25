@@ -11,7 +11,9 @@ import {
 import {
   bootWorkerEngineBridge,
   createWorkerInputProxy,
+  createBrowserWorkerTransport,
   shouldUseWorkerEngine,
+  WorkerBootError,
   type WorkerTransport,
 } from './worker-boot.js';
 import type { CanvasHandle, MainEditContextSink } from './worker-host.js';
@@ -23,14 +25,23 @@ export { MainThreadShim, WorkerEngineDispatcher } from './worker-host.js';
 export {
   bootWorkerEngineBridge,
   createWorkerInputProxy,
+  createBrowserWorkerTransport,
   shouldUseWorkerEngine,
   WORKER_ENGINE_QUERY_PARAM,
   WORKER_ENGINE_QUERY_VALUE,
+  WORKER_ENTRY_URL,
+  WORKER_NAME,
+  WORKER_DETACH_TIMEOUT_MS,
+  MIN_SURFACE_DIMENSION_PX,
+  DEFAULT_DEVICE_PIXEL_RATIO,
+  workerSurfaceMetrics,
   KEY_MODIFIER_SHIFT,
   KEY_MODIFIER_CTRL,
   KEY_MODIFIER_ALT,
   KEY_MODIFIER_META,
+  WorkerBootError,
   type WorkerTransport,
+  type WorkerBootFailureCode,
   type WorkerEngineBridgeHandle,
   type BootWorkerEngineBridgeOptions,
 } from './worker-boot.js';
@@ -40,6 +51,8 @@ export type {
   MainEditContextSink,
   MainToWorker,
   WorkerEngine,
+  WorkerMutation,
+  WorkerPointerKind,
   WorkerToMain,
 } from './worker-host.js';
 export {
@@ -71,9 +84,8 @@ export interface WebHost {
   readonly requestFrame: (cb: FrameRequestCallback) => number;
   readonly cancelFrame: (handle: number) => void;
   /**
-   * host のライフサイクル teardown。現状は Accessibility Mirror（ADR-0124）の root 除去を畳む。
-   * ミラーは独立ループを持たず frame-clock に相乗りするため（#645）、レンダラ停止でミラーの tick も
-   * 止まる。full reload 時に古い host を捨てる前に呼ぶ（`startTorimiHost` が結線）。
+   * host のライフサイクル teardown。main path は Accessibility Mirror を外し、Worker path は
+   * Shutdown barrier 完了後に renderer/surface を解放して Worker を停止する。
    */
   readonly detach: () => void;
 }
@@ -107,12 +119,12 @@ export interface CreateHayateWebHostOptions {
   /**
    * OffscreenCanvas＋単一 Worker へエンジンを載せる opt-in（ADR-0128 web 半分・#648）。明示 true で
    * 有効、false で無効、未指定なら {@link locationSearch} のクエリパラメータで判定する。**既定は OFF**
-   * （計測ゲート）。有効化には {@link spawnWorker} が要る（無ければ警告して従来の main 経路へフォールバック）。
+   * （計測ゲート）。boot 不能時は {@link WorkerBootError} を返し、main-thread renderer へ fallback しない。
    */
   workerEngine?: boolean;
   /** opt-in 判定に使う query 文字列。既定は `location.search`。テスト注入 seam。 */
   locationSearch?: string;
-  /** Worker モードで main↔Worker transport を作る。実 `Worker` を包む。テスト注入 seam。 */
+  /** Worker モードの transport 注入 seam。未指定なら production module Worker を一つ生成する。 */
   spawnWorker?: () => WorkerTransport;
   /** Worker モードで Worker→main の IME presentation を適用する EditContext 面（ADR-0069）。既定 no-op。 */
   imeSink?: MainEditContextSink;
@@ -132,42 +144,81 @@ export async function probeWebGPU(): Promise<boolean> {
   }
 }
 
-/** no-op の EditContext 面。Worker モードで `imeSink` 未指定時の既定（IME 反映先が無い環境向け）。 */
-const NOOP_IME_SINK: MainEditContextSink = {
-  setKeyboardVisible: () => {},
-  setCaretRect: () => {},
-};
+/** Worker の IME presentation を main-thread-only EditContext へ適用する production sink。 */
+function createMainEditContextSink(canvas: HTMLCanvasElement): MainEditContextSink {
+  const EditContextCtor = (
+    globalThis as unknown as { EditContext?: new () => object }
+  ).EditContext;
+  if (!EditContextCtor) {
+    return {
+      setKeyboardVisible: () => {},
+      setCaretRect: () => {},
+    };
+  }
+  const context = new EditContextCtor() as {
+    updateControlBounds?(rect: DOMRect): void;
+    updateSelectionBounds?(rect: DOMRect): void;
+  };
+  return {
+    setKeyboardVisible: (visible) => {
+      Reflect.set(canvas, 'editContext', visible ? context : null);
+    },
+    setCaretRect: (caret) => {
+      if (!caret || typeof DOMRect === 'undefined') return;
+      const surface = canvas.getBoundingClientRect();
+      const rect = new DOMRect(
+        surface.left + caret.x,
+        surface.top + caret.y,
+        caret.width,
+        caret.height,
+      );
+      context.updateControlBounds?.(rect);
+      context.updateSelectionBounds?.(rect);
+    },
+  };
+}
 
 /**
- * Worker エンジン経路（#648）を組む。`spawnWorker` が無ければ（実 Worker を作れない）`null` を返し、
- * 呼び出し側は従来 main 経路へフォールバックする。成功時は canvas を Worker へ transfer し、入力/IME を
- * 橋渡しする shim を配線した {@link WebHost} を返す。`raw` は Worker がエンジンを所有する前提の input
- * proxy（drive/query は main では不活性）。`detach` は Worker 停止＋リスナ除去（full reload で再構築）。
+ * Worker エンジン経路を組む。canvas を単一 Worker へ transfer し、入力/IME/mutation transport を
+ * 橋渡しする shim を配線した {@link WebHost} を返す。WASM core、Render Host、Scene Renderer、
+ * common frame pipeline は Worker が所有する。boot 不能時は typed failure を返し main renderer へ
+ * fallback しない。
  */
-function tryCreateWorkerEngineHost(
+async function createWorkerEngineHost(
   canvas: HTMLCanvasElement,
-  options?: CreateHayateWebHostOptions,
-): WebHost | null {
-  const spawn = options?.spawnWorker;
-  if (!spawn) return null;
+  options: CreateHayateWebHostOptions,
+): Promise<WebHost> {
+  const spawn = options.spawnWorker ?? createBrowserWorkerTransport;
 
   const transferControlToOffscreen =
-    options?.transferControlToOffscreen ??
+    options.transferControlToOffscreen ??
     ((c: HTMLCanvasElement) =>
       (c as unknown as { transferControlToOffscreen(): CanvasHandle }).transferControlToOffscreen());
   const dpr = typeof globalThis.devicePixelRatio === 'number' ? globalThis.devicePixelRatio : 1;
 
-  const bridge = bootWorkerEngineBridge(canvas, {
-    transport: spawn(),
-    ime: options?.imeSink ?? NOOP_IME_SINK,
-    transferControlToOffscreen,
-    dpr,
-  });
+  const transport = spawn();
+  let bridge;
+  try {
+    bridge = bootWorkerEngineBridge(canvas, {
+      transport,
+      ime: options.imeSink ?? createMainEditContextSink(canvas),
+      transferControlToOffscreen,
+      dpr,
+    });
+    await bridge.ready;
+  } catch (error) {
+    transport.terminate();
+    if (error instanceof WorkerBootError) throw error;
+    throw new WorkerBootError(
+      'offscreen-canvas-unavailable',
+      error instanceof Error ? error.message : String(error),
+    );
+  }
 
   const requestFrame =
-    options?.requestFrame ?? ((cb: FrameRequestCallback) => globalThis.requestAnimationFrame(cb));
+    options.requestFrame ?? ((cb: FrameRequestCallback) => globalThis.requestAnimationFrame(cb));
   const cancelFrame =
-    options?.cancelFrame ?? ((handle: number) => globalThis.cancelAnimationFrame(handle));
+    options.cancelFrame ?? ((handle: number) => globalThis.cancelAnimationFrame(handle));
 
   return {
     raw: createWorkerInputProxy(bridge.shim),
@@ -198,10 +249,7 @@ export async function createHayateWebHost(
     (typeof location !== 'undefined' ? location.search : undefined);
   const effectiveOptions: CreateHayateWebHostOptions = { ...options };
   if (shouldUseWorkerEngine(effectiveOptions.workerEngine, search)) {
-    const worker = tryCreateWorkerEngineHost(canvas, effectiveOptions);
-    if (worker) return worker;
-    // spawnWorker 未提供（実 Worker を作れない）等では従来 main 経路へフォールバックする。
-    console.warn('createHayateWebHost: worker engine opt-in requested but unavailable; using main-thread path');
+    return createWorkerEngineHost(canvas, effectiveOptions);
   }
 
   const probe = effectiveOptions.probeWebGPU ?? probeWebGPU;

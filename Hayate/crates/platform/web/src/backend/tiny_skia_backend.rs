@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use super::{js_to_anyhow, CanvasBackend, ClearColor, SceneRendererKind, WebCanvasSurface};
 use hayate_core::{ElementId, LayerTopology, SceneSnapshot};
 use hayate_layer_compositor::{
     DeviceMemoryClass, GpuBudget, LayerPresentation, LayerPresentationFrame, LayerResourcePlane,
@@ -12,12 +13,23 @@ use hayate_scene_renderer_tiny_skia::{
 };
 use tiny_skia::{Color, Pixmap};
 use wasm_bindgen::prelude::*;
-use web_sys::HtmlCanvasElement;
 
-use super::{js_to_anyhow, CanvasBackend, ClearColor, SceneRendererKind};
+enum Canvas2dContext {
+    Html(web_sys::CanvasRenderingContext2d),
+    Offscreen(web_sys::OffscreenCanvasRenderingContext2d),
+}
+
+impl Canvas2dContext {
+    fn put_image_data(&self, image: &web_sys::ImageData) -> Result<(), JsValue> {
+        match self {
+            Self::Html(context) => context.put_image_data(image, 0.0, 0.0),
+            Self::Offscreen(context) => context.put_image_data(image, 0.0, 0.0),
+        }
+    }
+}
 
 pub(crate) struct SelectedBackend {
-    ctx: web_sys::CanvasRenderingContext2d,
+    ctx: Canvas2dContext,
     pixmap: Pixmap,
     width: u32,
     height: u32,
@@ -30,19 +42,33 @@ pub(crate) struct SelectedBackend {
 }
 
 impl SelectedBackend {
-    pub(crate) async fn init(canvas: HtmlCanvasElement) -> Result<Self, JsValue> {
+    pub(crate) async fn init(canvas: WebCanvasSurface) -> Result<Self, JsValue> {
         Self::init_sync(canvas)
     }
 
-    pub(crate) fn init_sync(canvas: HtmlCanvasElement) -> Result<Self, JsValue> {
+    pub(crate) fn init_sync(canvas: WebCanvasSurface) -> Result<Self, JsValue> {
         let width = canvas.width();
         let height = canvas.height();
-        let ctx = canvas
-            .get_context("2d")
-            .map_err(|error| JsValue::from_str(&format!("get_context(\"2d\"): {error:?}")))?
-            .ok_or_else(|| JsValue::from_str("canvas 2d context unavailable"))?
-            .dyn_into::<web_sys::CanvasRenderingContext2d>()
-            .map_err(|_| JsValue::from_str("failed to cast to CanvasRenderingContext2d"))?;
+        let ctx = match canvas {
+            WebCanvasSurface::Html(canvas) => Canvas2dContext::Html(
+                canvas
+                    .get_context("2d")
+                    .map_err(|error| JsValue::from_str(&format!("get_context(\"2d\"): {error:?}")))?
+                    .ok_or_else(|| JsValue::from_str("canvas 2d context unavailable"))?
+                    .dyn_into::<web_sys::CanvasRenderingContext2d>()
+                    .map_err(|_| JsValue::from_str("failed to cast to CanvasRenderingContext2d"))?,
+            ),
+            WebCanvasSurface::Offscreen(canvas) => Canvas2dContext::Offscreen(
+                canvas
+                    .get_context("2d")
+                    .map_err(|error| JsValue::from_str(&format!("get_context(\"2d\"): {error:?}")))?
+                    .ok_or_else(|| JsValue::from_str("offscreen canvas 2d context unavailable"))?
+                    .dyn_into::<web_sys::OffscreenCanvasRenderingContext2d>()
+                    .map_err(|_| {
+                        JsValue::from_str("failed to cast to OffscreenCanvasRenderingContext2d")
+                    })?,
+            ),
+        };
         let pixmap = Pixmap::new(width, height)
             .ok_or_else(|| JsValue::from_str("failed to create Pixmap (zero size?)"))?;
         Ok(Self {
@@ -177,7 +203,7 @@ impl CanvasBackend for SelectedBackend {
 }
 
 fn blit_to_canvas(
-    ctx: &web_sys::CanvasRenderingContext2d,
+    ctx: &Canvas2dContext,
     pixmap: &Pixmap,
     width: u32,
     height: u32,
@@ -189,5 +215,5 @@ fn blit_to_canvas(
         width,
         height,
     )?;
-    ctx.put_image_data(&image_data, 0.0, 0.0)
+    ctx.put_image_data(&image_data)
 }

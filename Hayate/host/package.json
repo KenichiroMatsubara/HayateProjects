@@ -26,6 +26,10 @@
     "./renderer-policy": {
       "types": "./dist/renderer-policy.d.ts",
       "import": "./dist/renderer-policy.js"
+    },
+    "./worker": {
+      "types": "./dist/worker-entry.d.ts",
+      "import": "./dist/worker-entry.js"
     }
   },
   "files": [

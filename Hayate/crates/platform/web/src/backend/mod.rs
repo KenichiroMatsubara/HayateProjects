@@ -1,6 +1,6 @@
 use hayate_core::Surface;
 use wasm_bindgen::prelude::*;
-use web_sys::HtmlCanvasElement;
+use web_sys::{HtmlCanvasElement, OffscreenCanvas};
 
 pub(crate) use hayate_app_host::render_host::SceneRenderer as CanvasBackend;
 use hayate_app_host::render_host::{
@@ -47,15 +47,46 @@ compile_error!("Enable one of: backend-vello, backend-recording, backend-tiny-sk
 /// `RenderHost`（hoist 済み、`hayate-app-host`）が必要とする最小面（clone・width・height）だけを
 /// 持つ薄いラッパー。実際の canvas 資源は `WebRendererInit` がバックエンド初期化時に取り出す。
 #[derive(Clone)]
-pub(crate) struct WebCanvasSurface(pub(crate) HtmlCanvasElement);
+pub(crate) enum WebCanvasSurface {
+    Html(HtmlCanvasElement),
+    Offscreen(OffscreenCanvas),
+}
+
+impl WebCanvasSurface {
+    pub(crate) fn width(&self) -> u32 {
+        match self {
+            Self::Html(canvas) => canvas.width(),
+            Self::Offscreen(canvas) => canvas.width(),
+        }
+    }
+
+    pub(crate) fn height(&self) -> u32 {
+        match self {
+            Self::Html(canvas) => canvas.height(),
+            Self::Offscreen(canvas) => canvas.height(),
+        }
+    }
+}
+
+impl From<HtmlCanvasElement> for WebCanvasSurface {
+    fn from(canvas: HtmlCanvasElement) -> Self {
+        Self::Html(canvas)
+    }
+}
+
+impl From<OffscreenCanvas> for WebCanvasSurface {
+    fn from(canvas: OffscreenCanvas) -> Self {
+        Self::Offscreen(canvas)
+    }
+}
 
 impl Surface for WebCanvasSurface {
     fn width(&self) -> u32 {
-        self.0.width()
+        self.width()
     }
 
     fn height(&self) -> u32 {
-        self.0.height()
+        self.height()
     }
 }
 
@@ -71,7 +102,7 @@ impl RendererInit<WebCanvasSurface> for WebRendererInit {
         kind: SceneRendererKind,
         surface: WebCanvasSurface,
     ) -> Result<Box<dyn SceneRenderer>, anyhow::Error> {
-        let canvas = surface.0;
+        let canvas = surface;
         match kind {
             SceneRendererKind::Vello => {
                 #[cfg(feature = "backend-vello")]
@@ -142,7 +173,7 @@ impl RendererInit<WebCanvasSurface> for WebRendererInit {
         kind: SceneRendererKind,
         surface: WebCanvasSurface,
     ) -> Result<Box<dyn SceneRenderer>, anyhow::Error> {
-        let canvas = surface.0;
+        let canvas = surface;
         match kind {
             SceneRendererKind::Vello => Err(anyhow::anyhow!(
                 "renderer cannot be initialized synchronously for runtime fallback: {}",
@@ -252,10 +283,11 @@ async fn detect_renderer_capabilities() -> RendererCapabilities {
 }
 
 fn navigator_has_gpu() -> bool {
-    let Some(window) = web_sys::window() else {
+    let global = js_sys::global();
+    let Ok(navigator) = js_sys::Reflect::get(&global, &JsValue::from_str("navigator")) else {
         return false;
     };
-    match js_sys::Reflect::get(window.navigator().as_ref(), &JsValue::from_str("gpu")) {
+    match js_sys::Reflect::get(&navigator, &JsValue::from_str("gpu")) {
         Ok(gpu) => !gpu.is_undefined() && !gpu.is_null(),
         Err(_) => false,
     }
@@ -294,7 +326,13 @@ pub(crate) type SelectedBackend = RenderHost;
 pub(crate) async fn init_render_host(
     canvas: HtmlCanvasElement,
 ) -> Result<RenderHost, anyhow::Error> {
-    init_render_host_with_policy(canvas, web_renderer_selection_policy()).await
+    init_render_host_with_policy(canvas.into(), web_renderer_selection_policy()).await
+}
+
+pub(crate) async fn init_worker_render_host(
+    canvas: OffscreenCanvas,
+) -> Result<RenderHost, anyhow::Error> {
+    init_render_host_with_policy(canvas.into(), web_renderer_selection_policy()).await
 }
 
 /// テスト・診断用（ADR-0050）。本番は `init_render_host` を使う。
@@ -302,24 +340,18 @@ pub(crate) async fn init_render_host(
 pub(crate) async fn init_diagnostic_render_host(
     canvas: HtmlCanvasElement,
 ) -> Result<RenderHost, anyhow::Error> {
-    init_render_host_with_policy(canvas, diagnostic_renderer_selection_policy()).await
+    init_render_host_with_policy(canvas.into(), diagnostic_renderer_selection_policy()).await
 }
 
 async fn init_render_host_with_policy(
-    canvas: HtmlCanvasElement,
+    canvas: WebCanvasSurface,
     selection_policy: hayate_app_host::renderer_selection::RendererSelectionPolicy,
 ) -> Result<RenderHost, anyhow::Error> {
     // ポリシーは検出した能力だけから、どのレンダラーをどの順で試すかを純粋に決める。
     // `RenderHost::init_with_policy`（hoist 済み）はその決定を実行するだけ。capability 検出は
     // web 固有なのでここで行い、済んだ値を渡す（core/app-host は検出方法を一切知らない）。
     let capabilities = detect_renderer_capabilities().await;
-    RenderHost::init_with_policy(
-        WebCanvasSurface(canvas),
-        selection_policy,
-        capabilities,
-        WebRendererInit,
-    )
-    .await
+    RenderHost::init_with_policy(canvas, selection_policy, capabilities, WebRendererInit).await
 }
 
 /// wasm-bindgen の `JsValue` エラーを `anyhow::Error` へ変換する。`hayate-app-host` の

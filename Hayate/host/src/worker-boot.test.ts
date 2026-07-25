@@ -5,6 +5,7 @@ import {
   WORKER_ENGINE_QUERY_VALUE,
   shouldUseWorkerEngine,
   bootWorkerEngineBridge,
+  workerSurfaceMetrics,
   type WorkerTransport,
 } from './worker-boot.js';
 import type { MainToWorker, WorkerToMain, MainEditContextSink } from './worker-host.js';
@@ -87,6 +88,21 @@ describe('shouldUseWorkerEngine (opt-in gate, #648)', () => {
   });
 });
 
+describe('worker surface metrics', () => {
+  it('converts CSS pixels to a DPR-scaled OffscreenCanvas buffer without zero dimensions', () => {
+    expect(workerSurfaceMetrics(320, 180, 2)).toEqual({
+      width: 640,
+      height: 360,
+      dpr: 2,
+    });
+    expect(workerSurfaceMetrics(0, 0, 0)).toEqual({
+      width: 1,
+      height: 1,
+      dpr: 1,
+    });
+  });
+});
+
 describe('bootWorkerEngineBridge (main<->worker wiring, #648)', () => {
   afterEach(() => {
     document.body.innerHTML = '';
@@ -123,20 +139,28 @@ describe('bootWorkerEngineBridge (main<->worker wiring, #648)', () => {
     });
 
     canvas.dispatchEvent(
-      new PointerEvent('pointerdown', { clientX: 10, clientY: 20, bubbles: true }),
+      new PointerEvent('pointerdown', {
+        clientX: 10,
+        clientY: 20,
+        pointerType: 'touch',
+        bubbles: true,
+      }),
     );
     canvas.dispatchEvent(new WheelEvent('wheel', { deltaX: 0, deltaY: -120, bubbles: true }));
     globalThis.dispatchEvent(new KeyboardEvent('keydown', { key: 'a' }));
+    canvas.dispatchEvent(new CompositionEvent('compositionend', { data: 'に' }));
 
     const kinds = t.sent.map((s) => s.msg.kind);
     expect(kinds).toContain('pointer');
     expect(kinds).toContain('wheel');
     expect(kinds).toContain('key');
+    expect(kinds).toContain('composition');
     const pointer = t.sent.find((s) => s.msg.kind === 'pointer')!.msg as Extract<
       MainToWorker,
       { kind: 'pointer' }
     >;
     expect(pointer.action).toBe('down');
+    expect(pointer.pointerKind).toBe('touch');
   });
 
   it('applies IME presentation from the worker to the main EditContext sink (ADR-0069)', () => {
@@ -170,11 +194,15 @@ describe('bootWorkerEngineBridge (main<->worker wiring, #648)', () => {
     });
 
     handle.detach();
+    expect(t.sent.at(-1)?.msg).toEqual({ kind: 'detach' });
+    expect(t.terminated).toBe(false);
+    t.emit({ kind: 'detached' });
     expect(t.terminated).toBe(true);
 
     const before = t.sent.length;
     // detach 後の DOM 入力はもう Worker へ流れない（リスナ除去）。
     canvas.dispatchEvent(new PointerEvent('pointerdown', { clientX: 1, clientY: 1, bubbles: true }));
+    handle.shim.pointer('down', 1, 1);
     expect(t.sent.length).toBe(before);
   });
 });

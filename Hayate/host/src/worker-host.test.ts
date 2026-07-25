@@ -19,7 +19,9 @@ import {
 function recordingEngine(presentation: ImePresentation = { keyboardVisible: false, caretRect: null }) {
   const calls: string[] = [];
   const engine: WorkerEngine = {
-    init: (_c, w, h, d) => calls.push(`init(${w},${h},${d})`),
+    init: (_c, w, h, d) => {
+      calls.push(`init(${w},${h},${d})`);
+    },
     resize: (w, h, d) => calls.push(`resize(${w},${h},${d})`),
     onPointer: (a, x, y) => calls.push(`pointer(${a},${x},${y})`),
     onWheel: (x, y, dx, dy) => calls.push(`wheel(${x},${y},${dx},${dy})`),
@@ -68,10 +70,38 @@ function wireBridge(opts?: { presentation?: ImePresentation }) {
 }
 
 describe('OffscreenCanvas + Worker host bridge (ADR-0128 web)', () => {
-  it('init transfers the canvas to the worker and the engine boots, replying ready', () => {
+  it('reports a typed boot failure instead of ready when worker engine initialization fails', async () => {
+    const posted: WorkerToMain[] = [];
+    const engine = recordingEngine().engine;
+    engine.init = async () => {
+      throw new Error('renderer unavailable');
+    };
+    const dispatcher = new WorkerEngineDispatcher(engine, (message) => posted.push(message));
+
+    await dispatcher.handle({
+      kind: 'init',
+      canvas: { token: 'offscreen' },
+      width: 800,
+      height: 600,
+      dpr: 2,
+    });
+
+    expect(posted).toEqual([
+      {
+        kind: 'boot-failure',
+        failure: {
+          code: 'renderer-init-failed',
+          message: 'renderer unavailable',
+        },
+      },
+    ]);
+  });
+
+  it('init transfers the canvas to the worker and the engine boots, replying ready', async () => {
     const { shim, calls, toMain } = wireBridge();
     const canvas = { token: 'offscreen' };
     shim.init(canvas, 800, 600, 2);
+    await Promise.resolve();
 
     expect(calls).toContain('init(800,600,2)');
     expect(toMain).toContainEqual({ kind: 'ready' });
@@ -128,7 +158,7 @@ describe('OffscreenCanvas + Worker host bridge (ADR-0128 web)', () => {
 
     // main 側は同期描画を一切走らせず、メッセージ列だけを生む。
     expect(posted).toEqual([
-      { kind: 'pointer', action: 'down', x: 1, y: 2 },
+      { kind: 'pointer', action: 'down', pointerKind: 'mouse', x: 1, y: 2 },
       { kind: 'resize', width: 640, height: 480, dpr: 1 },
     ]);
   });

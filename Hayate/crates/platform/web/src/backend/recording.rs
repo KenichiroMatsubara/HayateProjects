@@ -1,22 +1,20 @@
 use std::collections::HashMap;
 
+use super::{CanvasBackend, ClearColor, SceneRendererKind, WebCanvasSurface};
 use hayate_core::{ElementId, LayerTopology, SceneRecorder, SceneSnapshot};
 use hayate_layer_compositor::ScrollLayerGeometry;
 use wasm_bindgen::prelude::*;
-use web_sys::HtmlCanvasElement;
-
-use super::{CanvasBackend, ClearColor, SceneRendererKind};
 
 pub(crate) struct SelectedBackend {
     recorder: SceneRecorder,
 }
 
 impl SelectedBackend {
-    pub(crate) async fn init(canvas: HtmlCanvasElement) -> Result<Self, JsValue> {
+    pub(crate) async fn init(canvas: WebCanvasSurface) -> Result<Self, JsValue> {
         Self::init_sync(canvas)
     }
 
-    pub(crate) fn init_sync(canvas: HtmlCanvasElement) -> Result<Self, JsValue> {
+    pub(crate) fn init_sync(canvas: WebCanvasSurface) -> Result<Self, JsValue> {
         let _ = canvas;
         Ok(Self {
             recorder: SceneRecorder::new(),
