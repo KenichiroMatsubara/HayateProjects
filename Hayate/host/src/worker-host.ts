@@ -59,6 +59,8 @@ export type MainToWorker =
   | { kind: 'key'; key: string; modifiers: number }
   | { kind: 'edit-intent'; targetId: number; intent: number[] }
   | { kind: 'composition'; targetId: number; text: string }
+  | { kind: 'register-listener'; requestId: number; elementId: number; eventKind: number }
+  | { kind: 'unregister-listener'; listenerId: number }
   | { kind: 'mutation'; command: WorkerMutation }
   | { kind: 'frame'; timestampMs: number }
   | { kind: 'observe-pipeline'; requestId: number }
@@ -83,6 +85,8 @@ export type WorkerToMain =
       kind: 'runtime-failure';
       failure: { code: 'renderer-runtime-failed'; message: string };
     }
+  | { kind: 'listener-registered'; requestId: number; listenerId: number }
+  | { kind: 'event-deliveries'; rows: unknown[][] }
   | { kind: 'ime'; presentation: ImePresentation }
   | {
       kind: 'pipeline-observation';
@@ -108,6 +112,9 @@ export interface WorkerEngine {
   onKey(key: string, modifiers: number): void;
   dispatchEditIntent?(targetId: number, intent: Float64Array): number;
   onComposition(targetId: number, text: string): void;
+  registerListener(elementId: number, eventKind: number): number;
+  unregisterListener(listenerId: number): void;
+  pollEvents(): unknown[][];
   applyMutation?(command: WorkerMutation): void;
   render?(timestampMs: number): void;
   detach?(): void | Promise<void>;
@@ -149,6 +156,7 @@ export class WorkerEngineDispatcher {
           break;
         case 'pointer':
           this.engine.onPointer(msg.action, msg.x, msg.y, msg.pointerKind);
+          this.emitEventDeliveries();
           this.emitIme();
           break;
         case 'wheel':
@@ -166,11 +174,24 @@ export class WorkerEngineDispatcher {
           this.engine.onComposition(msg.targetId, msg.text);
           this.emitIme();
           break;
+        case 'register-listener': {
+          const listenerId = this.engine.registerListener(msg.elementId, msg.eventKind);
+          this.postToMain({
+            kind: 'listener-registered',
+            requestId: msg.requestId,
+            listenerId,
+          });
+          break;
+        }
+        case 'unregister-listener':
+          this.engine.unregisterListener(msg.listenerId);
+          break;
         case 'mutation':
           this.engine.applyMutation?.(msg.command);
           break;
         case 'frame':
           this.engine.render?.(msg.timestampMs);
+          this.emitEventDeliveries();
           this.emitIme();
           break;
         case 'observe-pipeline':
@@ -200,6 +221,13 @@ export class WorkerEngineDispatcher {
   private emitIme(): void {
     this.postToMain({ kind: 'ime', presentation: this.engine.imePresentation() });
   }
+
+  private emitEventDeliveries(): void {
+    const rows = this.engine.pollEvents();
+    if (rows.length > 0) {
+      this.postToMain({ kind: 'event-deliveries', rows });
+    }
+  }
 }
 
 /** main の EditContext 面（ADR-0069）。Worker から来た IME presentation を適用する。 */
@@ -216,6 +244,10 @@ export interface MainEditContextSink {
 export class MainThreadShim {
   private detached = false;
   private observationRequestId = 0;
+  private listenerRequestId = 0;
+  private eventDeliveries: unknown[][] = [];
+  private eventDeliveryWake: (() => void) | undefined;
+  private readonly listenerRequests = new Map<number, (listenerId: number) => void>();
   private readonly observationRequests = new Map<
     number,
     (observation: FramePipelineObservation) => void
@@ -261,6 +293,31 @@ export class MainThreadShim {
     this.post({ kind: 'composition', targetId, text });
   }
 
+  registerListener(elementId: number, eventKind: number): Promise<number> {
+    if (this.detached) {
+      return Promise.reject(new Error('worker engine is detached'));
+    }
+    const requestId = ++this.listenerRequestId;
+    return new Promise((resolve) => {
+      this.listenerRequests.set(requestId, resolve);
+      this.post({ kind: 'register-listener', requestId, elementId, eventKind });
+    });
+  }
+
+  unregisterListener(listenerId: number): void {
+    this.post({ kind: 'unregister-listener', listenerId });
+  }
+
+  drainEventDeliveries(): unknown[][] {
+    const rows = this.eventDeliveries;
+    this.eventDeliveries = [];
+    return rows;
+  }
+
+  setEventDeliveryWake(callback: () => void): void {
+    this.eventDeliveryWake = callback;
+  }
+
   mutation(command: WorkerMutation): void {
     this.post({ kind: 'mutation', command });
   }
@@ -291,6 +348,13 @@ export class MainThreadShim {
     if (msg.kind === 'ime') {
       this.ime.setKeyboardVisible(msg.presentation.keyboardVisible);
       this.ime.setCaretRect(msg.presentation.caretRect);
+    } else if (msg.kind === 'listener-registered') {
+      const resolve = this.listenerRequests.get(msg.requestId);
+      this.listenerRequests.delete(msg.requestId);
+      resolve?.(msg.listenerId);
+    } else if (msg.kind === 'event-deliveries') {
+      this.eventDeliveries.push(...msg.rows);
+      this.eventDeliveryWake?.();
     } else if (msg.kind === 'pipeline-observation') {
       const resolve = this.observationRequests.get(msg.requestId);
       this.observationRequests.delete(msg.requestId);

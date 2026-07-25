@@ -21,6 +21,9 @@ export interface WorkerRawHayate {
   ): void;
   set_background_color(r: number, g: number, b: number): void;
   set_tuning(json: string): void;
+  register_listener(elementId: number, eventKind: number): number;
+  unregister_listener(listenerId: number): void;
+  poll_events(): unknown[][];
   render(timestampMs: number): Promise<void> | undefined;
   resize_surface(width: number, height: number, dpr: number): Promise<void> | undefined;
   complete_active(): Promise<void> | undefined;
@@ -129,6 +132,18 @@ export class WasmWorkerEngine implements WorkerEngine {
     const raw = this.engine();
     raw.on_text_input(targetId, text);
     this.drive(raw, raw.render(this.now()));
+  }
+
+  registerListener(elementId: number, eventKind: number): number {
+    return this.engine().register_listener(elementId, eventKind);
+  }
+
+  unregisterListener(listenerId: number): void {
+    this.engine().unregister_listener(listenerId);
+  }
+
+  pollEvents(): unknown[][] {
+    return this.engine().poll_events();
   }
 
   applyMutation(command: WorkerMutation): void {

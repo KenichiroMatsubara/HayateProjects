@@ -4,6 +4,35 @@ import { WasmWorkerEngine, type WorkerRawHayate } from './worker-engine.js';
 const TOUCH_SCROLL_STRESS_FRAMES = 50;
 
 describe('WasmWorkerEngine production path', () => {
+  it('preserves Worker WASM listener ids and event delivery rows', async () => {
+    const raw = {
+      register_listener: (elementId: number, eventKind: number) => {
+        expect({ elementId, eventKind }).toEqual({ elementId: 7, eventKind: 0 });
+        return 73;
+      },
+      poll_events: () => [[73, 0, 7, 12, 18]],
+    } as unknown as WorkerRawHayate;
+    const engine = new WasmWorkerEngine(async () => raw);
+    await engine.init({}, 100, 100, 1);
+
+    expect(engine.registerListener(7, 0)).toBe(73);
+    expect(engine.pollEvents()).toEqual([[73, 0, 7, 12, 18]]);
+  });
+
+  it('releases a Worker WASM listener by its opaque id', async () => {
+    const unregister = vi.fn();
+    const raw = {
+      unregister_listener: unregister,
+    } as unknown as WorkerRawHayate;
+    const engine = new WasmWorkerEngine(async () => raw);
+    await engine.init({}, 100, 100, 1);
+
+    engine.unregisterListener(73);
+
+    expect(unregister).toHaveBeenCalledOnce();
+    expect(unregister).toHaveBeenCalledWith(73);
+  });
+
   it('presents a committed scene and presents the changed frame after one pointer input', async () => {
     const calls: string[] = [];
     const raw: WorkerRawHayate = {
@@ -15,6 +44,9 @@ describe('WasmWorkerEngine production path', () => {
       apply_mutations: () => {},
       set_background_color: () => {},
       set_tuning: () => {},
+      register_listener: () => 1,
+      unregister_listener: () => {},
+      poll_events: () => [],
       render: (timestamp) => {
         calls.push(`present(${timestamp})`);
         return undefined;
@@ -81,6 +113,9 @@ describe('WasmWorkerEngine production path', () => {
       apply_mutations: () => {},
       set_background_color: () => {},
       set_tuning: () => {},
+      register_listener: () => 1,
+      unregister_listener: () => {},
+      poll_events: () => [],
       render: (timestamp: number) => {
         admitted.push(timestamp);
         if (started++ === 0) return first;
@@ -145,6 +180,9 @@ describe('WasmWorkerEngine production path', () => {
       apply_mutations: () => {},
       set_background_color: () => {},
       set_tuning: () => {},
+      register_listener: () => 1,
+      unregister_listener: () => {},
+      poll_events: () => [],
       render: () => completion,
       complete_active: () => {
         throw new Error('a failed completion must not advance the pipeline');

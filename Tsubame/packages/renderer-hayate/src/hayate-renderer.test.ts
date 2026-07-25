@@ -234,6 +234,57 @@ describe('HayateRenderer delivery poll (ADR-0053)', () => {
     expect(received).toEqual([{ kind: 'click', target: 2 }]);
   });
 
+  it('dispatches a delivery after an asynchronous Worker listener registration', async () => {
+    const hayate = new StubHayate();
+    let resolveListener!: (listenerId: number) => void;
+    hayate.register_listener = () =>
+      new Promise<number>((resolve) => {
+        resolveListener = resolve;
+      }) as never;
+    const sched = manualScheduler();
+    const renderer = new HayateRenderer({ raw: hayate, ...sched });
+    renderer.start();
+    const button = renderer.createElement('button');
+    const handler = vi.fn();
+    renderer.addEventListener(button, 'click', handler);
+
+    resolveListener(73);
+    await Promise.resolve();
+    hayate.events = [[73, 0, button, 12, 18]];
+    sched.tick();
+
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handler).toHaveBeenCalledWith({ kind: 'click', target: button });
+  });
+
+  it('unregisters a Worker listener that is unsubscribed before its asynchronous ack', async () => {
+    const hayate = new StubHayate();
+    let resolveListener!: (listenerId: number) => void;
+    hayate.register_listener = () =>
+      new Promise<number>((resolve) => {
+        resolveListener = resolve;
+      }) as never;
+    const unregister = vi.fn();
+    (hayate as StubHayate & { unregister_listener(listenerId: number): void }).unregister_listener =
+      unregister;
+    const sched = manualScheduler();
+    const renderer = new HayateRenderer({ raw: hayate, ...sched });
+    renderer.start();
+    const button = renderer.createElement('button');
+    const handler = vi.fn();
+    const unsubscribe = renderer.addEventListener(button, 'click', handler);
+
+    unsubscribe();
+    resolveListener(73);
+    await Promise.resolve();
+    hayate.events = [[73, 0, button, 12, 18]];
+    sched.tick();
+
+    expect(unregister).toHaveBeenCalledOnce();
+    expect(unregister).toHaveBeenCalledWith(73);
+    expect(handler).not.toHaveBeenCalled();
+  });
+
   it('delivers the input event value straight from the wire (full current value, no read-back)', () => {
     const hayate = new StubHayate();
     const sched = manualScheduler();

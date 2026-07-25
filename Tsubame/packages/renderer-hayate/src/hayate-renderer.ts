@@ -175,12 +175,16 @@ export class HayateRenderer implements IRenderer {
       return;
     }
     if (state === undefined) {
-      const listenerId = this.raw.register_listener(
+      const registration = this.raw.register_listener(
         id as unknown as number,
         EVENT_KIND.LAYOUT_RESIZE,
       );
-      this.drawListeners.set(listenerId, id);
       this.drawStates.set(id, { value, size: null });
+      this.onListenerRegistered(registration, (listenerId) => {
+        if (this.drawStates.has(id)) {
+          this.drawListeners.set(listenerId, id);
+        }
+      });
       return;
     }
     const repaint = drawNeedsRepaint(value, state.value);
@@ -224,11 +228,35 @@ export class HayateRenderer implements IRenderer {
       return () => {};
     }
 
-    const listenerId = this.raw.register_listener(id, hayateKind);
-    this.listeners.set(listenerId, { handler, elementId: id });
+    const registration = this.raw.register_listener(id, hayateKind);
+    let active = true;
+    let listenerId: number | undefined;
+    this.onListenerRegistered(registration, (registeredId) => {
+      listenerId = registeredId;
+      if (active) {
+        this.listeners.set(registeredId, { handler, elementId: id });
+      } else {
+        this.raw.unregister_listener?.(registeredId);
+      }
+    });
     return () => {
-      this.listeners.delete(listenerId);
+      active = false;
+      if (listenerId !== undefined) {
+        this.listeners.delete(listenerId);
+        this.raw.unregister_listener?.(listenerId);
+      }
     };
+  }
+
+  private onListenerRegistered(
+    registration: number | Promise<number>,
+    accept: (listenerId: number) => void,
+  ): void {
+    if (typeof registration === 'number') {
+      accept(registration);
+      return;
+    }
+    void registration.then(accept);
   }
 
   /** 順序付きミューテーションパケットを Hayate WASM 境界へ流し込む。 */

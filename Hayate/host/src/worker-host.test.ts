@@ -31,6 +31,9 @@ function recordingEngine(presentation: ImePresentation = { keyboardVisible: fals
       return 0;
     },
     onComposition: (t, text) => calls.push(`composition(${t},${text})`),
+    registerListener: () => 1,
+    unregisterListener: () => {},
+    pollEvents: () => [],
     pipelineObservation: () => ({
       accepted: 0,
       coalesced: 0,
@@ -165,6 +168,43 @@ describe('OffscreenCanvas + Worker host bridge (ADR-0128 web)', () => {
       'wheel(5,5,0,-120)',
       'key(a,0)',
     ]);
+  });
+
+  it('round-trips a Worker-owned listener id and drains its click delivery exactly once', async () => {
+    const { shim, engine } = wireBridge();
+    engine.registerListener = (elementId, eventKind) => {
+      expect({ elementId, eventKind }).toEqual({ elementId: 7, eventKind: 0 });
+      return 41;
+    };
+    engine.pollEvents = () => [[41, 0, 7, 12, 18]];
+
+    await expect(shim.registerListener(7, 0)).resolves.toBe(41);
+    shim.pointer('up', 12, 18);
+
+    expect(shim.drainEventDeliveries()).toEqual([[41, 0, 7, 12, 18]]);
+    expect(shim.drainEventDeliveries()).toEqual([]);
+  });
+
+  it('forwards listener cleanup to the Worker engine', async () => {
+    const { shim, engine } = wireBridge();
+    engine.registerListener = () => 41;
+    engine.unregisterListener = vi.fn();
+
+    const listenerId = await shim.registerListener(7, 0);
+    shim.unregisterListener(listenerId);
+
+    expect(engine.unregisterListener).toHaveBeenCalledOnce();
+    expect(engine.unregisterListener).toHaveBeenCalledWith(41);
+  });
+
+  it('returns deliveries produced by a Worker frame commit', () => {
+    const { shim, engine } = wireBridge();
+    engine.render = vi.fn();
+    engine.pollEvents = () => [[41, 17, 7, 120, 80]];
+
+    shim.frame(16);
+
+    expect(shim.drainEventDeliveries()).toEqual([[41, 17, 7, 120, 80]]);
   });
 
   it('routes semantic EditIntent to the worker engine without a main-thread keymap', () => {

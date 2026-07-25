@@ -272,7 +272,7 @@ export function createWorkerInputProxy(shim: MainThreadShim): RawHayate {
     prepare_frame: (timestampMs) => {
       const id = ++frameId;
       prepared.set(id, timestampMs);
-      return [id];
+      return [id, ...shim.drainEventDeliveries()];
     },
     commit_frame: (id) => {
       const timestampMs = prepared.get(id);
@@ -286,7 +286,9 @@ export function createWorkerInputProxy(shim: MainThreadShim): RawHayate {
     set_background_color: (r, g, b) =>
       shim.mutation({ kind: 'background', r, g, b }),
     set_tuning: (json) => shim.mutation({ kind: 'tuning', json }),
-    register_listener: () => 0,
+    register_listener: (elementId, eventKind) =>
+      shim.registerListener(elementId, eventKind),
+    unregister_listener: (listenerId) => shim.unregisterListener(listenerId),
     // query 面は Worker 側 state を持たないので安全な既定（main は状態を持たない）。
     element_get_text: () => '',
     element_get_bounds: () => [0, 0, 0, 0],
@@ -295,7 +297,8 @@ export function createWorkerInputProxy(shim: MainThreadShim): RawHayate {
     // 描画は Worker が所有するので、main 側 proxy に pending visual work は存在しない。
     has_pending_visual_work: () => false,
     poll_accessibility: () => null,
-    poll_events: () => [],
+    poll_events: () => shim.drainEventDeliveries(),
+    set_request_redraw: (callback) => shim.setEventDeliveryWake(callback),
     element_effective_visual: () => null,
     // input は main が受けて Worker へ転送する（薄い shim の唯一の毎フレーム責務）。
     on_pointer_move: (x, y) => shim.pointer('move', x, y),

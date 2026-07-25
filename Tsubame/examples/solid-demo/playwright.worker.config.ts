@@ -18,7 +18,10 @@ const WEBGPU_LAUNCH_ARGS = [
 
 export default defineConfig({
   testDir: './e2e',
-  testMatch: 'canvas-worker-touch-scroll.spec.ts',
+  testMatch: [
+    'canvas-worker-event-delivery.spec.ts',
+    'canvas-worker-touch-scroll.spec.ts',
+  ],
   fullyParallel: false,
   workers: 1,
   reporter: 'list',

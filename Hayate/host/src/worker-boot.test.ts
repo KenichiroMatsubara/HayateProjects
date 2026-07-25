@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   bootWorkerEngineBridge,
+  createWorkerInputProxy,
   workerSurfaceMetrics,
   type WorkerTransport,
 } from './worker-boot.js';
@@ -157,6 +158,38 @@ describe('bootWorkerEngineBridge (main<->worker wiring, #648)', () => {
 
     expect(ime.keyboardVisible).toBe(true);
     expect(ime.caretRect).toEqual({ x: 1, y: 2, width: 3, height: 4 });
+  });
+
+  it('wakes and drains Worker event deliveries through the RawHayate frame transaction', async () => {
+    const canvas = mountCanvas();
+    const t = fakeTransport();
+    const handle = bootWorkerEngineBridge(canvas, {
+      transport: t.transport,
+      ime: recordingImeSink(),
+      transferControlToOffscreen: () => ({}),
+      dpr: 1,
+    });
+    const raw = createWorkerInputProxy(handle.shim);
+    const wake = vi.fn();
+    raw.set_request_redraw?.(wake);
+
+    const registration = raw.register_listener(7, 0);
+    const request = t.sent.find((entry) => entry.msg.kind === 'register-listener')?.msg as
+      | Extract<MainToWorker, { kind: 'register-listener' }>
+      | undefined;
+    expect(request).toBeDefined();
+    t.emit({
+      kind: 'listener-registered',
+      requestId: request!.requestId,
+      listenerId: 73,
+    });
+    await expect(registration).resolves.toBe(73);
+
+    const click = [73, 0, 7, 12, 18];
+    t.emit({ kind: 'event-deliveries', rows: [click] });
+    expect(wake).toHaveBeenCalledTimes(1);
+    expect(raw.prepare_frame(16)).toEqual([1, click]);
+    expect(raw.prepare_frame(32)).toEqual([2]);
   });
 
   it('detach terminates the worker and stops forwarding input (safe teardown / rebuild)', () => {

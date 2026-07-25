@@ -5,7 +5,7 @@
 //! main thread only transfers structured-clone-safe transport messages.
 
 use hayate_app_host::render_host::SceneRenderer;
-use hayate_core::{EditIntent, ElementTree, PointerKind};
+use hayate_core::{DocumentEventKind, EditIntent, ElementTree, ListenerId, PointerKind};
 use hayate_frame_pipeline::{
     FrameSubmission, LatestWinsFramePipeline, PipelineCommand, PipelineObservation,
 };
@@ -144,6 +144,27 @@ impl HayateWorkerEngine {
         self.tree.set_chrome_tuning(parsed.chrome_tuning());
         self.tree.set_scroll_profile(parsed.scroll_profile());
         Ok(())
+    }
+
+    pub fn register_listener(&mut self, element_id: f64, event_kind: u32) -> Result<f64, JsValue> {
+        self.ensure_attached()?;
+        let kind = DocumentEventKind::from_u32(event_kind)
+            .ok_or_else(|| JsValue::from_str(&format!("unknown event kind {event_kind}")))?;
+        let listener_id = self
+            .tree
+            .register_listener(element_id_from_f64(element_id), kind);
+        Ok(listener_id.to_u64() as f64)
+    }
+
+    pub fn unregister_listener(&mut self, listener_id: f64) -> Result<(), JsValue> {
+        self.ensure_attached()?;
+        self.tree
+            .unregister_listener(ListenerId::from_u64(listener_id as u64));
+        Ok(())
+    }
+
+    pub fn poll_events(&mut self) -> js_sys::Array {
+        crate::generated::encode_deliveries(&self.tree.poll_deliveries())
     }
 
     /// Commit one immutable frame, admit it to the common Rust policy, and present admitted work.
