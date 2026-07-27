@@ -21,6 +21,7 @@
 
 #include <jsi/jsi.h>
 #include <hermes/hermes.h>
+#include <fbjni/detail/Environment.h>
 
 #include <android/log.h>
 
@@ -379,25 +380,31 @@ HermesApp::HermesApp(rust::Box<JsHostBridge> host, rust::Str bundle)
   // バンドルを eval（main.android.tsx 由来。__tsubame を公開する）。JS の例外
   // （jsi::JSError）はここで捕捉してメッセージと JS スタックをログに出す。捕まえない
   // と C++ 例外として android_main を抜け std::terminate でプロセスが落ちる。
-  try {
-    std::string src(bundle);
-    rt.evaluateJavaScript(
-        std::make_unique<jsi::StringBuffer>(std::move(src)), "tsubame.js");
-    impl_->ready = true;
-  } catch (const jsi::JSError& e) {
-    HAYATE_LOGE("Tsubame バンドルの eval で JS 例外: %s\nJS stack:\n%s",
-                e.getMessage().c_str(), e.getStack().c_str());
-    // bundle が eval すらできない＝真っ黒障害。host イベント（source: host）として Device Log へ
-    // 流し、USB なしで診断できるようにする（#789）。JS は起動していないので js ではなく host。
-    log_bridge->log_host(
-        rust::Str("error"),
-        rust::Str("Tsubame バンドルの eval で JS 例外: " + e.getMessage()));
-  } catch (const std::exception& e) {
-    HAYATE_LOGE("Tsubame バンドルの eval で例外: %s", e.what());
-    log_bridge->log_host(
-        rust::Str("error"),
-        rust::Str(std::string("Tsubame バンドルの eval で例外: ") + e.what()));
-  }
+  // android_main は native 起点のスレッドなので、通常の JNI FindClass は bootstrap
+  // class loader しか見えない。Android Intl 有効の Hermes は localeCompare 等から
+  // com.facebook.hermes.intl.* を呼ぶため、すべての JS entry を FBJNI の application
+  // class-loader scope 内で実行する。
+  facebook::jni::ThreadScope::WithClassLoader([&] {
+    try {
+      std::string src(bundle);
+      rt.evaluateJavaScript(
+          std::make_unique<jsi::StringBuffer>(std::move(src)), "tsubame.js");
+      impl_->ready = true;
+    } catch (const jsi::JSError& e) {
+      HAYATE_LOGE("Tsubame バンドルの eval で JS 例外: %s\nJS stack:\n%s",
+                  e.getMessage().c_str(), e.getStack().c_str());
+      // bundle が eval すらできない＝真っ黒障害。host イベント（source: host）として Device Log へ
+      // 流し、USB なしで診断できるようにする（#789）。JS は起動していないので js ではなく host。
+      log_bridge->log_host(
+          rust::Str("error"),
+          rust::Str("Tsubame バンドルの eval で JS 例外: " + e.getMessage()));
+    } catch (const std::exception& e) {
+      HAYATE_LOGE("Tsubame バンドルの eval で例外: %s", e.what());
+      log_bridge->log_host(
+          rust::Str("error"),
+          rust::Str(std::string("Tsubame バンドルの eval で例外: ") + e.what()));
+    }
+  });
 }
 
 HermesApp::~HermesApp() = default;
@@ -405,52 +412,78 @@ HermesApp::~HermesApp() = default;
 void HermesApp::pump_frame(double timestamp_ms) {
   if (!impl_->ready) return;
   jsi::Runtime& rt = *impl_->runtime;
-  try {
-    // `setImmediate` はこの frame の開始時点で積まれていた分だけを実行する。callback が
-    // さらに積んだ分は次 frame に回し、JS の macrotask と同様に re-entrant な無限再帰を避ける。
-    auto immediate_queue = std::move(impl_->immediate_queue);
-    impl_->immediate_queue.clear();
-    for (jsi::Function& callback : immediate_queue) {
-      callback.call(rt);
+  facebook::jni::ThreadScope::WithClassLoader([&] {
+    try {
+      // `setImmediate` はこの frame の開始時点で積まれていた分だけを実行する。callback が
+      // さらに積んだ分は次 frame に回し、JS の macrotask と同様に re-entrant な無限再帰を避ける。
+      auto immediate_queue = std::move(impl_->immediate_queue);
+      impl_->immediate_queue.clear();
+      for (jsi::Function& callback : immediate_queue) {
+        callback.call(rt);
+      }
+      if (auto* hermesRt = dynamic_cast<facebook::hermes::HermesRuntime*>(&rt)) {
+        hermesRt->drainMicrotasks();
+      }
+      jsi::Object tsubame = rt.global().getPropertyAsObject(rt, "__tsubame");
+      jsi::Function pump = tsubame.getPropertyAsFunction(rt, "pumpFrame");
+      pump.callWithThis(rt, tsubame, {jsi::Value(timestamp_ms)});
+      // Hermes のマイクロタスク（Solid のスケジューラ）を排出する。
+      if (auto* hermesRt = dynamic_cast<facebook::hermes::HermesRuntime*>(&rt)) {
+        hermesRt->drainMicrotasks();
+      }
+    } catch (const jsi::JSError& e) {
+      HAYATE_LOGE("pumpFrame で JS 例外: %s\nJS stack:\n%s",
+                  e.getMessage().c_str(), e.getStack().c_str());
+      // JS が動いている最中の uncaught 例外。bare Hermes には JS 側 uncaught フックが無いため、
+      // host（C++）が捕まえた地点で source: js として Device Log と native overlay へ出す。
+      if (impl_->log_bridge) {
+        std::string detail =
+            "uncaught JS error: " + e.getMessage() + "\n\nJS stack:\n" + e.getStack();
+        impl_->log_bridge->report_fatal_frame_error(rust::Str("js"),
+                                                     rust::Str(detail));
+      }
+      impl_->ready = false;  // 毎フレームのスパムを避けて止める。
+    } catch (const std::exception& e) {
+      HAYATE_LOGE("pumpFrame で例外: %s", e.what());
+      if (impl_->log_bridge) {
+        std::string detail =
+            std::string("uncaught host exception while executing a JS frame: ") +
+            e.what();
+        impl_->log_bridge->report_fatal_frame_error(rust::Str("host"),
+                                                     rust::Str(detail));
+      }
+      impl_->ready = false;
+    } catch (...) {
+      // 型を公開しない native 例外でも、この C++ 境界まで unwind できるものは process を
+      // 落とさず overlay に報告する。JNI class lookup failure は Hermes 内の noexcept 境界で
+      // terminate するため、この catch ではなく class-loader scope で未然に防ぐ。
+      constexpr const char* detail =
+          "uncaught non-standard native exception while executing a JS frame "
+          "(the exception did not expose a message)";
+      HAYATE_LOGE("pumpFrame で非標準 C++ 例外: %s", detail);
+      if (impl_->log_bridge) {
+        impl_->log_bridge->report_fatal_frame_error(rust::Str("host"),
+                                                     rust::Str(detail));
+      }
+      impl_->ready = false;
     }
-    if (auto* hermesRt = dynamic_cast<facebook::hermes::HermesRuntime*>(&rt)) {
-      hermesRt->drainMicrotasks();
-    }
-    jsi::Object tsubame = rt.global().getPropertyAsObject(rt, "__tsubame");
-    jsi::Function pump = tsubame.getPropertyAsFunction(rt, "pumpFrame");
-    pump.callWithThis(rt, tsubame, {jsi::Value(timestamp_ms)});
-    // Hermes のマイクロタスク（Solid のスケジューラ）を排出する。
-    if (auto* hermesRt = dynamic_cast<facebook::hermes::HermesRuntime*>(&rt)) {
-      hermesRt->drainMicrotasks();
-    }
-  } catch (const jsi::JSError& e) {
-    HAYATE_LOGE("pumpFrame で JS 例外: %s\nJS stack:\n%s", e.getMessage().c_str(),
-                e.getStack().c_str());
-    // JS が動いている最中の uncaught 例外。source: js として Device Log へ流す（#789）。bare Hermes
-    // には JS 側 uncaught フックが無いため、host（C++）が捕まえた地点で js としてタグ付けする。
-    if (impl_->log_bridge) {
-      impl_->log_bridge->log(rust::Str("error"),
-                             rust::Str("uncaught: " + e.getMessage()));
-    }
-    impl_->ready = false;  // 毎フレームのスパムを避けて止める。
-  } catch (const std::exception& e) {
-    HAYATE_LOGE("pumpFrame で例外: %s", e.what());
-    impl_->ready = false;
-  }
+  });
 }
 
 void HermesApp::request_redraw() {
   // eval 未成功、または JS がまだ set_request_redraw を呼んでいなければ何もしない。
   if (!impl_->ready || !impl_->redraw_slot->fn.has_value()) return;
   jsi::Runtime& rt = *impl_->runtime;
-  try {
-    impl_->redraw_slot->fn->call(rt);
-  } catch (const jsi::JSError& e) {
-    HAYATE_LOGE("request_redraw で JS 例外: %s\nJS stack:\n%s",
-                e.getMessage().c_str(), e.getStack().c_str());
-  } catch (const std::exception& e) {
-    HAYATE_LOGE("request_redraw で例外: %s", e.what());
-  }
+  facebook::jni::ThreadScope::WithClassLoader([&] {
+    try {
+      impl_->redraw_slot->fn->call(rt);
+    } catch (const jsi::JSError& e) {
+      HAYATE_LOGE("request_redraw で JS 例外: %s\nJS stack:\n%s",
+                  e.getMessage().c_str(), e.getStack().c_str());
+    } catch (const std::exception& e) {
+      HAYATE_LOGE("request_redraw で例外: %s", e.what());
+    }
+  });
 }
 
 bool HermesApp::consume_wants_pump() {

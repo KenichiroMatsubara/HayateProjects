@@ -97,10 +97,23 @@ export function filterTodos(todos: readonly Todo[], filter: Filter): Todo[] {
   return [...todos];
 }
 
-/** 並び順を適用する（manual=手動 / name=名前(ja) / prio=優先度降順）。常に新配列を返す。 */
+/**
+ * JS engine / ICU の実装に依存しない名前順。
+ *
+ * `localeCompare(..., 'ja')` は Chrome と Hermes で Latin / 日本語の相対順が異なるうえ、
+ * Android Hermes では Intl から JNI へ入る。デモの並び順は同じ bundle なら全 host で同じ、
+ * という観測可能な契約にして、UTF-16 コード単位の昇順で比較する。
+ */
+function compareNames(a: string, b: string): number {
+  if (a < b) return -1;
+  if (a > b) return 1;
+  return 0;
+}
+
+/** 並び順を適用する（manual=手動 / name=決定的な名前順 / prio=優先度降順）。常に新配列を返す。 */
 export function sortTodos(todos: readonly Todo[], sort: SortMode): Todo[] {
   const next = [...todos];
-  if (sort === 'name') return next.sort((a, b) => a.text.localeCompare(b.text, 'ja'));
+  if (sort === 'name') return next.sort((a, b) => compareNames(a.text, b.text));
   if (sort === 'prio') return next.sort((a, b) => b.prio - a.prio);
   return next;
 }

@@ -149,9 +149,34 @@ describe('sortTodos', () => {
     expect(todos.map((x) => x.id)).toEqual([3, 1, 2]);
   });
 
-  it('sorts by name using Japanese collation for "name"', () => {
+  it('sorts Japanese names by the deterministic name order', () => {
     const todos = [t(1, 'りんご', 2, false), t(2, 'あんず', 2, false), t(3, 'みかん', 2, false)];
     expect(sortTodos(todos, 'name').map((x) => x.text)).toEqual(['あんず', 'みかん', 'りんご']);
+  });
+
+  it('uses the same mixed Latin/Japanese name order without host Intl', () => {
+    const todos = [
+      t(1, 'レイアウトエンジンに flex-wrap を実装', 3, false),
+      t(2, 'box-shadow の描画を確認する', 2, true),
+      t(3, 'ドラッグで並べ替えできるかテスト', 1, false),
+      t(4, 'ダークモードの配色を調整', 1, false),
+      t(5, 'sticky ヘッダーの挙動チェック', 3, true),
+    ];
+    const localeCompare = String.prototype.localeCompare;
+    String.prototype.localeCompare = () => {
+      throw new Error('host Intl must not participate in deterministic app ordering');
+    };
+    try {
+      expect(sortTodos(todos, 'name').map((x) => x.text)).toEqual([
+        'box-shadow の描画を確認する',
+        'sticky ヘッダーの挙動チェック',
+        'ダークモードの配色を調整',
+        'ドラッグで並べ替えできるかテスト',
+        'レイアウトエンジンに flex-wrap を実装',
+      ]);
+    } finally {
+      String.prototype.localeCompare = localeCompare;
+    }
   });
 
   it('sorts by descending priority for "prio"', () => {

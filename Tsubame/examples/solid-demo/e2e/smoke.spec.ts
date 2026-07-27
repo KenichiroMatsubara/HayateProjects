@@ -28,4 +28,42 @@ test.describe('Tsubame Task Studio — DOM renderer', () => {
 
     await expect(page.getByText('Playwright から追加したタスク')).toBeVisible();
   });
+
+  test('名前・優先度 chip で表示中のタスク行が実際に並び替わる', async ({ page }) => {
+    const seedTitles = [
+      'レイアウトエンジンに flex-wrap を実装',
+      'box-shadow の描画を確認する',
+      'ドラッグで並べ替えできるかテスト',
+      'ダークモードの配色を調整',
+      'sticky ヘッダーの挙動チェック',
+    ];
+    const renderedTaskOrder = () =>
+      page.locator('button').evaluateAll(
+        (buttons, titles) =>
+          buttons
+            .map((button) => button.textContent?.trim() ?? '')
+            .filter((text) => (titles as string[]).includes(text)),
+        seedTitles,
+      );
+
+    await expect.poll(renderedTaskOrder).toEqual(seedTitles);
+
+    await page.getByRole('button', { name: '名前', exact: true }).click();
+    await expect.poll(renderedTaskOrder).toEqual([
+      'box-shadow の描画を確認する',
+      'sticky ヘッダーの挙動チェック',
+      'ダークモードの配色を調整',
+      'ドラッグで並べ替えできるかテスト',
+      'レイアウトエンジンに flex-wrap を実装',
+    ]);
+
+    await page.getByRole('button', { name: '優先度', exact: true }).click();
+    await expect.poll(renderedTaskOrder).toEqual([
+      'レイアウトエンジンに flex-wrap を実装',
+      'sticky ヘッダーの挙動チェック',
+      'box-shadow の描画を確認する',
+      'ドラッグで並べ替えできるかテスト',
+      'ダークモードの配色を調整',
+    ]);
+  });
 });

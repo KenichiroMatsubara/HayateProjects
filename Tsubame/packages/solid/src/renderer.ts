@@ -15,6 +15,16 @@ function insertIntoChildren(
   node: TsubameNode,
   anchor?: TsubameNode | null,
 ): void {
+  // DOM の appendChild / insertBefore と同じ「既存 node は移動」セマンティクスにする。
+  // 旧位置を残すと shadow tree に同じ node が重複し、Solid が後続 reorder で誤った
+  // sibling/anchor を読み取る。同期 DOM backend は実 DOM 自身が node を移動するため
+  // 見かけ上隠れるが、mutation を遅延適用する Hayate backend では順序破綻になる。
+  const currentParent = node.parent;
+  if (currentParent !== null) {
+    for (let i = currentParent.children.length - 1; i >= 0; i -= 1) {
+      if (currentParent.children[i] === node) currentParent.children.splice(i, 1);
+    }
+  }
   if (anchor != null) {
     const i = parent.children.indexOf(anchor);
     parent.children.splice(i < 0 ? parent.children.length : i, 0, node);
@@ -65,8 +75,11 @@ const {
   },
 
   insertNode(parent: TsubameNode, node: TsubameNode, anchor?: TsubameNode | null): void {
-    node.parent = parent;
+    // Node.insertBefore(node, node) は no-op。Hayate Core に同じ op を送ると child を
+    // 先に detach した後で before が見つからず、末尾 append に変わってしまう。
+    if (anchor === node && node.parent === parent) return;
     insertIntoChildren(parent, node, anchor);
+    node.parent = parent;
 
     const r = activeRenderer();
     if (anchor == null) {

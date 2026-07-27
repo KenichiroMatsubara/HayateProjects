@@ -5,7 +5,12 @@ import { defineConfig, devices } from '@playwright/test';
 // 事前配置している（`playwright install` は不可）。その symlink があればそれを使い、
 // 無ければ Playwright 管理のブラウザに委ねる（ローカル / CI）。
 const PREINSTALLED_CHROMIUM = '/opt/pw-browsers/chromium';
-const executablePath = existsSync(PREINSTALLED_CHROMIUM) ? PREINSTALLED_CHROMIUM : undefined;
+const SYSTEM_CHROME = '/usr/bin/google-chrome';
+const executablePath = existsSync(PREINSTALLED_CHROMIUM)
+  ? PREINSTALLED_CHROMIUM
+  : existsSync(SYSTEM_CHROME)
+    ? SYSTEM_CHROME
+    : undefined;
 
 /**
  * Playwright — AI / 人間が「実ブラウザ」で動作確認するための E2E 設定。

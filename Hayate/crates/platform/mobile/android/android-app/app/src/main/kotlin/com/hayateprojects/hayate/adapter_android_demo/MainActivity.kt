@@ -6,6 +6,8 @@ import android.view.ViewGroup
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
+import com.facebook.soloader.nativeloader.NativeLoader
+import com.facebook.soloader.nativeloader.SystemDelegate
 import com.google.androidgamesdk.GameActivity
 
 /**
@@ -66,6 +68,12 @@ class MainActivity : GameActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // libhayate_adapter_android の推移依存として libfbjni.so が dlopen されるだけでは、
+        // fbjni 自身の JNI_OnLoad は呼ばれない。ThreadScopeSupport の class initializer が使う
+        // NativeLoader も先に SystemDelegate で初期化し、Java activity thread 上で FBJNI の
+        // application class loader cache を作ってから GameActivity が Rust を起動する。
+        NativeLoader.initIfUninitialized(SystemDelegate())
+        NativeLoader.loadLibrary("fbjni")
         // super.onCreate が native ライブラリをロードして android_main を始動するため、
         // Rust 側から見える前に登録しておく。
         CurrentActivity.set(this)

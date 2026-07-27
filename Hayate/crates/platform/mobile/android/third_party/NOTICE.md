@@ -16,17 +16,23 @@ React Native 0.82.1（Maven Central）:
     `third_party/include/hermes/`
   - ライブラリ: `jni/arm64-v8a/libhermesvm.so` →
     `android-app/app/src/main/jniLibs/arm64-v8a/`
+  - Android Intl の Java peer classes（`com.facebook.hermes.intl.*`）は抜き出さず、
+    Gradle の同一 AAR 依存から APK に収録する。native VM はこれらを JNI で呼ぶため、
+    `.so` だけでは `localeCompare` / `Intl.*` 実行時に ClassNotFoundException で終了する。
 - `com.facebook.react:react-android:0.82.1-release`
   - ヘッダ: `prefab/modules/jsi/include/jsi/**` → `third_party/include/jsi/`
   - ライブラリ: `jni/arm64-v8a/libjsi.so` →
     `android-app/app/src/main/jniLibs/arm64-v8a/`
 
-`libreactnative.so` 等、上記以外は取り込まない。
+`libreactnative.so` 等、上記以外は取り込まない。Hermes AAR が供給する
+`libhermesvm.so` と上記 vendored copy は同一ファイルで、Gradle packaging の `pickFirsts`
+によって意図した重複として解決する。
 
 `libfbjni.so` / `libc++_shared.so`、および libfbjni の JNI_OnLoad が要求する Java
 クラス `com.facebook.jni.*` は vendor せず、Gradle 依存 `com.facebook.fbjni:fbjni:0.7.0`
 （react-android 0.82.1 が使う版）が供給する。fbjni は React 本体ではない汎用 JNI
-ヘルパ。
+ヘルパ。native 起点スレッドから application class loader を使う
+`fbjni/detail/Environment.h` だけは同じ 0.7.0 の Prefab header を vendor する。
 
 ## ライセンス
 
@@ -38,7 +44,8 @@ Platforms, Inc. and affiliates）。各プロジェクトの LICENSE を参照:
 
 ## 更新手順
 
-バージョンを上げる場合は同じ classifier（`-release`）の AAR を取得し、上記の
-ヘッダ／.so を同じ配置で置き換える。`build.rs` が `CARGO_MANIFEST_DIR` 相対で
+バージョンを上げる場合は同じ classifier（`-release`）の AAR を取得し、Gradle の
+`hermes-android` 依存も同時に更新したうえで、上記のヘッダ／.so を同じ配置で置き換える。
+`build.rs` が `CARGO_MANIFEST_DIR` 相対で
 `third_party/include` と `android-app/app/src/main/jniLibs/arm64-v8a` を自動解決する
 （`HERMES_INCLUDE` / `HERMES_LIB` env で一時上書きも可能）。

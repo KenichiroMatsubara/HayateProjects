@@ -17,7 +17,7 @@ use std::time::SystemTime;
 
 use hayate_core::ElementTree;
 
-use crate::device_log::{DeviceLog, KotlinLogPort, LogLevel, LogSource};
+use crate::device_log::{DeviceLog, KotlinLogPort, LogLevel};
 use crate::js_host::{EventRow, JsHost};
 
 #[cxx::bridge(namespace = "hayate")]
@@ -71,6 +71,11 @@ mod ffi {
         /// できないケース（真っ黒障害）など、C++ 側が捕まえた host 由来の失敗を即時フラッシュ経路に
         /// 乗せる。JS が動いている間の uncaught JS 例外は [`log`](Self::log)（source: js）で流す。
         fn log_host(self: &JsHostBridge, level: &str, message: &str);
+
+        /// `pumpFrame` の最外周で捕まえた致命的な frame failure を Device Log と、Hayate/GPU に
+        /// 依存しない native overlay の両方へ出す。`source` は `"js"` または `"host"`。
+        /// C++ 境界が捕捉したあと現在の Hermes runtime は停止するが、Android process は生存する。
+        fn report_fatal_frame_error(self: &JsHostBridge, source: &str, message: &str);
     }
 
     unsafe extern "C++" {
@@ -198,6 +203,37 @@ impl JsHostBridge {
             message.to_owned(),
             wall_clock_epoch_ms(),
         );
+    }
+
+    /// JS frame の最外周 failure を、process を落とさず利用者へ見える形にする。
+    ///
+    /// `pump_frame` の C++ 境界まで unwind できた `jsi::JSError` / `std::exception` /
+    /// 非標準例外をここへ合流させる。エラー表示は Hayate の element tree や GPU surface を
+    /// 使わない native Android View なので、frame transaction 自身が壊れていても表示できる。
+    fn report_fatal_frame_error(&self, source: &str, message: &str) {
+        let visible_message = format!(
+            "Torimi が致命的な実行エラーを捕捉し、アプリを終了せず JS ランタイムを停止しました。\n\n\
+             {message}\n\nバンドルを修正してデモを再読み込みしてください。"
+        );
+        log::error!("{visible_message}");
+
+        let mut device_log = self.device_log.borrow_mut();
+        if source == "js" {
+            device_log.record_js(
+                LogLevel::Error,
+                visible_message.clone(),
+                wall_clock_epoch_ms(),
+            );
+        } else {
+            device_log.record_host(
+                LogLevel::Error,
+                visible_message.clone(),
+                wall_clock_epoch_ms(),
+            );
+        }
+        drop(device_log);
+
+        crate::error_overlay::show_error(&visible_message);
     }
 }
 

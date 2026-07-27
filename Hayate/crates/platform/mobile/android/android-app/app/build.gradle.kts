@@ -113,6 +113,16 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    packaging {
+        jniLibs {
+            // The release Hermes AAR is declared below for its required com.facebook.hermes.intl
+            // Java peer classes. build.rs still links against the same release libhermesvm.so
+            // vendored under src/main/jniLibs. Both files are byte-identical (same pinned AAR), so
+            // resolve that intentional duplicate explicitly instead of letting AGP fail the merge.
+            pickFirsts += "**/libhermesvm.so"
+        }
+    }
+
 }
 
 kotlin {
@@ -135,12 +145,25 @@ dependencies {
     // APK が肥大化するため react-android には依存せず、libhermesvm/libjsi だけを
     // src/main/jniLibs/arm64-v8a に vendor 済み（ADR-0007）。
     //
+    // ただしこの libhermesvm は Android Intl 有効ビルドで、localeCompare / Intl.Collator 等が
+    // `com.facebook.hermes.intl.*` の Java peer を JNI で呼ぶ。native .so だけを抜き出すと最初の
+    // localeCompare で ClassNotFoundException → fbjni の JniException → std::terminate になる。
+    // 同じ pinned release AAR を依存に置いて peer classes を必ず APK に含める。AAR 内の
+    // libhermesvm.so と vendored copy は byte-identical で、上の packaging pickFirsts が重複を
+    // 明示解決する。
+    if (!project.hasProperty("nativedemo")) {
+        implementation("com.facebook.react:hermes-android:0.82.1:release@aar")
+    }
+    //
     // libfbjni は JNI_OnLoad で Java クラス com.facebook.jni.*（HybridData$Destructor 等）を
     // 要求するので .so だけでは ClassNotFoundException で落ちる。これらは fbjni AAR が
     // .so + Java クラス + libc++_shared をまとめて供給する。fbjni は React 本体ではない
     // 汎用 JNI ヘルパ（バージョンは react-android 0.82.1 が使う 0.7.0 に一致）。
     if (!project.hasProperty("nativedemo")) {
         implementation("com.facebook.fbjni:fbjni:0.7.0")
+        // fbjni 0.7.0 では runtime-only 推移依存だが、MainActivity が FBJNI の
+        // application class-loader scope を初期化するため compile classpath にも必要。
+        implementation("com.facebook.soloader:nativeloader:0.10.5")
     }
 
     // Torimi: reload 購読 WS の OS スタック実装（ADR-0002 後半・#742）。HttpURLConnection と
