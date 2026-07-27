@@ -1,6 +1,72 @@
 import { describe, it, expect } from 'vitest';
 
 describe('renderer integration (stub IRenderer)', () => {
+  it('moves an existing child without duplicating it in the reconcile shadow tree', async () => {
+    const { insertNode, createElement } = await import('./renderer.js');
+    const { setActiveRenderer } = await import('./active-renderer.js');
+
+    const ops: string[] = [];
+    let nextId = 0;
+    setActiveRenderer({
+      createElement: () => ++nextId as never,
+      setRoot: () => {},
+      appendChild: (p: number, c: number) => ops.push(`append:${p},${c}`),
+      insertBefore: (p: number, c: number, b: number) =>
+        ops.push(`insert:${p},${c},${b}`),
+      removeChild: () => {},
+      setStyle: () => {},
+      setText: () => {},
+      setProperty: () => {},
+      addEventListener: () => () => {},
+    } as never);
+
+    const parent = createElement('view');
+    const a = createElement('view');
+    const b = createElement('view');
+    const c = createElement('view');
+    insertNode(parent, a);
+    insertNode(parent, b);
+    insertNode(parent, c);
+
+    insertNode(parent, c, a);
+
+    expect(parent.children).toEqual([c, a, b]);
+    expect(new Set(parent.children).size).toBe(parent.children.length);
+    expect(ops.at(-1)).toBe('insert:1,4,2');
+  });
+
+  it('treats insertBefore(node, node) as a no-op instead of moving it to the end', async () => {
+    const { insertNode, createElement } = await import('./renderer.js');
+    const { setActiveRenderer } = await import('./active-renderer.js');
+
+    const ops: string[] = [];
+    let nextId = 0;
+    setActiveRenderer({
+      createElement: () => ++nextId as never,
+      setRoot: () => {},
+      appendChild: (p: number, c: number) => ops.push(`append:${p},${c}`),
+      insertBefore: (p: number, c: number, b: number) =>
+        ops.push(`insert:${p},${c},${b}`),
+      removeChild: () => {},
+      setStyle: () => {},
+      setText: () => {},
+      setProperty: () => {},
+      addEventListener: () => () => {},
+    } as never);
+
+    const parent = createElement('view');
+    const a = createElement('view');
+    const b = createElement('view');
+    insertNode(parent, a);
+    insertNode(parent, b);
+    const callsBefore = ops.length;
+
+    insertNode(parent, a, a);
+
+    expect(parent.children).toEqual([a, b]);
+    expect(ops).toHaveLength(callsBefore);
+  });
+
   it('insertNode appends text under text parent (IFC inline element)', async () => {
     const { insertNode, createElement, createTextNode } = await import('./renderer.js');
     const { setActiveRenderer } = await import('./active-renderer.js');

@@ -36,12 +36,14 @@ describe('single App Bundle entry — Native Host target (#767)', () => {
   it('exposes __tsubame (pumpFrame / stop) when the native host injected __hayateHost', async () => {
     // ネイティブが JSI で注入する RawHayate の代役。mount 契約の観測に必要な呼び出しに
     // 応えるだけの no-op（描画の実体は実機検証の領分）。
+    let nextListenerId = 0;
     g.__hayateHost = new Proxy(
       {},
       {
         get: (_target, prop) => {
           if (prop === 'poll_events') return () => [];
           if (prop === 'element_subtree_ids') return () => new Float64Array();
+          if (prop === 'register_listener') return () => ++nextListenerId;
           return () => undefined;
         },
       },

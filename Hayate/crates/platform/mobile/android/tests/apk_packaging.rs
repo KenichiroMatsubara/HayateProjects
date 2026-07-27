@@ -65,6 +65,43 @@ fn gradle_app_pins_package_id_and_arm64_abi() {
 }
 
 #[test]
+fn embedded_hermes_packages_the_java_intl_peer_required_by_its_native_vm() {
+    let gradle = read_relative("android-app/app/build.gradle.kts");
+    assert!(
+        gradle.contains("implementation(\"com.facebook.react:hermes-android:0.82.1:release@aar\")"),
+        "the vendored Hermes VM has Android Intl enabled and calls com.facebook.hermes.intl.*; \
+         package the matching AAR classes instead of shipping the native .so alone"
+    );
+    assert!(
+        gradle.contains("pickFirsts += \"**/libhermesvm.so\""),
+        "the matching AAR and the native-link vendored copy contain the same libhermesvm.so; \
+         packaging must explicitly resolve that duplicate"
+    );
+    assert!(
+        gradle.contains("implementation(\"com.facebook.soloader:nativeloader:0.10.5\")"),
+        "MainActivity initializes NativeLoader directly before FBJNI JNI_OnLoad"
+    );
+
+    let activity = read_relative(
+        "android-app/app/src/main/kotlin/com/hayateprojects/hayate/adapter_android_demo/MainActivity.kt",
+    );
+    let load_fbjni = activity
+        .find("NativeLoader.loadLibrary(\"fbjni\")")
+        .expect("MainActivity must explicitly load fbjni so its JNI_OnLoad initializes FBJNI");
+    let init_native_loader = activity
+        .find("NativeLoader.initIfUninitialized(SystemDelegate())")
+        .expect("FBJNI ThreadScopeSupport requires NativeLoader to have a SystemDelegate");
+    let start_native = activity
+        .find("super.onCreate(savedInstanceState)")
+        .expect("GameActivity super.onCreate starts the native app");
+    assert!(
+        init_native_loader < load_fbjni && load_fbjni < start_native,
+        "NativeLoader initialization and FBJNI JNI_OnLoad must run on the Java activity thread \
+         before GameActivity starts android_main"
+    );
+}
+
+#[test]
 fn manifest_declares_vulkan_and_loads_the_cdylib() {
     let manifest = read_relative("android-app/app/src/main/AndroidManifest.xml");
     assert!(
