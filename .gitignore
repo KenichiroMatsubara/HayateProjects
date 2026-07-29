@@ -15,6 +15,10 @@ dist-android/
 # Cloudflare Workers local dev state
 .wrangler/
 
+# graphify knowledge-graph output (ADR-0009). 開発者ごとにローカルで
+# `/graphify .` から再生成する build output。スキル本体だけを追跡する。
+graphify-out/
+
 # JetBrains IDE (Android Studio / IntelliJ) — 開発者ごとのプロジェクト設定。
 # 開くたびに再生成・更新されるため追跡しない。
 .idea/
