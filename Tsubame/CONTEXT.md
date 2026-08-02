@@ -19,8 +19,20 @@ renderer に platform への結合点を与える側。Tsubame は host を *掴
 _Avoid_: renderer が canvas / global / DOM を掴みに行く設計、`canvas: null` で host 知識を無効化して native を成立させる構造（知識が型に残るため原則破り）
 
 **Composition Root（合成ルート / `runTsubameApp`）**:
-target 選択・`Host` 配線・renderer 取得・mount を一つの interface の裏へ畳む App 階層の deep module。`@torimi/tsubame-app` に置き、`@torimi/tsubame-renderer-protocol` だけに依存する（`renderer-dom` / `renderer-hayate` も `@torimi/hayate-host` も import しない＝Hayate ランタイム盲目）。`runTsubameApp(host: Host, mount: TsubameMount): Dispose` を公開し、`Host.createRenderer(): IRenderer | Promise<IRenderer>`（＋optional `stop()`）で得た renderer を `mount` に渡すだけ。具体 renderer 名（`DomRenderer` / `HayateRenderer`）も platform も知らない — それらは `Host` 実装に局在する。web 専用 helper `shouldUseDomRenderer` は明示 `dom` と EditContext 欠如による DOM 退避だけを判定する。Canvas Mode は `@torimi/hayate-host` の標準 OffscreenCanvas＋単一 Worker 経路であり、Scene Renderer の初回選択は Worker 内の Rust Render Host が所有する（ADR-0012 / ADR-0157）。
+`Host` 配線・renderer 取得・mount を一つの interface の裏へ畳む App 階層の deep module。`@torimi/tsubame-app` に置き、`@torimi/tsubame-renderer-protocol` だけに依存する（`renderer-dom` / `renderer-hayate` も `@torimi/hayate-host` も import しない＝Hayate ランタイム盲目）。`runTsubameApp(host: Host, mount: TsubameMount): AppHandle` を公開し、`Host.start(): HostSession | Promise<HostSession>` で得た lifetime value の `renderer` を `mount` に渡す。通常 dispose は mount dispose → session dispose、start 完了前の dispose は late-resolved session を mount せず破棄する。具体 renderer 名（`DomRenderer` / `HayateRenderer`）も platform も知らない — target 選択を含め、それらは `Host` 実装に局在する。Browser Host adapter は明示 `renderer=dom` と EditContext 欠如だけを DOM 退避として判定し、Canvas Mode では `@torimi/hayate-host` の標準 OffscreenCanvas＋単一 Worker経路を使う。Scene Renderer の初回選択はWorker内のRust Render Hostが所有する（ADR-0012 / ADR-0015 / ADR-0157）。
 _Avoid_: orchestrator が `renderer-dom` / `renderer-hayate` / `@torimi/hayate-host` を import する設計、FW ごとに別合成ルートを書く設計、Canvas backend 名・選択順・検出結果を Tsubame App に持たせる設計
+
+**Host Session（`HostSession`）**:
+一回の `Host.start()` が返す renderer と teardown の不可分な lifetime value。`renderer: IRenderer` と必須・冪等な `dispose()` を持ち、Composition Root が mount の寿命と合成する。非同期 start 中に app が dispose されても、late resolve した session 自身を直ちに破棄できるため Worker / WASM / frame-clock を孤児化しない（ADR-0015）。
+_Avoid_: renderer と optional `Host.stop` を別 lifetime にする設計、resolve 前 stop だけで将来生成される資源も止まるという理解、framework mount が host 資源を個別に破棄する設計
+
+**App Handle（`AppHandle`）**:
+`runTsubameApp` が同期で返す app lifetime と開始結果のハンドル。必須・冪等な `dispose()` と、`mounted | failed(error) | disposed` の値で必ず resolve する `settled` Promise を持つ。boot / mount failure を console 副作用だけに畳まず caller の error UI とテストへ渡し、start 完了前に破棄されても結果を即 settle しつつ late-resolved `HostSession` を裏で確実に破棄する（ADR-0015）。
+_Avoid_: 戻り値を dispose 関数だけにする設計、boot failure を未観測にする設計、通常の dispose を failure として reject する Promise
+
+**Browser Host adapter（`@torimi/tsubame-browser-host`）**:
+Tsubame browser app の DOM / Hayate target 選択、明示 `TuningSource` の dev tuning 取得、Hayate Web Host boot、`HayateRenderer` start、renderer / Worker teardown を一つに畳む App 層の `Host` 実装。DOM container と canvas の両方を受け、`renderer=dom` または EditContext 欠如だけを DOM 退避として解釈し、それ以外の backend 語彙は Hayate Host / Rust Render Host に委ねる。start は visibility 記録から renderer start までを resource transaction とし、部分失敗・late dispose・通常 dispose のすべてで renderer / Worker / visibility を逆順に完全 cleanup する。tuning の既定は network I/O のない `none` とし、任意 URL の best-effort fetch は app が明示したときだけ行う。debug は target と pipeline observation だけの narrow `BrowserHostInspection` とし、raw を公開せず `__hayateHost` native wire global とも分離する。具体 renderer と `@torimi/hayate-host` への browser 固有依存はこの package に閉じ、純粋な `@torimi/tsubame-app` と framework 固有 `TsubameMount` へ漏らさない。Torimi の `@torimi/host-web`（dev-server / protocol handshake / reload）とは別 bounded context（ADR-0015）。
+_Avoid_: `@torimi/tsubame-app` に具体 browser runtime を import する設計、framework entry ごとの inline boot、Torimi dev host と同一視する理解、native / bundle Host まで飲み込む汎用 Host package
 
 **Tsubame Mount（`TsubameMount`）**:
 合成ルートにおける唯一の FW 固有 seam。`(renderer: IRenderer) => Dispose` 型で、各 `Tsubame Adapter`（solid / react / vue）が自分の reactivity でツリーを `IRenderer` に mount する 1 関数として供給する。solid は `() => JSX`、react は `ReactNode` という `renderTsubame` の呼び形の差を内側に閉じ込め、合成ルートには一様な形で現れる。FW を増やすコストはこの 1 関数に縮む（platform 増殖は `Host`、renderer は Dom/Hayate の二つで固定・ADR-0012）。

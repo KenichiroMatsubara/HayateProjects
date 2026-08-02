@@ -7,7 +7,7 @@ Date: 2026-08-02
 ## Context
 
 Torimi が Tauri 製シェルを持ち、Live Preview（WebView 上の任意 Web アプリ）と Bundle Preview
-（Hermes ＋ Hayate）の 2 系統を同一 APK で提供することになった（Torimi ADR-0006 / 0007）。両系統は
+（Hermes ＋ Hayate）の 2 系統を同一 APK で提供することになった（Torimi ADR-0007 / 0008）。両系統は
 同じネイティブ capability を使いたい。ここで守るべき制約は「**Tauri plugin を共通実装の正本にしない**」
 こと — Hayate が Tauri の lifecycle・`AppHandle`・WebView・IPC を知る構造にすると、共通化ではなく
 Hayate の Tauri 従属になる。
@@ -72,3 +72,7 @@ Context であって Activity ではなく、Activity 実体は Kotlin 側のレ
   縫い目を迂回してしまい、通っても統合の証拠にならない。
 - 検証では使用フレームワークが提供する既製のバーコードスキャナ機構を用いない。用いると「共有 Module
   経由でネイティブに届く」ことを何も証明しないため。
+- ADR-0158（Native Accessibility）と同じ形をとる: platform-free な共通 module に意味と lifecycle を
+  集約し、leaf には OS 固有 glue だけを残す。本 ADR はその形を capability に適用し、加えて
+  **実行環境の供給元を注入で表す**点を足す — accessibility では host が 1 つだったが、capability は
+  2 つの host から同一実装を呼ぶため、ambient global では供給元が定まらない。

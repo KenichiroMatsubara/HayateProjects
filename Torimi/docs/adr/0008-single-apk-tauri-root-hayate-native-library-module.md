@@ -6,7 +6,7 @@ Date: 2026-08-02
 
 ## Context
 
-ADR-0006 で Torimi Shell を Tauri 2 に載せると決めた結果、Android の実体をどう組むかを決める必要が
+ADR-0007 で Torimi Shell を Tauri 2 に載せると決めた結果、Android の実体をどう組むかを決める必要が
 ある。既存の出荷 APK（`com.hayateprojects.torimi`）は手入れされた Gradle プロジェクトで、
 `rust-android-gradle` による cdylib ビルド・Hermes AAR・GameActivity・ML Kit code-scanner・
 release 署名構成を抱えている。一方 Tauri は Android について**独立した Gradle ルートプロジェクト

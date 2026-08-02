@@ -79,6 +79,10 @@ _Avoid_: 使用フレームワークが提供する汎用プラグインの操�
 App Bundle 内の `@tsubame/renderer-canvas` が内包する wire 定数のバージョンと、ホストに焼き込まれたネイティブ decoder のバージョンの整合トークン。バンドルに埋め、Torimi 起動時に突き合わせ、不一致は明示エラーにする（Expo Go の "SDK version" 整合と同型）。
 _Avoid_: 無検査での流し込み, decoder の暗黙後方互換前提
 
+**Torimi Wire Contract（`@torimi/wire-contract`）**:
+Web Host・Dev Server・Demo Endpoint・App Bundle・Native Host が共有する、Torimi の transport / language 中立な wire facts の正本。bundle / reload / log / manifest route、reload message、bundle/native globals、log vocabulary、Device Log / Demo Manifest JSON shape を含み、TypeScript / Rust / C++ projection を供給する。C++ projection は Hermes JSI が直接扱う名前と token に限定し、payload DTO は複製しない。global値の構造は各consumerが利用前に一度検証し、shape mismatchをboot failureとして扱う。Device Logのlevel/sourceは未知の非空値も保持するopen vocabulary、制御分岐に使う語彙はclosed vocabularyとする。version 比較、reload backoff、timeout、buffer policy、boot 状態機械は behavior なので含めない（ADR-0006）。
+_Avoid_: `@torimi/dev-server-contract` を native wire まで広げる理解、TypeScript source を Rust / C++ が値で模写する運用、C++ に未使用の JSON DTO や JSI validator まで生成する設計、global shape failureを最初の利用時まで遅延する実装、Device Logのlevel/sourceをstrict enumにして前方互換性を失う設計、network / lifecycle policy の置き場、Hayate Protocol Contract と同一視する理解
+
 **Reload**:
 バンドル変更を端末に反映する仕組み。暫定は **full reload**（バンドル全体を取り直し JS ランタイムを再構築、state は飛ぶ）で全 FW に一様に効く。目標は **HMR**（差分モジュール差し替え・state 維持）だが、FW 固有 fast-refresh はバンドル側に置き、ホストのネイティブ契約は full reload／HMR で不変。
 _Avoid_: ホスト側 HMR ランタイム, Hayabusa の "Hot Reload"（別 context の別語）
