@@ -1,7 +1,7 @@
 //! App Host — platform 非依存の最上位協調層であり mount 先（ADR-0117）。
 //!
 //! App Host は `ElementTree` 実体を所有し、フレームループ（[`AppHost::tick`]）・
-//! `Event Delivery` の drain・描画オーケストレーションを担う。OS フレームループ自体は
+//! `Event Delivery` の drain・native accessibility session・描画オーケストレーションを担う。OS フレームループ自体は
 //! 所有せず、Platform Front（web `requestAnimationFrame` / Android `Choreographer`）が
 //! 毎フレーム [`AppHost::tick`] を呼ぶ。フレームを起こす唯一の入口は構築時に受け取る
 //! `request_redraw` クロージャで、`tick` 末尾に pending visual work（進行中 transition 等）が
@@ -25,10 +25,15 @@ use hayate_performance_observability::{
 use std::time::Instant;
 
 mod font_mailbox;
+mod native_accessibility;
 pub mod render_host;
 pub mod renderer_selection;
 
 pub use font_mailbox::{FontFetchResult, FontMailbox, FontMailboxHandle};
+pub use native_accessibility::{
+    NativeAccessibilityDelivery, NativeAccessibilityHandle, NativeAccessibilityMountFailure,
+    NativeAccessibilityState, NativeAccessibilityTarget,
+};
 
 /// 1 フレーム分の [`CommittedFrame`] の提示先。`Render Host`（[`render_host::RenderHost`]）を
 /// App Host から見た最小 seam。headless・テストでは no-op 実装を渡す。
@@ -201,25 +206,29 @@ impl FrameContinuation {
 pub struct AppHost<S: PresentTarget> {
     tree: ElementTree,
     surface: S,
-    request_redraw: Box<dyn Fn()>,
+    request_redraw: std::sync::Arc<dyn Fn() + Send + Sync>,
     sink: Option<Box<dyn DeliverySink>>,
     font_mailbox: FontMailbox,
     frame_transaction: FrameTransaction,
     observability: PerformanceObservability,
+    native_accessibility: Option<native_accessibility::NativeAccessibilitySession>,
+    native_accessibility_mount_failure: Option<NativeAccessibilityMountFailure>,
 }
 
 impl<S: PresentTarget> AppHost<S> {
     /// 空の `ElementTree` で App Host を構築する。`request_redraw` は Platform Front が
     /// 供給するフレーム要求クロージャ（唯一の wake 入口・ADR-0117）。
-    pub fn new(surface: S, request_redraw: Box<dyn Fn()>) -> Self {
+    pub fn new(surface: S, request_redraw: Box<dyn Fn() + Send + Sync>) -> Self {
         Self {
             tree: ElementTree::new(),
             surface,
-            request_redraw,
+            request_redraw: std::sync::Arc::from(request_redraw),
             sink: None,
             font_mailbox: FontMailbox::new(),
             frame_transaction: FrameTransaction::default(),
             observability: PerformanceObservability::new(),
+            native_accessibility: None,
+            native_accessibility_mount_failure: None,
         }
     }
 
@@ -261,11 +270,69 @@ impl<S: PresentTarget> AppHost<S> {
         self.sink = Some(sink);
     }
 
+    /// native surface に一つの accessibility session を mount する。
+    pub fn mount_native_accessibility(
+        &mut self,
+        target: Box<dyn NativeAccessibilityTarget>,
+        base_dpr: f64,
+    ) -> NativeAccessibilityHandle {
+        self.native_accessibility_mount_failure = None;
+        let (session, handle) = native_accessibility::NativeAccessibilitySession::new(
+            target,
+            base_dpr,
+            self.request_redraw.clone(),
+        );
+        self.native_accessibility = Some(session);
+        handle
+    }
+
+    pub fn try_mount_native_accessibility(
+        &mut self,
+        target: Result<Box<dyn NativeAccessibilityTarget>, NativeAccessibilityMountFailure>,
+        base_dpr: f64,
+    ) -> Option<NativeAccessibilityHandle> {
+        match target {
+            Ok(target) => Some(self.mount_native_accessibility(target, base_dpr)),
+            Err(failure) => {
+                self.native_accessibility = None;
+                self.native_accessibility_mount_failure = Some(failure);
+                None
+            }
+        }
+    }
+
+    pub fn native_accessibility_state(&self) -> NativeAccessibilityState {
+        if self.native_accessibility_mount_failure.is_some() {
+            return NativeAccessibilityState::Disabled;
+        }
+        self.native_accessibility
+            .as_ref()
+            .map(|session| session.state())
+            .unwrap_or(NativeAccessibilityState::Detached)
+    }
+
+    pub fn native_accessibility_mount_failure(&self) -> Option<&NativeAccessibilityMountFailure> {
+        self.native_accessibility_mount_failure.as_ref()
+    }
+
+    pub fn set_native_accessibility_base_dpr(&mut self, base_dpr: f64) {
+        let changed = self
+            .native_accessibility
+            .as_mut()
+            .is_some_and(|session| session.set_base_dpr(base_dpr));
+        if changed {
+            (self.request_redraw)();
+        }
+    }
+
     pub fn prepare_frame(
         &mut self,
         timestamp_ms: f64,
     ) -> Result<PreparedFrame, FrameProtocolError> {
         let frame_id = self.frame_transaction.prepare(timestamp_ms)?;
+        if let Some(session) = self.native_accessibility.as_mut() {
+            session.drain_before_frame(&mut self.tree);
+        }
         for result in self.font_mailbox.drain() {
             match result {
                 FontFetchResult::Loaded { family, bytes } => {
@@ -315,6 +382,9 @@ impl<S: PresentTarget> AppHost<S> {
         }
         observation.finish();
         present.map_err(|source| FrameCommitError::Execution(FrameExecutionError { source }))?;
+        if let Some(session) = self.native_accessibility.as_mut() {
+            session.update_after_present(&self.tree);
+        }
         if FrameContinuation::after_commit(&frame).requests_frame() {
             (self.request_redraw)();
         }
@@ -327,15 +397,17 @@ impl<S: PresentTarget> AppHost<S> {
 
     /// 1 フレーム進める。Platform Front が毎フレーム呼ぶ（ADR-0117 のフェーズ順）。
     ///
-    /// 0. **font mailbox drain**：アダプタが非同期取得を完了した font を、layout（3+4）
+    /// 0. **accessibility action drain**：callback mailbox を drain し、Core intent へ適用する。
+    /// 1. **font mailbox drain**：アダプタが非同期取得を完了した font を、layout（4+5）
     ///    より前に `tree.register_font` / `tree.font_fetch_failed` へ流し込む（ADR-0132
     ///    スライス2、「フォント登録は layout より前」という順序不変条件）。
-    /// 1. **drain**：App Host が `poll_deliveries()` を drain する（delivery 所有）。
-    /// 2. **advance**：DeliverySink を毎フレーム無条件に呼ぶ（空 batch でも）。consumer が
+    /// 2. **delivery drain**：App Host が `poll_deliveries()` を drain する（delivery 所有）。
+    /// 3. **advance**：DeliverySink を毎フレーム無条件に呼ぶ（空 batch でも）。consumer が
     ///    handler 実行＋reactive flush＋mutation 発行を return 前に済ます。
-    /// 3+4. **commit_frame ＋ render**：Core の renderer-ready な `CommittedFrame` を一度だけ
+    /// 4+5. **commit_frame ＋ present**：Core の renderer-ready な `CommittedFrame` を一度だけ
     ///    確定し、その invariant view を `PresentTarget` へ渡す。
-    /// 5. **再要求判定**：pending visual work（進行中 transition 等）が残れば `request_redraw`。
+    /// 6. **accessibility outbound**：確定後の tree から full / incremental update を送る。
+    /// 7. **再要求判定**：pending visual work（進行中 transition 等）が残れば `request_redraw`。
     pub fn tick(&mut self, timestamp_ms: f64) -> Result<(), S::Error> {
         let prepared = self
             .prepare_frame(timestamp_ms)
@@ -364,6 +436,8 @@ mod tests {
     use hayate_core::{Color, DocumentEventKind, ElementKind, Event, PseudoState, StyleProp};
     use std::cell::RefCell;
     use std::rc::Rc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
 
     /// present 回数を数える `PresentTarget`。
     struct CountingSurface {
@@ -618,10 +692,15 @@ mod tests {
 
     #[test]
     fn idle_when_no_pending_visual_work_does_not_request_redraw() {
-        let redraws = Rc::new(RefCell::new(0));
+        let redraws = Arc::new(AtomicUsize::new(0));
         let r = redraws.clone();
         let surface = HeadlessPresentTarget;
-        let mut app = AppHost::new(surface, Box::new(move || *r.borrow_mut() += 1));
+        let mut app = AppHost::new(
+            surface,
+            Box::new(move || {
+                r.fetch_add(1, Ordering::SeqCst);
+            }),
+        );
         let (_button, _text) = build_min_tree(app.tree_mut());
         app.mount(Box::new(RecordingSink {
             batches: Rc::new(RefCell::new(Vec::new())),
@@ -632,7 +711,7 @@ mod tests {
         app.tick(16.0);
 
         assert_eq!(
-            *redraws.borrow(),
+            redraws.load(Ordering::SeqCst),
             0,
             "静止フレームでは request_redraw を出さない"
         );
