@@ -19,19 +19,21 @@ const useDomRenderer = shouldUseDomRenderer(window.location.search, {
 const dom = document.getElementById('dom-host') as HTMLDivElement;
 const canvas = document.getElementById('canvas-stage') as HTMLCanvasElement;
 
-// NOTE: この web Host adapter は solid 例題の main.tsx と同型。2 つ目が揃ったので、
-// 次の機会に中立 App 階層パッケージへ抽出する（ADR-0012「1 adapter は仮の seam、2 で本物」）。
-let hayateRenderer: HayateRenderer | undefined;
+// HostSession が renderer と worker host の共有 lifetime をまとめ、Composition Root には
+// renderer だけを公開する（ADR-0015）。
 const host: Host =
   useDomRenderer
     ? {
-        createRenderer() {
+        start() {
           dom.hidden = false;
-          return new DomRenderer({ container: dom });
+          return {
+            renderer: new DomRenderer({ container: dom }),
+            dispose() {},
+          };
         },
       }
     : {
-        async createRenderer() {
+        async start() {
           const { createHayateWebHost } = await import('@torimi/hayate-host');
           canvas.hidden = false;
           const tuning = await fetch(new URL('tuning.jsonc', document.baseURI).href)
@@ -40,15 +42,26 @@ const host: Host =
           const webHost = await createHayateWebHost(canvas, {
             tuning,
           });
-          hayateRenderer = new HayateRenderer({
+          const renderer = new HayateRenderer({
             raw: webHost.raw,
             requestFrame: webHost.requestFrame,
             cancelFrame: webHost.cancelFrame,
           });
-          hayateRenderer.start();
-          return hayateRenderer;
+          renderer.start();
+          let disposed = false;
+          return {
+            renderer,
+            dispose() {
+              if (disposed) return;
+              disposed = true;
+              try {
+                renderer.stop();
+              } finally {
+                webHost.detach();
+              }
+            },
+          };
         },
-        stop: () => hayateRenderer?.stop(),
       };
 
 runTsubameApp(host, (renderer) => renderTsubame(<App />, renderer));
