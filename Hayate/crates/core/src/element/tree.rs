@@ -287,6 +287,8 @@ pub struct ElementTree {
     /// `poll_accessibility_update` が最後に `TreeUpdate` を構築した世代（#642）。これが
     /// `a11y_generation` と一致していれば a11y ツリーは前回 poll から不変で、再構築を省ける。
     pub(crate) a11y_polled_generation: u64,
+    /// Accessibility NodeId と ElementId の双方向 identity を所有する正本（ADR-0098）。
+    pub(crate) accessibility_identity: crate::element::accessibility::AccessibilityIdentity,
     /// `DocumentEventKind::LayoutResize` リスナ登録要素ごとに、直近で配送済みの
     /// ボーダーボックスサイズ（#725 / ADR-0143）。`commit_frame` がレイアウト確定後に
     /// 現在サイズと突き合わせ、初回確定・サイズ変化の commit でのみ発火する（サイズ
@@ -332,6 +334,7 @@ impl ElementTree {
             frame_layer_chrome_dirty: HashSet::new(),
             a11y_generation: 0,
             a11y_polled_generation: 0,
+            accessibility_identity: crate::element::accessibility::AccessibilityIdentity::new(),
             layout_size_notified: HashMap::new(),
         }
     }
@@ -586,6 +589,7 @@ impl ElementTree {
             viewport_variants: Vec::new(),
         };
         self.elements.insert(id, element);
+        self.accessibility_identity.register(id);
         self.paint_order.register(id);
 
         if self.root.is_none() {
@@ -1563,6 +1567,7 @@ impl ElementTree {
         }
         for node in to_remove.into_iter().rev() {
             self.elements.remove(&node);
+            self.accessibility_identity.unregister(node);
             self.paint_order.remove(node);
             self.runtime.remove_element_listeners(node);
             // 状態遷移ではなく解体: 要素は消え、サブツリー全体は既に
