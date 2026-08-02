@@ -7,11 +7,27 @@
 ## Core Terms
 
 **Torimi（鳥見）**:
-事前ビルド済みのネイティブホストに、Tsubame Adapter の JS バンドルをネットワーク経由で流し込んで実行・プレビューする dev-client App。フレームワーク非依存で、solid / react / vue のいずれのアプリも*別のバンドル*として同一ホストで動かす。Expo Go と同じ立ち位置（ホストは再ビルドせず、バンドルだけ差し替える）。
-_Avoid_: Tsubame Viewer（Tsubame context の一部だと誤読される）, フレームワーク, ランタイム, example ギャラリー
+開発機で動いているものを、事前ビルド済みの単一の端末アプリへネットワーク経由で流し込んで実行・プレビューする dev-client App。フレームワーク非依存で、solid / react / vue のいずれのアプリも*別のバンドル*として同一ホストで動かす。Expo Go と同じ立ち位置（ホストは再ビルドせず、流し込むものだけ差し替える）。何を流し込めるかは Preview Mode が定める。
+_Avoid_: Tsubame Viewer（Tsubame context の一部だと誤読される）, Tsubame 専用の道具とする理解（Preview Mode の一方でしかない）, フレームワーク, ランタイム, example ギャラリー
+
+**Torimi Shell（シェル）**:
+端末アプリ自身の UI。接続先の入力・QR 読み取り・接続履歴・Device Log の表示・capability 承認を担う、Torimi が自分で書いて自分で所有する画面。プレビュー対象は Shell の一部ではなく、Shell が呼び出して切り替える別物である。
+_Avoid_: Host との同一視（Host は実行基盤、Shell は UI）, プレビュー対象のページを Shell の一部とする理解
+
+**Preview Mode（プレビューモード）**:
+Torimi が 1 台の端末で提供する検証系統の軸。値は Bundle Preview と Live Preview の 2 つで、どちらも同じ Torimi Shell から入る。両者は流し込む物・実行基盤・描画経路のすべてが異なり、共有するのは Shell と capability だけである。
+_Avoid_: 「Web 版 / ネイティブ版」という OS・配布形態との混同, 2 つを同一実行経路の設定違いとする理解
+
+**Bundle Preview（バンドルプレビュー）**:
+App Bundle を Native Host 上で実行する Preview Mode。Hermes で JS を動かし Hayate が描く、Torimi 本来の経路。
+_Avoid_: Hayate Native Preview（Host と Mode の層が混ざる）, ネイティブモード（Live Preview も同じ端末アプリ内であり対義にならない）
+
+**Live Preview（ライブプレビュー）**:
+開発機の dev server が今まさに配信している任意の Web アプリを、端末の WebView でそのまま実行する Preview Mode。App Bundle でもフレームワーク指定でもなく、URL が指す物をそのまま開く。Torimi が所有しないコードを載せる唯一の面である。
+_Avoid_: Web Host との混同（Web Host はブラウザ上のホスト種別、Live Preview は実機上の Mode）, Web Preview（同上の理由で使わない）, 特定フレームワーク互換を約束する理解
 
 **Host（Torimi ホスト／Native Host）**:
-端末側に常駐する事前ビルド済みシェル。JS エンジン（Hermes）・ネイティブ Hayate・`RawHayate` ブリッジ・frame clock（host bootstrap）だけを提供し、**フレームワークも `@tsubame/renderer-canvas` も持たない**。ADR-0112 の `hayate-adapter-android` cdylib 能力を*再利用*する（複製しない）。Web Host と対をなすホスト種別の一方で、無印の「ホスト」はこちら（ネイティブ）を指す。消費する App Bundle は **Hermes 用に降格済み**でなければならない点が Web Host との差。ホスト種別の軸は OS（Android / iOS）とは別軸 — 現行実装が Android のみなのは実装状況であって、Native Host の定義は OS を固定しない。
+Bundle Preview の実行基盤。JS エンジン（Hermes）・ネイティブ Hayate・`RawHayate` ブリッジ・frame clock（host bootstrap）だけを提供し、**フレームワークも `@tsubame/renderer-canvas` も持たない**。ADR-0112 の `hayate-adapter-android` cdylib 能力を*再利用*する（複製しない）。Web Host と対をなすホスト種別の一方で、無印の「ホスト」はこちら（ネイティブ）を指す。消費する App Bundle は **Hermes 用に降格済み**でなければならない点が Web Host との差。ホスト種別の軸は OS（Android / iOS）とは別軸 — 現行実装が Android のみなのは実装状況であって、Native Host の定義は OS を固定しない。
 _Avoid_: フレームワークをホストに焼き込む設計, renderer-canvas をホスト側に置く設計, Android Host（OS 軸との混同 — Native Host の現行実装が Android というだけ）
 
 **Web Host（Torimi Web ホスト）**:
@@ -19,7 +35,7 @@ _Avoid_: フレームワークをホストに焼き込む設計, renderer-canvas
 _Avoid_: Hayate の HTML Mode との混同, DOM Renderer 経路との混同（Web Host は Hayate Renderer 経路のホスト）, Native Host 用の降格済みバンドルを流用する運用
 
 **App Bundle（アプリバンドル）**:
-Torimi に流し込まれる JS。アプリコード ＋ Tsubame Adapter（solid / react / vue ランタイム）＋ `@tsubame/renderer-canvas` を 1 つにまとめたもの。ホストは中身のフレームワークを解さず、`RawHayate` を満たす JS として実行するだけ。Hayabusa（WASM／ネイティブ）は**現行（Hermes/JSI 直結・非 webview）ルートの**バンドル対象外（現ルートでは iOS で配って実行できない）。ただしこれは**恒久ではない** — Hayabusa 自体がまだ未完成のため未来の話だが、WebView+wasm ルート（ADR-0121：webview 上の canvas に wasm を wgpu 描画・IME はネイティブ API・native は wasm→js→native ブリッジ）を使えば、**原理的には iOS でも Hayabusa を載せられる**。
+Bundle Preview で流し込まれる JS。アプリコード ＋ Tsubame Adapter（solid / react / vue ランタイム）＋ `@tsubame/renderer-canvas` を 1 つにまとめたもの。ホストは中身のフレームワークを解さず、`RawHayate` を満たす JS として実行するだけ。Hayabusa（WASM／ネイティブ）は**現行（Hermes/JSI 直結・非 webview）ルートの**バンドル対象外（現ルートでは iOS で配って実行できない）。ただしこれは**恒久ではない** — Hayabusa 自体がまだ未完成のため未来の話だが、WebView+wasm ルート（ADR-0121：webview 上の canvas に wasm を wgpu 描画・IME はネイティブ API・native は wasm→js→native ブリッジ）を使えば、**原理的には iOS でも Hayabusa を載せられる**。
 _Avoid_: フレームワークをバンドルから除く設計, 現行ルートで Hayabusa をバンドルする設計, Hayabusa の iOS 不可を恒久／原理的と読む理解（現行ルート限定であり webview+wasm で将来可能・ADR-0121）, `.hbc` 固定（配信形式は別決定）
 
 **Dev Server**:
@@ -45,11 +61,19 @@ _Avoid_: デモ一覧のホストへのハードコード, フレームワーク
 
 **Device Log（端末ログ）**:
 Native Host 上で起きたことを、USB/adb 接続なしに開発機の Dev Server へ届ける仕組み、およびそのログ自体。ログ源は 2 系統 — **js**（App Bundle 内の `console.*`・JS ランタイムエラー）と **host**（bundle 取得失敗・protocol version 不一致・native エラー等、JS が起動する前に死ぬケースを含むホスト側イベント）。logcat への出力を置き換えるのではなく併存する。送り先は Dev Server のみで、Demo Endpoint には決して送らない。
-_Avoid_: logcat の置き換えとする理解, `console.*` のみをログと呼ぶ狭い理解（host 系統を含む）, Demo Endpoint への送信, Web Host を対象に含める理解（ブラウザ devtools がその席に居る）
+_Avoid_: logcat の置き換えとする理解, `console.*` のみをログと呼ぶ狭い理解（host 系統を含む）, Demo Endpoint への送信, Web Host を対象に含める理解（ブラウザ上のホストであり devtools がその席に居る — 実機の Live Preview は別問題であってこの除外の対象ではない）
 
 **Device ID（端末ID）**:
 Native Host のインスタンスを dev セッション横断で識別する、ホスト発行・インストール単位の不透明 ID。初回起動時にホストが生成してローカル永続化する。ハードウェア由来ではなく、再インストールで変わってよい（dev 用途の識別が目的）。人間向けの表示は Device Label（端末モデル名等）を別に添えて補い、ID 自体に意味を持たせない。
 _Avoid_: Android ID 等ハードウェア固有 ID との混同, サーバ割当 ID（Dev Server はステートレスに受けるだけ）, ID 文字列に意味を焼き込む設計
+
+**Paired Origin（承認済みオリジン）**:
+Live Preview において、人が Torimi Shell 上で明示的に承認した、ただ 1 つの厳密な origin。Torimi Command が到達できるのはこれだけで、承認は capability ごとに個別に与えられ、別の origin へ移った時点で失効する。ホスト名の範囲やパターンではなく、常に完全一致の 1 件である。
+_Avoid_: 許可パターン・許可レンジとする理解（範囲は承認ではない）, LAN 内であることをもって承認済みとする理解, セッションを跨いで恒久に効く許可とする理解
+
+**Torimi Command（Torimi コマンド）**:
+Live Preview のページから呼べる、Torimi が定義し所有する狭いネイティブ操作の面。Paired Origin にのみ公開され、公開されるのは Torimi が明示的に載せた操作だけである。Capability の実体は Hayate 側の正本 Module が持ち、Torimi Command はその入口にすぎない。
+_Avoid_: 使用フレームワークが提供する汎用プラグインの操作面をそのまま露出する設計, 任意のネイティブ API を通す汎用ブリッジとする理解, capability の実装をここに置く設計
 
 **Protocol Version**:
 App Bundle 内の `@tsubame/renderer-canvas` が内包する wire 定数のバージョンと、ホストに焼き込まれたネイティブ decoder のバージョンの整合トークン。バンドルに埋め、Torimi 起動時に突き合わせ、不一致は明示エラーにする（Expo Go の "SDK version" 整合と同型）。
