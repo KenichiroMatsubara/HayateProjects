@@ -30,6 +30,8 @@ hayate-scene-renderer-vello = { path = "../../../scene-renderers/vello" }
 hayate-scene-renderer-skia = { path = "../../../scene-renderers/skia" }
 hayate-layer-compositor = { path = "../../../scene-renderers/compositor" }
 hayate-performance-observability = { path = "../../../performance-observability" }
+accesskit.workspace = true
+accesskit_consumer.workspace = true
 wgpu = { workspace = true }
 log.workspace = true
 pollster.workspace = true

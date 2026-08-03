@@ -32,7 +32,7 @@ pub mod renderer_selection;
 pub use font_mailbox::{FontFetchResult, FontMailbox, FontMailboxHandle};
 pub use native_accessibility::{
     NativeAccessibilityDelivery, NativeAccessibilityHandle, NativeAccessibilityMountFailure,
-    NativeAccessibilityState, NativeAccessibilityTarget,
+    NativeAccessibilitySession, NativeAccessibilityState, NativeAccessibilityTarget,
 };
 
 /// 1 フレーム分の [`CommittedFrame`] の提示先。`Render Host`（[`render_host::RenderHost`]）を

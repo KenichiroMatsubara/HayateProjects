@@ -62,6 +62,10 @@ mod scene_demo;
 // Android 非依存の純粋部分としてホストでテストし、NDK FFI はこの module に封じ込める。
 mod frame_schedule;
 mod surface_lifecycle;
+// Android GameActivity/View の Native Accessibility leaf（ADR-0158 / #919）。AccessKit update の
+// Android virtual-view snapshot への射影は host test 可能に保ち、JNI 配信だけを device に限定する。
+#[cfg(any(target_os = "android", test))]
+mod android_accessibility;
 // 安全領域インセット（edge-to-edge / b2, issue #794・ADR-0144）。Kotlin から JNI で push された
 // WindowInsets（systemBars + displayCutout）の格納庫＋純粋計算（レイアウトビューポート縮小・
 // シーン平行移動原点・タッチ座標補正）。android 非依存なのでホストでコンパイル・テストされ、

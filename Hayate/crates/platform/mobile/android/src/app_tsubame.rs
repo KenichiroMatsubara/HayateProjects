@@ -31,7 +31,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use android_activity::{AndroidApp, AndroidAppWaker, MainEvent, PollEvent};
-use hayate_app_host::FrameContinuation;
+use hayate_app_host::{FrameContinuation, NativeAccessibilitySession};
 use hayate_core::{ElementId, ElementTree};
 
 use crate::app::{frame_handoff, process_touch_input, sync_ime, RasterHandle};
@@ -317,6 +317,16 @@ pub(crate) fn run(app: AndroidApp) {
     // one-shot callback and folds every wake before vsync into it.
     let frame_scheduler = AndroidFrameScheduler::new();
     frame_scheduler.request_frame();
+    let accessibility_wake_pending = Arc::new(AtomicBool::new(false));
+    let accessibility_wake: Arc<dyn Fn() + Send + Sync> = {
+        let pending = Arc::clone(&accessibility_wake_pending);
+        let waker = event_waker.clone();
+        Arc::new(move || {
+            pending.store(true, Ordering::Release);
+            waker.wake();
+        })
+    };
+    let mut accessibility: Option<NativeAccessibilitySession> = None;
     // This remains an inert value in ordinary release/debug builds. The profileable benchmark
     // variant enables the Cargo feature and turns it into a fixed-capacity reporter.
     let observability = PerformanceObservability::new();
@@ -352,6 +362,9 @@ pub(crate) fn run(app: AndroidApp) {
                     MainEvent::ContentRectChanged { .. } => {
                         if let Some(window) = app.native_window() {
                             let scale = crate::surface_lifecycle::content_scale(&app);
+                            if let Some(session) = accessibility.as_mut() {
+                                session.set_base_dpr(scale as f64);
+                            }
                             let (w, h) = window_dimensions(window.width(), window.height());
                             let (vw, vh) = crate::app::effective_insets(&app, w, h)
                                 .layout_viewport(w, h, scale);
@@ -375,6 +388,22 @@ pub(crate) fn run(app: AndroidApp) {
                         SurfaceLifecycleAction::CreateSurface => {
                             if let Some(window) = app.native_window() {
                                 let scale = crate::surface_lifecycle::content_scale(&app);
+                                crate::android_accessibility::destroy_android_accessibility(
+                                    &mut accessibility,
+                                );
+                                accessibility =
+                                    crate::android_accessibility::mount_android_accessibility(
+                                        scale as f64,
+                                        Arc::clone(&accessibility_wake),
+                                    )
+                                    .map_err(|failure| {
+                                        log::error!(
+                                            "native-accessibility platform={} category={}",
+                                            failure.platform,
+                                            failure.category
+                                        );
+                                    })
+                                    .ok();
                                 let (w, h) = window_dimensions(window.width(), window.height());
                                 let (vw, vh) = crate::app::effective_insets(&app, w, h)
                                     .layout_viewport(w, h, scale);
@@ -400,9 +429,17 @@ pub(crate) fn run(app: AndroidApp) {
                             }
                         }
                         // surface 破棄：Raster スレッドを drop → 送信済みを処理して join（安全停止）。
-                        SurfaceLifecycleAction::DestroySurface => raster = None,
+                        SurfaceLifecycleAction::DestroySurface => {
+                            crate::android_accessibility::destroy_android_accessibility(
+                                &mut accessibility,
+                            );
+                            raster = None;
+                        }
                         SurfaceLifecycleAction::ResizeSurface { width, height } => {
                             let scale = crate::surface_lifecycle::content_scale(&app);
+                            if let Some(session) = accessibility.as_mut() {
+                                session.set_base_dpr(scale as f64);
+                            }
                             if let Some(rt) = raster.as_ref() {
                                 let _ = rt.send(RasterCommand::Resize {
                                     width,
@@ -465,6 +502,9 @@ pub(crate) fn run(app: AndroidApp) {
                         runtime.tree.borrow_mut().set_viewport(vw, vh);
                     }
                     current = Some(runtime);
+                    if let Some(session) = accessibility.as_mut() {
+                        session.reset_for_tree_replacement();
+                    }
                     crate::error_overlay::clear_error();
                     // 新ツリーは未描画。冷間始動を要求して最初のフレームを必ず出す。
                     frame_scheduler.request_frame();
@@ -539,12 +579,18 @@ pub(crate) fn run(app: AndroidApp) {
         if runtime.hermes.pin_mut().consume_wants_pump() {
             frame_scheduler.request_frame();
         }
+        if accessibility_wake_pending.swap(false, Ordering::AcqRel) {
+            frame_scheduler.request_frame();
+        }
 
         // Input/lifecycle/resource wakes only arm Choreographer. Commit at most once for an actual
         // vsync callback, using its frameTimeNanos as the sole frame timestamp.
         let Some(timestamp_ms) = frame_scheduler.take_frame_timestamp_ms() else {
             continue;
         };
+        if let Some(session) = accessibility.as_mut() {
+            session.drain_before_frame(&mut runtime.tree.borrow_mut());
+        }
         if raster
             .as_ref()
             .is_some_and(RasterHandle::has_terminal_failure)
@@ -588,6 +634,9 @@ pub(crate) fn run(app: AndroidApp) {
             let _ = observation.measure(PerformancePhase::RendererSubmit, || {
                 rt.send(frame_handoff(&frame))
             });
+            if let Some(session) = accessibility.as_mut() {
+                session.update_after_present(&tree_ref);
+            }
         }
 
         // 描画後に残る pending visual work（進行中 transition / カーソル点滅 / スクロール物理）を
@@ -643,4 +692,5 @@ pub(crate) fn run(app: AndroidApp) {
             &event_waker,
         );
     }
+    crate::android_accessibility::destroy_android_accessibility(&mut accessibility);
 }

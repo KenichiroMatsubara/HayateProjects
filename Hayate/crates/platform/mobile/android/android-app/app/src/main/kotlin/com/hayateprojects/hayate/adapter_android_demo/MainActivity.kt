@@ -85,6 +85,23 @@ class MainActivity : GameActivity() {
         installInsetPush()
     }
 
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        AndroidAccessibilityBridge.setContainerFocused(hasFocus)
+    }
+
+    override fun onDestroy() {
+        AndroidAccessibilityBridge.unmount()
+        super.onDestroy()
+    }
+
+    internal fun accessibilityActivate() = nativeAccessibilityActivate()
+
+    internal fun accessibilityDeactivate() = nativeAccessibilityDeactivate()
+
+    internal fun accessibilityAction(action: String, nodeId: Long, value: String?) =
+        nativeAccessibilityAction(action, nodeId, value ?: "")
+
     /**
      * 描画バックエンド / AA 方式の実行時上書き（intent extra）を Rust へ push する（#795）。
      * 未指定（extra 無し）は空文字で渡し、Rust 側（`render_config`）で既定（Vulkan・Area）へ
@@ -171,4 +188,10 @@ class MainActivity : GameActivity() {
      * `Java_..._nativePushRendererConfig`）へ push する（issue #802 / #803）。
      */
     private external fun nativePushRendererConfig(renderer: String, skiaSurface: String)
+
+    private external fun nativeAccessibilityActivate()
+
+    private external fun nativeAccessibilityDeactivate()
+
+    private external fun nativeAccessibilityAction(action: String, nodeId: Long, value: String)
 }

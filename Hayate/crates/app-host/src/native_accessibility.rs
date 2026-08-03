@@ -85,7 +85,9 @@ impl NativeAccessibilityHandle {
     }
 }
 
-pub(crate) struct NativeAccessibilitySession {
+/// Shared lifecycle/ordering engine used by AppHost and direct native platform fronts.
+/// Platform adapters own only their OS target; this type remains the sole baseline/mailbox owner.
+pub struct NativeAccessibilitySession {
     target: Option<Box<dyn NativeAccessibilityTarget>>,
     mailbox: Arc<Mailbox>,
     state: NativeAccessibilityState,
@@ -97,7 +99,7 @@ pub(crate) struct NativeAccessibilitySession {
 }
 
 impl NativeAccessibilitySession {
-    pub(crate) fn new(
+    pub fn new(
         target: Box<dyn NativeAccessibilityTarget>,
         base_dpr: f64,
         wake: Arc<dyn Fn() + Send + Sync>,
@@ -124,7 +126,7 @@ impl NativeAccessibilitySession {
         )
     }
 
-    pub(crate) fn drain_before_frame(&mut self, tree: &mut ElementTree) {
+    pub fn drain_before_frame(&mut self, tree: &mut ElementTree) {
         let messages: Vec<_> = self
             .mailbox
             .messages
@@ -172,7 +174,7 @@ impl NativeAccessibilitySession {
         }
     }
 
-    pub(crate) fn update_after_present(&mut self, tree: &ElementTree) {
+    pub fn update_after_present(&mut self, tree: &ElementTree) {
         if matches!(
             self.state,
             NativeAccessibilityState::Detached
@@ -240,17 +242,29 @@ impl NativeAccessibilitySession {
         }
     }
 
-    pub(crate) fn state(&self) -> NativeAccessibilityState {
+    pub fn state(&self) -> NativeAccessibilityState {
         self.state
     }
 
-    pub(crate) fn set_base_dpr(&mut self, base_dpr: f64) -> bool {
+    pub fn set_base_dpr(&mut self, base_dpr: f64) -> bool {
         if self.base_dpr == base_dpr {
             return false;
         }
         self.base_dpr = base_dpr;
         self.scale_dirty = true;
         true
+    }
+
+    /// A platform runtime replaced its ElementTree while retaining the same native surface.
+    /// Active targets need a new full baseline; dormant targets wait for their next activation.
+    pub fn reset_for_tree_replacement(&mut self) {
+        self.last_generation = None;
+        self.baseline.clear();
+        self.pending_full_updates = 0;
+        if self.state == NativeAccessibilityState::Active {
+            self.state = NativeAccessibilityState::InitialPending;
+            self.pending_full_updates = 1;
+        }
     }
 }
 

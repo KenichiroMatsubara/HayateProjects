@@ -1540,6 +1540,8 @@ dependencies = [
 name = "hayate-adapter-android"
 version = "0.1.0"
 dependencies = [
+ "accesskit",
+ "accesskit_consumer",
  "android-activity",
  "android_logger",
  "cxx",
