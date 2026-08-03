@@ -18,7 +18,7 @@ export const EXPECTED_PUBLIC_PACKAGES = [
   '@torimi/hayate-protocol-spec',
   '@torimi/bundle',
   '@torimi/dev-server',
-  '@torimi/dev-server-contract',
+  '@torimi/wire-contract',
   '@torimi/host-web',
   '@torimi/protocol-handshake',
   '@torimi/tsubame-app',

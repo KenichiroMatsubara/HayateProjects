@@ -33,7 +33,7 @@
   },
   "dependencies": {
     "@torimi/hayate-host": "workspace:*",
-    "@torimi/dev-server-contract": "workspace:*",
+    "@torimi/wire-contract": "workspace:*",
     "@torimi/protocol-handshake": "workspace:*"
   },
   "devDependencies": {

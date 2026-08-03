@@ -75,11 +75,15 @@ fn ws_reconnect_backoff_uses_a_named_constant() {
 
 #[test]
 fn jsi_bridge_exposes_the_bundle_protocol_version_reader() {
-    // C++ JSI ホストが globalThis.__torimiProtocolVersion を読み、cxx ブリッジが Rust へ橋渡す。
+    // C++ JSI ホストが generated global 名で version を読み、cxx ブリッジが Rust へ橋渡す。
     let cpp = read_relative("cpp/hermes_app.cpp");
+    let generated = read_relative("cpp/generated/torimi_wire.hpp");
     assert!(
-        cpp.contains("__torimiProtocolVersion"),
-        "the C++ host must read the bundle's __torimiProtocolVersion global (#533)"
+        cpp.contains("generated/torimi_wire.hpp")
+            && cpp.contains("kTorimiProtocolVersionGlobal")
+            && generated.contains("kTorimiProtocolVersionGlobal")
+            && generated.contains("__torimiProtocolVersion"),
+        "the C++ host must read the generated __torimiProtocolVersion global (#533/#914)"
     );
     let bridge = read_relative("src/hermes_bridge.rs");
     assert!(

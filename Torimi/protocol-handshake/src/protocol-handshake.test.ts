@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { TORIMI_PROTOCOL_VERSION_GLOBAL } from '@torimi/wire-contract';
 import {
   checkProtocolVersion,
-  TORIMI_PROTOCOL_VERSION_GLOBAL,
   ProtocolMismatchError,
   readBundleProtocolVersion,
 } from './index.js';

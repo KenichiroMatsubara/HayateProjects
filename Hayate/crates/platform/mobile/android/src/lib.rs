@@ -23,6 +23,11 @@ pub mod qr_scanner;
 // wave-1 capability scaffold stub（ADR-0119）。Family Adapter が cfg(target_os) でリンクし
 // `MobileXxx` facade として露出するため pub。純粋 stub なのでホストでもコンパイル/テストされる。
 pub mod capability_stubs;
+/// Torimi の言語中立 wire contract から生成した Rust projection（ADR-0006）。
+/// platform adapter はこの artifact を消費し、Torimi package への Cargo 依存を持たない。
+pub mod generated {
+    pub mod torimi_wire;
+}
 // Torimi Android ホストのバンドル源（#532）。dev-server からの HTTP fetch + marshalling。
 // プラットフォーム非依存（素の TCP / std）なのでホストでもコンパイル・テストされる。
 #[cfg(feature = "tsubame-js")]

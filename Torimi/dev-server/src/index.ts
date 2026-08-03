@@ -15,7 +15,7 @@ import {
   type LogEntry,
   type LogLevel,
   type LogSource,
-} from '@torimi/dev-server-contract';
+} from '@torimi/wire-contract';
 
 export { createDeviceLogSink, type DeviceLogSinkOptions } from './device-log-sink.js';
 export { ALL_INTERFACES_HOSTNAME, localNetworkUrls, type LocalNetworkUrl } from './network.js';

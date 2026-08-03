@@ -1,5 +1,5 @@
 import type { CreateHayateWebHostOptions, WebHost } from '@torimi/hayate-host';
-import { devServerContract } from '@torimi/dev-server-contract';
+import { devServerContract, TORIMI_MOUNT_GLOBAL } from '@torimi/wire-contract';
 import {
   checkProtocolVersion,
   ProtocolMismatchError,
@@ -29,8 +29,6 @@ export type TorimiMount = (host: WebHost) => void;
  * App Bundle が mount を露出する global プロパティ名。native（`globalThis.__tsubame`,
  * ADR-0112）と対称の、バンドル → ホストの受け渡しシーム。
  */
-export const TORIMI_MOUNT_GLOBAL = '__torimiMount';
-
 /** バンドル fetch のタイムアウト。応答しない dev-server で永久に待たないための上限。 */
 const BUNDLE_FETCH_TIMEOUT_MS = 10_000;
 

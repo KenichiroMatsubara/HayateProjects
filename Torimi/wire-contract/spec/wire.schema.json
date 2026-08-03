@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hayateprojects.dev/torimi/wire.schema.json",
+  "$defs": {
+    "DemoManifest": {
+      "type": "object",
+      "required": ["demos"],
+      "additionalProperties": true,
+      "properties": {
+        "demos": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/DemoManifestEntry" }
+        }
+      }
+    },
+    "DemoManifestEntry": {
+      "type": "object",
+      "required": ["name", "bundleUrl"],
+      "additionalProperties": true,
+      "properties": {
+        "bundleUrl": { "type": "string" },
+        "name": { "type": "string" }
+      }
+    },
+    "LogBatch": {
+      "type": "object",
+      "required": ["deviceLabel", "entries"],
+      "additionalProperties": true,
+      "properties": {
+        "deviceLabel": { "type": "string" },
+        "entries": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/LogEntry" }
+        }
+      }
+    },
+    "LogEntry": {
+      "type": "object",
+      "required": ["seq", "ts", "source", "level", "message"],
+      "additionalProperties": true,
+      "properties": {
+        "level": { "type": "string", "minLength": 1 },
+        "message": { "type": "string" },
+        "seq": { "type": "integer", "minimum": 0 },
+        "source": { "type": "string", "minLength": 1 },
+        "ts": { "type": "number" }
+      }
+    }
+  }
+}

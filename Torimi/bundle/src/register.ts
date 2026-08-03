@@ -1,16 +1,13 @@
 import type { WebHost } from '@torimi/hayate-host';
 import { createHayateNativeHost, type RawHayate } from '@torimi/hayate-host/native';
-import { TORIMI_PROTOCOL_VERSION_GLOBAL } from '@torimi/protocol-handshake';
-import { runTsubameApp, type Host, type TsubameMount } from '@torimi/tsubame-app';
+import {
+  HAYATE_HOST_GLOBAL,
+  TORIMI_MOUNT_GLOBAL,
+  TORIMI_PROTOCOL_VERSION_GLOBAL,
+  TSUBAME_GLOBAL,
+} from '@torimi/wire-contract';
+import { runTsubameApp, type AppHandle, type Host, type TsubameMount } from '@torimi/tsubame-app';
 import { HayateRenderer, PROTOCOL_VERSION } from '@torimi/tsubame-renderer-hayate';
-
-/**
- * App Bundle が mount を露出する global プロパティ名。`@torimi/host-web` の
- * `TORIMI_MOUNT_GLOBAL` と一致させる wire 契約（等値は wire-contract.test.ts が固定する）。
- * host-web からの import にしないのは依存方向のため — バンドル側パッケージがホスト実装に
- * 依存すると、ホストのコード（fetch/eval/reload ループ）が App Bundle に紛れ込む。
- */
-export const TORIMI_MOUNT_GLOBAL = '__torimiMount';
 
 /**
  * ホストから渡される host bootstrap のうち、バンドル側が結線に使う面。Web の
@@ -23,19 +20,20 @@ type HostBootstrap = Pick<WebHost, 'raw' | 'requestFrame' | 'cancelFrame'>;
  * 押し込まれた host bootstrap（raw + frame-clock）を `Host` port に包み、バンドルが持ち込む
  * host-blind `HayateRenderer` を構築して合成ルートへ渡す（ADR-0012 の薄い対称合成）。
  */
-function mountWithBootstrap(bootstrap: HostBootstrap, mount: TsubameMount): () => void {
-  let renderer: HayateRenderer | undefined;
+function mountWithBootstrap(bootstrap: HostBootstrap, mount: TsubameMount): AppHandle {
   const host: Host = {
-    createRenderer() {
-      renderer = new HayateRenderer({
+    start() {
+      const renderer = new HayateRenderer({
         raw: bootstrap.raw,
         requestFrame: bootstrap.requestFrame,
         cancelFrame: bootstrap.cancelFrame,
       });
       renderer.start();
-      return renderer;
+      return {
+        renderer,
+        dispose: () => renderer.stop(),
+      };
     },
-    stop: () => renderer?.stop(),
   };
   return runTsubameApp(host, mount);
 }
@@ -62,16 +60,16 @@ export function registerTorimiApp(mount: TsubameMount): void {
   // 版数と突き合わせて一致時のみ mount する。
   g[TORIMI_PROTOCOL_VERSION_GLOBAL] = PROTOCOL_VERSION;
 
-  const injectedRaw = g.__hayateHost as RawHayate | undefined;
+  const injectedRaw = g[HAYATE_HOST_GLOBAL] as RawHayate | undefined;
   if (injectedRaw !== undefined) {
     // Native: host（注入 raw + vsync pump）は WASM をロードしない — Hayate はネイティブ
     // cdylib として既に存在する。フレーム駆動はネイティブ vsync が `__tsubame.pumpFrame` で
     // 1 フレームずつ行う。
     const nativeHost = createHayateNativeHost(injectedRaw);
-    const dispose = mountWithBootstrap(nativeHost, mount);
-    g.__tsubame = {
+    const handle = mountWithBootstrap(nativeHost, mount);
+    g[TSUBAME_GLOBAL] = {
       pumpFrame: (timestampMs: number) => nativeHost.pumpFrame(timestampMs),
-      stop: dispose,
+      stop: () => handle.dispose(),
     };
     return;
   }

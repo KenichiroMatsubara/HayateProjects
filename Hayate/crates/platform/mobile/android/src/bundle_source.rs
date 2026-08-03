@@ -17,11 +17,11 @@
 use std::time::Duration;
 
 use crate::dev_server_target::DevServerTarget;
+use crate::generated::torimi_wire::BUNDLE_ROUTE;
 
 /// dev-server がバンドルを配信する HTTP ルート。`@torimi/dev-server` の `BUNDLE_ROUTE`
 /// と一致させる wire 契約（node 依存をネイティブへ持ち込まないため値で複製する）。
 /// target が path を持たないとき（従来の `host:port` 入力・既定 target）の落とし先。
-const BUNDLE_ROUTE: &str = "/bundle.js";
 /// バンドル fetch のタイムアウト。応答しない配信点で永久に待たない上限
 /// （#528 Web ホストの `BUNDLE_FETCH_TIMEOUT_MS = 10_000` と対称）。connect / read の両方に
 /// 一様に課す（Kotlin 側の `connectTimeout` / `readTimeout` へ渡す）。

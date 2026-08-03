@@ -1,3 +1,5 @@
+import { HAYATE_LOG_GLOBAL } from '@torimi/wire-contract';
+
 /**
  * Hermes（埋め込み JS エンジン, ADR-0112）向けの最小グローバル shim。
  *
@@ -25,7 +27,7 @@ type AnyGlobal = Record<string, unknown>;
 const g = globalThis as unknown as AnyGlobal;
 
 // ネイティブログ橋（ホストが注入していれば使う）。
-const nativeLog = g['__hayateLog'] as
+const nativeLog = g[HAYATE_LOG_GLOBAL] as
   | ((level: string, message: string) => void)
   | undefined;
 

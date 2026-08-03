@@ -2,7 +2,7 @@ import {
   demoEndpointContract,
   devServerContract,
   type DemoManifest,
-} from '@torimi/dev-server-contract';
+} from '@torimi/wire-contract';
 import { SELF } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 

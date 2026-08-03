@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { bootTorimiHost, TORIMI_MOUNT_GLOBAL } from './index.js';
+import { TORIMI_MOUNT_GLOBAL } from '@torimi/wire-contract';
+import { bootTorimiHost } from './index.js';
 import type { WebHost } from '@torimi/hayate-host';
 
 /**

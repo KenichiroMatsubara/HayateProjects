@@ -15,14 +15,14 @@ use std::collections::VecDeque;
 use std::path::Path;
 
 use crate::dev_server_target::DevServerTarget;
+use crate::generated::torimi_wire::LOG_ROUTE_PREFIX;
 
 /// 定期フラッシュ間隔（ms）。この間隔ごとにバッファをまとめて 1 バッチにして送る。**プレースホルダ値**
 /// 2 秒（実値調整は運用を見て・ADR-0005）。マジックナンバー禁止のため名前付き定数に抽出。
 pub const FLUSH_INTERVAL_MS: f64 = 2_000.0;
 
-/// dev-server が Device Log を受ける HTTP ルート接頭辞。`@torimi/dev-server-contract` の
+/// dev-server が Device Log を受ける HTTP ルート接頭辞。`@torimi/wire-contract` の
 /// `logRoutePrefix` と一致させる wire 契約（node 依存を持ち込まないため値で複製する）。
-pub const LOG_ROUTE_PREFIX: &str = "/log/";
 
 /// 未送信エントリのリングバッファ上限（件数）。送信失敗時に保持し、これを超えると古い方から捨てる。
 /// **プレースホルダ値** 1000（実値調整は運用を見て・ADR-0005）。マジックナンバー禁止のため名前付き定数。
@@ -277,7 +277,7 @@ pub fn log_url(target: &DevServerTarget, device_id: &str) -> String {
     )
 }
 
-/// バッチを wire JSON（`@torimi/dev-server-contract` の `LogBatch` 形）に符号化する。device の
+/// バッチを wire JSON（`@torimi/wire-contract` の `LogBatch` 形）に符号化する。device の
 /// 送信ポートはこれを body にして `POST <logRoutePrefix><deviceId>` する。手書き結合ではなく
 /// `serde_json` でエスケープを正しく通す（既存 demo_manifest と同じく serde_json 依存を使う）。
 pub fn to_wire_json(batch: &LogBatch) -> String {
@@ -759,7 +759,7 @@ mod tests {
 
     #[test]
     fn the_log_route_prefix_matches_the_dev_server_contract() {
-        // `@torimi/dev-server-contract` の logRoutePrefix と一致する wire 契約。
+        // `@torimi/wire-contract` の logRoutePrefix と一致する wire 契約。
         assert_eq!(LOG_ROUTE_PREFIX, "/log/");
     }
 

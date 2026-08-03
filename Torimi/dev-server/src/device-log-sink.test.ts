@@ -2,7 +2,7 @@ import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { LogBatch } from '@torimi/dev-server-contract';
+import type { LogBatch } from '@torimi/wire-contract';
 import { createDeviceLogSink } from './device-log-sink.js';
 
 /**

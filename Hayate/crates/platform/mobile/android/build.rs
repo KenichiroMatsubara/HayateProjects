@@ -62,6 +62,7 @@ fn main() {
     println!("cargo:rerun-if-changed=src/hermes_bridge.rs");
     println!("cargo:rerun-if-changed=cpp/hermes_app.cpp");
     println!("cargo:rerun-if-changed=cpp/hermes_app.h");
+    println!("cargo:rerun-if-changed=cpp/generated/torimi_wire.hpp");
     println!("cargo:rerun-if-env-changed=HERMES_INCLUDE");
     println!("cargo:rerun-if-env-changed=HERMES_LIB");
 }

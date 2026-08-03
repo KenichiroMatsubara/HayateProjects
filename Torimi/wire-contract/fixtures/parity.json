@@ -1,0 +1,90 @@
+{
+  "logEntry": [
+    {
+      "name": "minimal valid",
+      "valid": true,
+      "value": { "seq": 1, "ts": 1720000000000, "source": "js", "level": "log", "message": "ready" }
+    },
+    {
+      "name": "all fields valid",
+      "valid": true,
+      "value": { "seq": 2, "ts": 1720000000000.5, "source": "host", "level": "error", "message": "boot failed" }
+    },
+    {
+      "name": "unknown fields and open vocabulary valid",
+      "valid": true,
+      "value": { "seq": 3, "ts": 1720000000001, "source": "future-source", "level": "trace", "message": "future", "traceId": "abc" }
+    },
+    {
+      "name": "required field missing",
+      "valid": false,
+      "path": "$.message",
+      "value": { "seq": 4, "ts": 1720000000002, "source": "js", "level": "info" }
+    },
+    {
+      "name": "field type differs",
+      "valid": false,
+      "path": "$.seq",
+      "value": { "seq": "5", "ts": 1720000000003, "source": "js", "level": "warn", "message": "bad seq" }
+    },
+    {
+      "name": "empty open vocabulary invalid",
+      "valid": false,
+      "path": "$.level",
+      "value": { "seq": 6, "ts": 1720000000004, "source": "js", "level": "", "message": "empty level" }
+    }
+  ],
+  "logBatch": [
+    {
+      "name": "minimal valid",
+      "valid": true,
+      "value": { "deviceLabel": "Pixel", "entries": [] }
+    },
+    {
+      "name": "unknown field valid",
+      "valid": true,
+      "value": { "deviceLabel": "Pixel", "entries": [], "session": "future" }
+    },
+    {
+      "name": "required field missing",
+      "valid": false,
+      "path": "$.entries",
+      "value": { "deviceLabel": "Pixel" }
+    },
+    {
+      "name": "field type differs",
+      "valid": false,
+      "path": "$.entries",
+      "value": { "deviceLabel": "Pixel", "entries": {} }
+    }
+  ],
+  "demoManifest": [
+    {
+      "name": "minimal valid",
+      "valid": true,
+      "value": { "demos": [] }
+    },
+    {
+      "name": "all fields valid",
+      "valid": true,
+      "value": { "demos": [{ "name": "Todo", "bundleUrl": "/todo/bundle.js" }] }
+    },
+    {
+      "name": "unknown fields valid",
+      "valid": true,
+      "value": { "demos": [{ "name": "Todo", "bundleUrl": "/todo/bundle.js", "framework": "future" }], "revision": 2 }
+    },
+    {
+      "name": "required field missing",
+      "valid": false,
+      "path": "$.demos[0].bundleUrl",
+      "value": { "demos": [{ "name": "Todo" }] }
+    },
+    {
+      "name": "field type differs",
+      "valid": false,
+      "path": "$.demos",
+      "value": { "demos": "Todo" }
+    }
+  ]
+}

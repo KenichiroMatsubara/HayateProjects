@@ -11,7 +11,7 @@
 //! `protocol_handshake` と同じ流儀）。実 UI（右上メニュー）と実機 fetch/boot はローカル実機で
 //! 検証する（本 issue 外・ADR-0001）。
 //!
-//! wire 型の正本は TS の `@torimi/dev-server-contract`（`DemoManifest` / `DemoManifestEntry`・
+//! wire 型の正本は TS の `@torimi/wire-contract`（`DemoManifest` / `DemoManifestEntry`・
 //! `demoEndpointContract.demoManifestRoute`）。TS パッケージは Rust から直接使えないため、
 //! `protocol_handshake` の wire global 名複製・`bundle_source` の `BUNDLE_ROUTE` 複製と同じ方針で
 //! フィールド名（`bundleUrl`）とルート（`/demos.json`）を値で複製し、JSON 自体は純 Rust の
@@ -21,12 +21,12 @@
 use serde::Deserialize;
 
 use crate::dev_server_target::{self, DevServerTarget};
+use crate::generated::torimi_wire::DEMO_MANIFEST_ROUTE;
 
 /// Demo Endpoint が Demo Manifest を配る HTTP ルート。TS の `demoEndpointContract.demoManifestRoute`
-/// （`@torimi/dev-server-contract`）と一致させる wire 契約（node 依存を持ち込まないため値で複製）。
+/// （`@torimi/wire-contract`）と一致させる wire 契約（node 依存を持ち込まないため値で複製）。
 /// マニフェストは常に Demo Endpoint の origin 直下にあり、target の path とは無関係（[`manifest_url`]）。
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
-pub const DEMO_MANIFEST_ROUTE: &str = "/demos.json";
 
 /// Demo Manifest の 1 エントリ。TS `DemoManifestEntry`（表示名 + バンドル URL）の Rust ミラー。
 /// バンドル URL は Demo Endpoint origin からの相対パス可（`/solid/bundle.js`）。ホストにとって
@@ -270,7 +270,7 @@ mod tests {
 
     #[test]
     fn the_manifest_route_matches_the_ts_wire_contract() {
-        // TS `demoEndpointContract.demoManifestRoute`（@torimi/dev-server-contract）と同値の wire 契約。
+        // TS `demoEndpointContract.demoManifestRoute`（@torimi/wire-contract）と同値の wire 契約。
         assert_eq!(DEMO_MANIFEST_ROUTE, "/demos.json");
     }
 

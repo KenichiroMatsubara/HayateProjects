@@ -39,7 +39,8 @@
     "@torimi/hayate-host": "workspace:*",
     "@torimi/protocol-handshake": "workspace:*",
     "@torimi/tsubame-app": "workspace:*",
-    "@torimi/tsubame-renderer-hayate": "workspace:*"
+    "@torimi/tsubame-renderer-hayate": "workspace:*",
+    "@torimi/wire-contract": "workspace:*"
   },
   "peerDependencies": {
     "vite": "^8.1.5"
@@ -50,7 +51,6 @@
     }
   },
   "devDependencies": {
-    "@torimi/host-web": "workspace:*",
     "rimraf": "^6.1.3",
     "tsup": "^8.5.1",
     "vite": "^8.1.5",

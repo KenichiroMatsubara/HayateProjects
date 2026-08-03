@@ -1,4 +1,4 @@
-import type { DemoManifest } from '@torimi/dev-server-contract';
+import type { DemoManifest } from '@torimi/wire-contract';
 import demosSource from './demos.json';
 
 /**

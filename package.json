@@ -13,6 +13,7 @@
     "dev":        "pnpm --filter @tsubame/example-solid-demo dev",
 
     "check:proto":    "pnpm --filter hayate run check:proto && pnpm --filter tsubame-monorepo run check:proto",
+    "check:wire-contract": "node scripts/check-wire-contract.mjs",
 
     "hayate:desktop:run":     "pnpm --filter hayate run hayate:desktop:run",
     "hayate:desktop:build":   "pnpm --filter hayate run hayate:desktop:build",
