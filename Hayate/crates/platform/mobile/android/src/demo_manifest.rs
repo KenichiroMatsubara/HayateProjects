@@ -11,42 +11,52 @@
 //! `protocol_handshake` と同じ流儀）。実 UI（右上メニュー）と実機 fetch/boot はローカル実機で
 //! 検証する（本 issue 外・ADR-0001）。
 //!
-//! wire 型の正本は TS の `@torimi/wire-contract`（`DemoManifest` / `DemoManifestEntry`・
-//! `demoEndpointContract.demoManifestRoute`）。TS パッケージは Rust から直接使えないため、
-//! `protocol_handshake` の wire global 名複製・`bundle_source` の `BUNDLE_ROUTE` 複製と同じ方針で
-//! フィールド名（`bundleUrl`）とルート（`/demos.json`）を値で複製し、JSON 自体は純 Rust の
-//! `serde_json`（Web ホストと同じ）で読む。ホストにとってバンドル URL は**不透明**で、中身の
-//! フレームワーク知識は持ち込まない（ADR-0001 / ADR-0003）。
-
-use serde::Deserialize;
+//! wire 型の正本は `@torimi/wire-contract`の language-neutral schema。そこから生成した
+//! Rust DTO / serde 実装で JSON の required field と型を検証し、その後に handwritten の
+//! [`BootPlan`] へ変換する。ホストにとってバンドル URL は**不透明**で、中身の
+//! フレームワーク知識は持ち込まない（ADR-0001 / ADR-0003 / ADR-0006）。
 
 use crate::dev_server_target::{self, DevServerTarget};
-use crate::generated::torimi_wire::DEMO_MANIFEST_ROUTE;
-
-/// Demo Endpoint が Demo Manifest を配る HTTP ルート。TS の `demoEndpointContract.demoManifestRoute`
-/// （`@torimi/wire-contract`）と一致させる wire 契約（node 依存を持ち込まないため値で複製）。
-/// マニフェストは常に Demo Endpoint の origin 直下にあり、target の path とは無関係（[`manifest_url`]）。
-#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+use crate::generated::torimi_wire::{
+    DemoManifest as WireDemoManifest, DemoManifestEntry as WireDemoManifestEntry,
+    DEMO_MANIFEST_ROUTE,
+};
 
 /// Demo Manifest の 1 エントリ。TS `DemoManifestEntry`（表示名 + バンドル URL）の Rust ミラー。
 /// バンドル URL は Demo Endpoint origin からの相対パス可（`/solid/bundle.js`）。ホストにとって
 /// バンドルは不透明（FW 知識を持ち込まない・ADR-0003）。`bundleUrl` 以外の wire フィールド
 /// （`$comment` / `source` 等の正本 metadata）は serde が既定で無視する。
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DemoEntry {
     /// デモ選択メニューに出す表示名。
     pub name: String,
     /// App Bundle の URL（Demo Endpoint origin からの相対パス可）。
-    #[serde(rename = "bundleUrl")]
     pub bundle_url: String,
 }
 
 /// Demo Endpoint が配信するデモ一覧。ホストはこれでメニューを構成し、初回起動は先頭エントリを
 /// 自動ロードする（ADR-0003）。TS `DemoManifest` の Rust ミラー。
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DemoManifest {
     /// 配信順のデモエントリ。先頭が初回自動ロード対象（ADR-0003）。
     pub demos: Vec<DemoEntry>,
+}
+
+impl From<WireDemoManifest> for DemoManifest {
+    fn from(wire: WireDemoManifest) -> Self {
+        Self {
+            demos: wire.demos.into_iter().map(DemoEntry::from).collect(),
+        }
+    }
+}
+
+impl From<WireDemoManifestEntry> for DemoEntry {
+    fn from(wire: WireDemoManifestEntry) -> Self {
+        Self {
+            name: wire.name,
+            bundle_url: wire.bundle_url,
+        }
+    }
 }
 
 impl DemoManifest {
@@ -73,15 +83,51 @@ pub enum DemoManifestError {
     /// Demo Endpoint への `/demos.json` 取得自体が失敗した（オフライン・非 200・TLS 等。OS スタックの
     /// 例外文言を運ぶ）。ADR-0003：謎クラッシュにせず明示エラーにして URL 入力経路へ誘導する。
     Fetch(String),
-    /// `/demos.json` の JSON が空 / 壊れている / 型に合わない（serde の文言を運ぶ）。
-    Malformed(String),
-    /// マニフェストは読めたがデモが 0 件で、自動ロード対象が無い。
-    Empty,
-    /// 選択エントリのバンドル URL が target に解決できない（不正な URL）。
+    /// JSON syntax / required field / type mismatch at the generated serde boundary.
+    Wire(WireManifestError),
+    /// Schema-valid DTO that cannot form a meaningful boot plan.
+    Boot(BootError),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DemoManifestFailureCategory {
+    Fetch,
+    WireValidation,
+    BootDomain,
+}
+
+impl DemoManifestFailureCategory {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Fetch => "fetch",
+            Self::WireValidation => "wire-validation",
+            Self::BootDomain => "boot-domain",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WireManifestError {
+    InvalidJson(String),
+    InvalidShape(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BootError {
+    EmptyManifest,
+    UnselectableEntry { index: usize },
     UnresolvableEntry(String),
 }
 
 impl DemoManifestError {
+    pub fn category(&self) -> DemoManifestFailureCategory {
+        match self {
+            DemoManifestError::Fetch(_) => DemoManifestFailureCategory::Fetch,
+            DemoManifestError::Wire(_) => DemoManifestFailureCategory::WireValidation,
+            DemoManifestError::Boot(_) => DemoManifestFailureCategory::BootDomain,
+        }
+    }
+
     /// 画面・ログ向けの明示メッセージ。取得/解釈に失敗した旨と、**既存の URL 入力経路へ誘導**する
     /// 案内を含む（ADR-0003：オフライン等でも謎クラッシュにしない）。
     #[cfg_attr(not(target_os = "android"), allow(dead_code))]
@@ -90,26 +136,42 @@ impl DemoManifestError {
             DemoManifestError::Fetch(why) => {
                 format!("デモ一覧（{DEMO_MANIFEST_ROUTE}）を取得できませんでした（{why}）")
             }
-            DemoManifestError::Malformed(why) => {
-                format!("デモ一覧（{DEMO_MANIFEST_ROUTE}）を解釈できませんでした（{why}）")
-            }
-            DemoManifestError::Empty => {
-                format!("デモ一覧（{DEMO_MANIFEST_ROUTE}）にデモがありません")
-            }
-            DemoManifestError::UnresolvableEntry(url) => {
-                format!("デモのバンドル URL を解決できませんでした（{url:?}）")
-            }
+            DemoManifestError::Wire(error) => match error {
+                WireManifestError::InvalidJson(why) | WireManifestError::InvalidShape(why) => {
+                    format!("デモ一覧（{DEMO_MANIFEST_ROUTE}）の wire 検証に失敗しました（{why}）")
+                }
+            },
+            DemoManifestError::Boot(error) => match error {
+                BootError::EmptyManifest => {
+                    format!("デモ一覧（{DEMO_MANIFEST_ROUTE}）にデモがありません")
+                }
+                BootError::UnselectableEntry { index } => {
+                    format!("デモ一覧の {index} 番目を起動対象として選択できません")
+                }
+                BootError::UnresolvableEntry(url) => {
+                    format!("デモのバンドル URL を解決できませんでした（{url:?}）")
+                }
+            },
         };
         format!("Torimi: {detail}。URL 入力画面から接続先を指定してください。")
     }
 }
 
-/// `/demos.json` の wire JSON を [`DemoManifest`] に読む。空 / 壊れた JSON / 型不一致は
-/// [`DemoManifestError::Malformed`]（serde の文言を運ぶ）。追加の wire フィールド（`$comment` /
-/// `source` 等）は無視する（配信物の正本 metadata を wire に流用しても壊れない）。
+/// `/demos.json` を生成 serde DTO に読む。JSON syntax と schema shape の失敗は
+/// [`WireManifestError`] として、後段の [`BootError`] と分離する。追加フィールドは serde の
+/// 既定により無視される。
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
+pub fn decode_wire(json: &str) -> Result<WireDemoManifest, WireManifestError> {
+    let value: serde_json::Value = serde_json::from_str(json)
+        .map_err(|error| WireManifestError::InvalidJson(error.to_string()))?;
+    serde_json::from_value(value)
+        .map_err(|error| WireManifestError::InvalidShape(error.to_string()))
+}
+
 pub fn parse(json: &str) -> Result<DemoManifest, DemoManifestError> {
-    serde_json::from_str(json).map_err(|e| DemoManifestError::Malformed(e.to_string()))
+    decode_wire(json)
+        .map(DemoManifest::from)
+        .map_err(DemoManifestError::Wire)
 }
 
 /// Demo Endpoint の Demo Manifest を取りに行くフル URL。マニフェストは常に **origin 直下**
@@ -122,13 +184,13 @@ pub fn manifest_url(base: &DevServerTarget) -> String {
 
 /// 選択したエントリ → boot target の解決（ADR-0003）。バンドル URL がフル URL（`https://…`）なら
 /// そのまま正規化し、origin 相対パス（`/solid/bundle.js`）なら Demo Endpoint origin（`base`）に
-/// 載せて解決する。解決不能な URL は [`DemoManifestError::UnresolvableEntry`]。得た target は
+/// 載せて解決する。解決不能な URL は [`BootError::UnresolvableEntry`]。得た target は
 /// そのまま `bundle_source::fetch_from` と reload 購読を駆動する（既存経路に合流・保持）。
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
 pub fn resolve_entry_target(
     entry: &DemoEntry,
     base: &DevServerTarget,
-) -> Result<DevServerTarget, DemoManifestError> {
+) -> Result<DevServerTarget, BootError> {
     let raw = entry.bundle_url.trim();
     let normalized = if raw.contains("://") {
         // フル URL（別 origin の CDN 等）はそのまま正規化する。
@@ -143,7 +205,35 @@ pub fn resolve_entry_target(
         origin_url(base, &path)
     };
     dev_server_target::parse(&normalized)
-        .ok_or_else(|| DemoManifestError::UnresolvableEntry(entry.bundle_url.clone()))
+        .ok_or_else(|| BootError::UnresolvableEntry(entry.bundle_url.clone()))
+}
+
+/// Convert a schema-valid generated DTO into the handwritten boot domain. This is where empty
+/// lists, display names, bundle URL meaning, and selectability are decided; none belong to codegen.
+pub fn boot_plan_from_manifest(
+    wire: WireDemoManifest,
+    base: &DevServerTarget,
+) -> Result<BootPlan, BootError> {
+    if wire.demos.is_empty() {
+        return Err(BootError::EmptyManifest);
+    }
+
+    let mut initial_target = None;
+    for (index, wire_entry) in wire.demos.into_iter().enumerate() {
+        let entry = DemoEntry::from(wire_entry);
+        if entry.name.trim().is_empty() || entry.bundle_url.trim().is_empty() {
+            return Err(BootError::UnselectableEntry { index });
+        }
+        let target = resolve_entry_target(&entry, base)
+            .map_err(|_| BootError::UnselectableEntry { index })?;
+        if initial_target.is_none() {
+            initial_target = Some(target);
+        }
+    }
+
+    Ok(BootPlan::Direct(
+        initial_target.expect("non-empty manifest produced an initial target"),
+    ))
 }
 
 /// 初回起動の boot target（ADR-0003）：取得済みマニフェスト JSON を読み、**先頭デモ**を base origin に
@@ -154,9 +244,13 @@ pub fn first_boot_target(
     manifest_json: &str,
     base: &DevServerTarget,
 ) -> Result<DevServerTarget, DemoManifestError> {
-    let manifest = parse(manifest_json)?;
-    let first = manifest.first().ok_or(DemoManifestError::Empty)?;
-    resolve_entry_target(first, base)
+    let wire = decode_wire(manifest_json).map_err(DemoManifestError::Wire)?;
+    match boot_plan_from_manifest(wire, base).map_err(DemoManifestError::Boot)? {
+        BootPlan::Direct(target) => Ok(target),
+        BootPlan::ManifestAutoload(_) => {
+            unreachable!("manifest conversion always resolves to a direct target")
+        }
+    }
 }
 
 /// 起動時の boot 経路（接続先の決め方で分岐する・#743）。純粋な**ルーティング判断**だけを表し、
@@ -330,9 +424,10 @@ mod tests {
         for bad in ["", "   ", "not json", "{ \"demos\": ", "{ \"demos\": {} }"] {
             let err = first_boot_target(bad, &demo_endpoint()).unwrap_err();
             assert!(
-                matches!(err, DemoManifestError::Malformed(_)),
+                matches!(err, DemoManifestError::Wire(_)),
                 "{bad:?} -> {err:?}"
             );
+            assert_eq!(err.category(), DemoManifestFailureCategory::WireValidation);
             let msg = err.message();
             assert!(
                 msg.contains(DEMO_MANIFEST_ROUTE),
@@ -349,7 +444,8 @@ mod tests {
     fn an_empty_manifest_is_an_explicit_error_not_a_crash() {
         // デモ 0 件は自動ロード対象が無い明示エラー（先頭 unwrap でパニックさせない）。
         let err = first_boot_target(r#"{ "demos": [] }"#, &demo_endpoint()).unwrap_err();
-        assert_eq!(err, DemoManifestError::Empty);
+        assert_eq!(err, DemoManifestError::Boot(BootError::EmptyManifest));
+        assert_eq!(err.category(), DemoManifestFailureCategory::BootDomain);
         assert!(
             err.message().contains("URL 入力"),
             "empty also guides to URL entry: {}",
@@ -357,6 +453,40 @@ mod tests {
         );
         // parse 自体は成功する（空は壊れではない）。first() が None を返すだけ。
         assert!(parse(r#"{ "demos": [] }"#).unwrap().first().is_none());
+    }
+
+    #[test]
+    fn wire_validation_and_boot_domain_failures_have_separate_categories() {
+        let missing_required = decode_wire(r#"{ "demos": [{ "name": "Todo" }] }"#)
+            .expect_err("missing bundleUrl is a wire failure");
+        assert!(matches!(
+            missing_required,
+            WireManifestError::InvalidShape(_)
+        ));
+        assert_eq!(
+            DemoManifestError::Wire(missing_required)
+                .category()
+                .as_str(),
+            "wire-validation"
+        );
+
+        let empty = decode_wire(r#"{ "demos": [] }"#).unwrap();
+        let empty_error = boot_plan_from_manifest(empty, &demo_endpoint())
+            .expect_err("empty is wire-valid but cannot boot");
+        assert_eq!(empty_error, BootError::EmptyManifest);
+        assert_eq!(
+            DemoManifestError::Boot(empty_error).category().as_str(),
+            "boot-domain"
+        );
+
+        let unselectable =
+            decode_wire(r#"{ "demos": [{ "name": "", "bundleUrl": "ftp://nope" }] }"#).unwrap();
+        let entry_error = boot_plan_from_manifest(unselectable, &demo_endpoint())
+            .expect_err("an entry without a display name cannot be selected");
+        assert!(matches!(
+            entry_error,
+            BootError::UnselectableEntry { index: 0 }
+        ));
     }
 
     #[test]
@@ -416,10 +546,12 @@ mod tests {
             bundle_url: "ftp://nope".to_owned(),
         };
         let err = resolve_entry_target(&entry, &demo_endpoint()).unwrap_err();
+        assert!(matches!(err, BootError::UnresolvableEntry(_)), "{err:?}");
+        let manifest_error = DemoManifestError::Boot(err);
         assert!(
-            matches!(err, DemoManifestError::UnresolvableEntry(_)),
-            "{err:?}"
+            manifest_error.message().contains("URL 入力"),
+            "{}",
+            manifest_error.message()
         );
-        assert!(err.message().contains("URL 入力"), "{}", err.message());
     }
 }

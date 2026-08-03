@@ -2,6 +2,7 @@ import {
   demoEndpointContract,
   devServerContract,
   type DemoManifest,
+  validateDemoManifest,
 } from '@torimi/wire-contract';
 import { SELF } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
@@ -16,7 +17,10 @@ describe('demo endpoint worker', () => {
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toContain('application/json');
 
-    const manifest = (await res.json()) as DemoManifest;
+    const decoded = validateDemoManifest(await res.json());
+    expect(decoded.ok).toBe(true);
+    if (!decoded.ok) return;
+    const manifest = decoded.value;
     // ホストのメニュー構成と初回自動ロード（先頭エントリ）が成立する非空一覧であること。
     expect(manifest.demos.length).toBeGreaterThan(0);
     for (const entry of manifest.demos) {

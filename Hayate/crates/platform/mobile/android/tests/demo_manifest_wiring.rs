@@ -70,6 +70,21 @@ fn a_manifest_fetch_failure_is_an_explicit_error_not_a_crash() {
 }
 
 #[test]
+fn wire_and_domain_manifest_failures_are_logged_as_distinct_categories() {
+    let app = app_tsubame_src();
+    let manifest = read_relative("src/demo_manifest.rs");
+
+    assert!(
+        manifest.contains("WireValidation") && manifest.contains("BootDomain"),
+        "wire schema failures and boot-domain failures must remain distinct"
+    );
+    assert!(
+        app.contains("demo-manifest category={}"),
+        "the failure category must be included in the host-observable log"
+    );
+}
+
+#[test]
 fn the_manifest_fetch_reuses_the_os_network_stack() {
     // 手書き HTTP を再導入せず、#740 の OS スタック委譲（Kotlin BundleFetchBridge）を再利用する。
     // バンドル取得とマニフェスト取得は同じ入口（bundle_source::fetch_url）を共有する。

@@ -154,15 +154,20 @@ pub(crate) fn run(app: AndroidApp) {
         demo_manifest::BootPlan::Direct(_) => device_log::BundleOrigin::DevServer,
         demo_manifest::BootPlan::ManifestAutoload(_) => device_log::BundleOrigin::DemoEndpoint,
     };
-    let (target, autoload_error): (dev_server_target::DevServerTarget, Option<String>) = match plan
-    {
+    let (target, autoload_error): (
+        dev_server_target::DevServerTarget,
+        Option<(demo_manifest::DemoManifestFailureCategory, String)>,
+    ) = match plan {
         demo_manifest::BootPlan::Direct(t) => (t, None),
         demo_manifest::BootPlan::ManifestAutoload(endpoint) => {
             match demo_manifest::first_boot_target_fetched(&endpoint) {
                 Ok(demo_target) => (demo_target, None),
                 // 取得/解釈失敗：reload は Demo Endpoint origin に張ったまま（同一 origin・path 非依存）、
                 // boot は下で明示エラー表示のうえ current=None に留める（URL 入力画面へ誘導）。
-                Err(err) => (endpoint, Some(err.message())),
+                Err(err) => {
+                    let category = err.category();
+                    (endpoint, Some((category, err.message())))
+                }
             }
         }
     };
@@ -212,12 +217,12 @@ pub(crate) fn run(app: AndroidApp) {
     // 現在駆動中のランタイム（boot 失敗 / 不一致のあいだは None で、pump せず明示エラーのまま回す）。
     // マニフェスト取得/解釈に失敗した初回起動（`autoload_error`）は boot せず、その明示エラーを出して
     // URL 入力経路へ誘導する（謎クラッシュにしない・#743）。
-    let mut current: Option<Runtime> = if let Some(message) = autoload_error {
+    let mut current: Option<Runtime> = if let Some((category, message)) = autoload_error {
         // Demo Endpoint 経路の manifest 失敗。host イベントとして合流させる（送信は Demo Endpoint
         // 経由なので実際には出ないが、合流点を一様にして扱いを分岐させない・#789）。
         device_log.borrow_mut().record_host(
             device_log::LogLevel::Error,
-            message.clone(),
+            format!("demo-manifest category={}: {message}", category.as_str()),
             now_epoch_ms(),
         );
         crate::error_overlay::show_error(&message);
