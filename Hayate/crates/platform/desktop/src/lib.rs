@@ -19,6 +19,7 @@
 //! 応じた IME enable/disable と変換候補ウィンドウのキャレット追従（`set_ime_cursor_area`）を
 //! Core の `drive_ime`（[`ImeBridge`]）経由で効かせる（issue #508）。
 
+pub mod accessibility;
 pub mod ime_input;
 pub mod keyboard_input;
 #[cfg(feature = "backend-vello")]
@@ -285,6 +286,7 @@ impl ImeBridge for WinitImeBridge<'_> {
 pub struct DesktopApp {
     window: Option<Arc<Window>>,
     app_host: Option<AppHost<RenderHostSurface>>,
+    accessibility: Option<accessibility::DesktopAccessibility>,
     start: Option<Instant>,
     /// 初回フレーム present 済みでウィンドウを可視化したか。非表示で作成したウィンドウを
     /// 最初の `tick`（= 初回 present）直後に一度だけ `set_visible(true)` するためのラッチ。
@@ -366,6 +368,22 @@ impl ApplicationHandler for DesktopApp {
         let (vw, vh) = metrics.viewport_size();
         app_host.tree_mut().set_viewport(vw, vh);
 
+        // AccessKit requires construction before the window is first shown. The shared session
+        // owns lifecycle and tree diffs; this front retains only the window-bound adapter.
+        self.accessibility = accessibility::mount_desktop_accessibility(
+            event_loop,
+            &window,
+            &mut app_host,
+            window.scale_factor(),
+        );
+        if let Some(failure) = app_host.native_accessibility_mount_failure() {
+            log::warn!(
+                "native accessibility disabled: platform={} category={}",
+                failure.platform,
+                failure.category
+            );
+        }
+
         self.start = Some(Instant::now());
         self.window = Some(window.clone());
         self.app_host = Some(app_host);
@@ -374,6 +392,11 @@ impl ApplicationHandler for DesktopApp {
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
+        if let (Some(accessibility), Some(window)) =
+            (self.accessibility.as_ref(), self.window.as_ref())
+        {
+            accessibility.process_window_event(window, &event);
+        }
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(size) => {
@@ -385,6 +408,16 @@ impl ApplicationHandler for DesktopApp {
                     app_host.surface_mut().resize(metrics);
                     let (vw, vh) = metrics.viewport_size();
                     app_host.tree_mut().set_viewport(vw, vh);
+                    app_host.set_native_accessibility_base_dpr(window.scale_factor());
+                    window.request_redraw();
+                }
+            }
+            WindowEvent::ScaleFactorChanged { .. } => {
+                if let (Some(window), Some(app_host)) =
+                    (self.window.as_ref(), self.app_host.as_mut())
+                {
+                    // AccessKit coordinates stay logical; only the root transform follows DPR.
+                    app_host.set_native_accessibility_base_dpr(window.scale_factor());
                     window.request_redraw();
                 }
             }
