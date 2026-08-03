@@ -22,6 +22,7 @@ export const EXPECTED_PUBLIC_PACKAGES = [
   '@torimi/host-web',
   '@torimi/protocol-handshake',
   '@torimi/tsubame-app',
+  '@torimi/tsubame-browser-host',
   '@torimi/tsubame-hayate-css-catalog',
   '@torimi/tsubame-protocol-generated',
   '@torimi/tsubame-react',
