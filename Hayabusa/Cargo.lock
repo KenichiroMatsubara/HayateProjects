@@ -193,6 +193,7 @@ version = "0.1.0"
 name = "hayate-app-host"
 version = "0.1.0"
 dependencies = [
+ "accesskit",
  "anyhow",
  "hayate-core",
  "hayate-layer-compositor",

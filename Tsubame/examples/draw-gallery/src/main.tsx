@@ -17,15 +17,17 @@ const canvas = document.getElementById('canvas-stage') as HTMLCanvasElement;
 // target（DOM / Hayate）の選択は Host に局在する。合成ルート `runTsubameApp` は
 // IRenderer しか知らない（ADR-0012）。draw ギャラリーは todo example と同じ web
 // Host adapter の縮小版で、layer-present / tuning などのチューニング口は持たない。
-let hayateRenderer: HayateRenderer | undefined;
 const host: Host =
   useDomRenderer
     ? {
         // DOM 経路: draw は各 view に敷いた `<canvas>` へ canvas 2D で replay される
         // （Tsubame ADR-0014）。wire も WASM も通らない。
-        createRenderer() {
+        start() {
           dom.hidden = false;
-          return new DomRenderer({ container: dom });
+          return {
+            renderer: new DomRenderer({ container: dom }),
+            dispose() {},
+          };
         },
       }
     : {
@@ -33,19 +35,30 @@ const host: Host =
         // ロードして surface 上に raw を確立、frame-clock も供給する。draw は wire の
         // `draws` チャネルで運ばれ GPU/CPU ラスタライザが描く。tiny-skia は WebGPU の
         // 無いヘッドレスでも Canvas モードに入れる（e2e の Hayate 経路が使う）。
-        async createRenderer() {
+        async start() {
           const { createHayateWebHost } = await import('@torimi/hayate-host');
           canvas.hidden = false;
           const webHost = await createHayateWebHost(canvas);
-          hayateRenderer = new HayateRenderer({
+          const renderer = new HayateRenderer({
             raw: webHost.raw,
             requestFrame: webHost.requestFrame,
             cancelFrame: webHost.cancelFrame,
           });
-          hayateRenderer.start();
-          return hayateRenderer;
+          renderer.start();
+          let disposed = false;
+          return {
+            renderer,
+            dispose() {
+              if (disposed) return;
+              disposed = true;
+              try {
+                renderer.stop();
+              } finally {
+                webHost.detach();
+              }
+            },
+          };
         },
-        stop: () => hayateRenderer?.stop(),
       };
 
 runTsubameApp(host, (renderer) => renderTsubame(() => <DrawGalleryApp />, renderer));

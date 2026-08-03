@@ -14,6 +14,7 @@ backend-null = []
 performance-observability = ["hayate-performance-observability/enabled"]
 
 [dependencies]
+accesskit.workspace = true
 hayate-core = { path = "../core" }
 hayate-layer-compositor = { path = "../scene-renderers/compositor" }
 hayate-performance-observability = { path = "../performance-observability" }

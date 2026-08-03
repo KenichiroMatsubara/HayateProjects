@@ -454,6 +454,8 @@ fn html_and_accessibility_serialization_keep_document_order() {
     }
     tree.element_append_child(root, high);
     tree.element_append_child(root, low);
+    tree.element_set_aria_label(high, "high");
+    tree.element_set_aria_label(low, "low");
     tree.element_set_style(high, &[StyleProp::ZIndex(5)]);
 
     assert_eq!(tree.ordered_children(root), vec![low, high]);
@@ -466,8 +468,19 @@ fn html_and_accessibility_serialization_keep_document_order() {
 
     let update = tree.accessibility_update().expect("accessibility tree");
     let root_node = &update.nodes.last().expect("root node").1;
-    let child_ids: Vec<u64> = root_node.children().iter().map(|id| id.0).collect();
-    assert_eq!(child_ids, vec![high.to_u64(), low.to_u64()]);
+    let child_labels: Vec<_> = root_node
+        .children()
+        .iter()
+        .map(|child_id| {
+            update
+                .nodes
+                .iter()
+                .find(|(id, _)| id == child_id)
+                .and_then(|(_, node)| node.label())
+                .expect("labeled accessibility child")
+        })
+        .collect();
+    assert_eq!(child_labels, vec!["high", "low"]);
 }
 
 #[test]

@@ -1,5 +1,7 @@
 //! ElementTree から AccessKit ツリーを生成する（ADR-0041）。
 
+use std::collections::HashMap;
+
 use accesskit::{
     Action, ActionData, ActionRequest, Node, NodeId, Rect, Role, Tree, TreeId, TreeUpdate,
 };
@@ -9,8 +11,61 @@ use super::taffy_projection::TraversalStep;
 use super::tree::Element;
 use super::{DocumentEventKind, ElementId, ElementKind, ElementTree, Event};
 
-fn node_id(id: ElementId) -> NodeId {
-    NodeId(id.to_u64())
+const ACCESS_NODE_LOCAL_BITS: u32 = 16;
+const ACCESS_NODE_LOCAL_MASK: u64 = (1 << ACCESS_NODE_LOCAL_BITS) - 1;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct AccessIndex(u64);
+
+/// Element identity と Accessibility identity の対応を単独所有する正本。
+///
+/// index は再利用しないため、生存 node の identity は構造変更を跨いで安定し、削除後に
+/// 同じ ElementId が再作成されても古い NodeId が別要素へ向くことはない。
+pub(crate) struct AccessibilityIdentity {
+    by_element: HashMap<ElementId, AccessIndex>,
+    by_index: Vec<Option<ElementId>>,
+}
+
+impl AccessibilityIdentity {
+    pub(crate) fn new() -> Self {
+        Self {
+            by_element: HashMap::new(),
+            // AccessIndex 0 は未割り当てとして予約する。
+            by_index: vec![None],
+        }
+    }
+
+    pub(crate) fn register(&mut self, element: ElementId) {
+        if self.by_element.contains_key(&element) {
+            return;
+        }
+        let index = AccessIndex(self.by_index.len() as u64);
+        self.by_index.push(Some(element));
+        self.by_element.insert(element, index);
+    }
+
+    pub(crate) fn unregister(&mut self, element: ElementId) {
+        let Some(index) = self.by_element.remove(&element) else {
+            return;
+        };
+        if let Some(slot) = self.by_index.get_mut(index.0 as usize) {
+            *slot = None;
+        }
+    }
+
+    fn node_id(&self, element: ElementId) -> Option<NodeId> {
+        self.by_element
+            .get(&element)
+            .map(|index| NodeId(index.0 << ACCESS_NODE_LOCAL_BITS))
+    }
+
+    fn element_id(&self, node: NodeId) -> Option<ElementId> {
+        if node.0 & ACCESS_NODE_LOCAL_MASK != 0 {
+            return None;
+        }
+        let index = (node.0 >> ACCESS_NODE_LOCAL_BITS) as usize;
+        self.by_index.get(index).copied().flatten()
+    }
 }
 
 /// [`ElementTree::poll_accessibility_update`] の結果（#642）。dirty ゲートが「変更なし」を
@@ -75,11 +130,13 @@ pub enum AccessibilityAction {
     Ignored,
 }
 
-/// AccessKit `ActionRequest` から Core アクションサブセットへの純粋な写像
-/// （ADR-0098）。受信 `NodeId` は v1 では要素のみ解決し、送信側
-/// `NodeId(ElementId.to_u64())` の逆、すなわち `ElementId::from_u64` を用いる。
-pub fn map_action_request(req: &ActionRequest) -> AccessibilityAction {
-    let target = ElementId::from_u64(req.target_node.0);
+/// 解決済みの Accessibility target と `ActionRequest` から Core action へ写す。
+/// NodeId の解決は [`AccessibilityIdentity`] だけが所有し、不正・削除済み id は
+/// `None` としてここで安全に `Ignored` へ畳まれる。
+fn map_action_request(req: &ActionRequest, target: Option<ElementId>) -> AccessibilityAction {
+    let Some(target) = target else {
+        return AccessibilityAction::Ignored;
+    };
     match req.action {
         Action::Focus => AccessibilityAction::Focus { target },
         // AccessKit は「デフォルト起動」を `Action::Click` に畳み、独立した
@@ -152,7 +209,8 @@ fn element_value(el: &Element) -> Option<String> {
 
 fn build_node(el: &Element, bounds: (f32, f32, f32, f32), is_root: bool) -> Node {
     let (x, y, w, h) = bounds;
-    let mut node = Node::new(resolve_role(el, is_root));
+    let role = resolve_role(el, is_root);
+    let mut node = Node::new(role);
     node.set_bounds(Rect {
         x0: x as f64,
         y0: y as f64,
@@ -164,6 +222,17 @@ fn build_node(el: &Element, bounds: (f32, f32, f32, f32), is_root: bool) -> Node
     }
     if let Some(value) = element_value(el) {
         node.set_value(value);
+    }
+    if !is_root && !el.disabled {
+        if matches!(role, Role::Button | Role::TextInput | Role::Link) {
+            node.add_action(Action::Focus);
+        }
+        if matches!(role, Role::Button | Role::Link) {
+            node.add_action(Action::Click);
+        }
+        if el.kind == ElementKind::TextInput {
+            node.add_action(Action::SetValue);
+        }
     }
     node
 }
@@ -229,6 +298,9 @@ fn walk_accessibility(
     };
 
     let mut node = build_node(el, (x, y, w, h), id == root_id);
+    if !el.disabled && super::tree::next_ancestor_scroll_view(tree, id).is_some() {
+        node.add_action(Action::ScrollIntoView);
+    }
 
     // #756: IFC ルート text の accessible name に、box を持たず a11y ノードとして落ちるインライン
     // 子孫 text の文字列を集約する。これがないと `<text>{title}</text>` 由来の見出し（文字列を
@@ -241,7 +313,9 @@ fn walk_accessibility(
         }
     }
 
-    let this_id = node_id(id);
+    let Some(this_id) = tree.accessibility_identity.node_id(id) else {
+        return Vec::new();
+    };
 
     for &child in &el.children {
         for child_id in walk_accessibility(tree, child, root_id, nodes) {
@@ -264,7 +338,8 @@ impl ElementTree {
         // adapter（ADR-0122 決定 3・#575）。これで AccessKit 経路と pointer/key 経路が
         // 同一 seam を共有する（2 adapter = 本物の seam）。合成 pointer/key の replay は
         // 経由しない（Flutter semantic-action 同型）。reveal 幾何は seam の裏。
-        if let Some(intent) = self.accessibility_intent(map_action_request(&req)) {
+        let target = self.accessibility_identity.element_id(req.target_node);
+        if let Some(intent) = self.accessibility_intent(map_action_request(&req, target)) {
             self.apply_interaction_intent(intent);
         }
     }
@@ -397,12 +472,14 @@ impl ElementTree {
         let focus = self
             .interaction
             .focused_element
-            .map(node_id)
-            .unwrap_or_else(|| node_id(root_id));
+            .and_then(|id| self.accessibility_identity.node_id(id))
+            .or_else(|| self.accessibility_identity.node_id(root_id))?;
+
+        let root_node_id = self.accessibility_identity.node_id(root_id)?;
 
         Some(TreeUpdate {
             nodes,
-            tree: Some(Tree::new(node_id(root_id))),
+            tree: Some(Tree::new(root_node_id)),
             tree_id: TreeId::ROOT,
             focus,
         })
@@ -416,6 +493,12 @@ mod tests {
         Dimension, DisplayValue, DocumentEventKind, Event, PositionValue, StyleProp,
     };
     use accesskit::{Action, ActionData, ActionRequest};
+
+    fn node_id(tree: &ElementTree, id: ElementId) -> NodeId {
+        tree.accessibility_identity
+            .node_id(id)
+            .expect("registered accessibility identity")
+    }
 
     /// 縦スクロールビュー（200×100 のビューポート）。500px の高さのコンテンツ内に、
     /// ビューポートのはるか下、content-y 300 に固定した 50px の `target` を持つ。
@@ -469,14 +552,14 @@ mod tests {
     #[test]
     fn maps_focus_action_to_core_focus_resolving_element_id() {
         let target = ElementId::from_u64(7);
-        let mapped = map_action_request(&action_request(Action::Focus, node_id(target)));
+        let mapped = map_action_request(&action_request(Action::Focus, NodeId(7)), Some(target));
         assert_eq!(mapped, AccessibilityAction::Focus { target });
     }
 
     #[test]
     fn maps_click_action_to_core_click_resolving_element_id() {
         let target = ElementId::from_u64(9);
-        let mapped = map_action_request(&action_request(Action::Click, node_id(target)));
+        let mapped = map_action_request(&action_request(Action::Click, NodeId(9)), Some(target));
         assert_eq!(mapped, AccessibilityAction::Click { target });
     }
 
@@ -486,11 +569,11 @@ mod tests {
         let req = ActionRequest {
             action: Action::SetValue,
             target_tree: TreeId::ROOT,
-            target_node: node_id(target),
+            target_node: NodeId(11),
             data: Some(ActionData::Value("hello".into())),
         };
         assert_eq!(
-            map_action_request(&req),
+            map_action_request(&req, Some(target)),
             AccessibilityAction::SetValue {
                 target,
                 value: "hello".to_string(),
@@ -500,7 +583,7 @@ mod tests {
 
     #[test]
     fn maps_set_value_without_value_payload_to_ignored() {
-        let node = node_id(ElementId::from_u64(5));
+        let node = NodeId(5);
         let req = ActionRequest {
             action: Action::SetValue,
             target_tree: TreeId::ROOT,
@@ -508,7 +591,7 @@ mod tests {
             data: None,
         };
         assert_eq!(
-            map_action_request(&req),
+            map_action_request(&req, Some(ElementId::from_u64(5))),
             AccessibilityAction::Ignored,
             "SetValue with no string value has nothing to set",
         );
@@ -517,20 +600,23 @@ mod tests {
     #[test]
     fn maps_scroll_into_view_action_to_core_scroll_into_view_resolving_element_id() {
         let target = ElementId::from_u64(13);
-        let mapped = map_action_request(&action_request(Action::ScrollIntoView, node_id(target)));
+        let mapped = map_action_request(
+            &action_request(Action::ScrollIntoView, NodeId(13)),
+            Some(target),
+        );
         assert_eq!(mapped, AccessibilityAction::ScrollIntoView { target });
     }
 
     #[test]
     fn folds_unsupported_actions_to_ignored() {
-        let node = node_id(ElementId::from_u64(3));
+        let node = NodeId(3);
         for action in [
             Action::Increment,
             Action::ShowContextMenu,
             Action::CustomAction,
         ] {
             assert_eq!(
-                map_action_request(&action_request(action, node)),
+                map_action_request(&action_request(action, node), Some(ElementId::from_u64(3))),
                 AccessibilityAction::Ignored,
                 "{action:?} should fold to Ignored"
             );
@@ -551,7 +637,7 @@ mod tests {
         let la_blur = tree.register_listener(a, DocumentEventKind::Blur);
         let lb_focus = tree.register_listener(b, DocumentEventKind::Focus);
 
-        tree.on_accessibility_action(action_request(Action::Focus, node_id(a)));
+        tree.on_accessibility_action(action_request(Action::Focus, node_id(&tree, a)));
         assert_eq!(tree.focused_element(), Some(a));
         let first: Vec<_> = tree
             .poll_deliveries()
@@ -561,7 +647,7 @@ mod tests {
         assert_eq!(first, vec![la_focus]);
 
         // b へのフォーカスは、先にフォーカス中だった a を blur してから b を focus する。
-        tree.on_accessibility_action(action_request(Action::Focus, node_id(b)));
+        tree.on_accessibility_action(action_request(Action::Focus, node_id(&tree, b)));
         assert_eq!(tree.focused_element(), Some(b));
         let second: Vec<_> = tree
             .poll_deliveries()
@@ -590,7 +676,7 @@ mod tests {
         tree.element_set_text_content(input, "old");
 
         let listener = tree.register_listener(input, DocumentEventKind::TextInput);
-        tree.on_accessibility_action(set_value_request(node_id(input), "new value"));
+        tree.on_accessibility_action(set_value_request(node_id(&tree, input), "new value"));
 
         assert_eq!(
             tree.element_get_text_content(input),
@@ -623,7 +709,7 @@ mod tests {
         tree.element_set_text_content(input, "abc");
         tree.element_set_preedit(input, "DEF"); // 進行中の IME 変換
 
-        tree.on_accessibility_action(set_value_request(node_id(input), "xyz"));
+        tree.on_accessibility_action(set_value_request(node_id(&tree, input), "xyz"));
 
         // preedit は置換の一部として確定され、壊れた中間状態を残さない
         // （先行事例: `element_paste` の preedit 確定）。
@@ -643,7 +729,7 @@ mod tests {
         tree.element_append_child(root, view);
         tree.register_listener(view, DocumentEventKind::TextInput);
 
-        tree.on_accessibility_action(set_value_request(node_id(view), "nope"));
+        tree.on_accessibility_action(set_value_request(node_id(&tree, view), "nope"));
         assert!(
             tree.poll_deliveries().is_empty(),
             "SetValue on a non-text-input target must emit nothing",
@@ -661,11 +747,11 @@ mod tests {
         tree.element_append_child(root, b);
         tree.register_listener(b, DocumentEventKind::Focus);
 
-        tree.on_accessibility_action(action_request(Action::Focus, node_id(a)));
+        tree.on_accessibility_action(action_request(Action::Focus, node_id(&tree, a)));
         let _ = tree.poll_deliveries();
 
         // b を狙う非サポートアクションは、フォーカスを動かさず何も発行しない。
-        tree.on_accessibility_action(action_request(Action::Increment, node_id(b)));
+        tree.on_accessibility_action(action_request(Action::Increment, node_id(&tree, b)));
         assert_eq!(tree.focused_element(), Some(a));
         assert!(tree.poll_deliveries().is_empty());
     }
@@ -684,7 +770,7 @@ mod tests {
         let l_btn = tree.register_listener(button, DocumentEventKind::Click);
         let l_root = tree.register_listener(root, DocumentEventKind::Click);
 
-        tree.on_accessibility_action(action_request(Action::Click, node_id(button)));
+        tree.on_accessibility_action(action_request(Action::Click, node_id(&tree, button)));
 
         let deliveries = tree.poll_deliveries();
         let ids: Vec<_> = deliveries.iter().map(|d| d.listener_id).collect();
@@ -717,7 +803,7 @@ mod tests {
         let (cx, cy) = (rx + rw / 2.0, ry + rh / 2.0);
 
         tree.register_listener(button, DocumentEventKind::Click);
-        tree.on_accessibility_action(action_request(Action::Click, node_id(button)));
+        tree.on_accessibility_action(action_request(Action::Click, node_id(&tree, button)));
 
         let delivery = tree.poll_deliveries().pop().expect("a click delivery");
         match delivery.event {
@@ -746,7 +832,7 @@ mod tests {
         let l_active_start = tree.register_listener(button, DocumentEventKind::ActiveStart);
         let l_active_end = tree.register_listener(button, DocumentEventKind::ActiveEnd);
 
-        tree.on_accessibility_action(action_request(Action::Click, node_id(button)));
+        tree.on_accessibility_action(action_request(Action::Click, node_id(&tree, button)));
 
         let fired: Vec<_> = tree
             .poll_deliveries()
@@ -812,7 +898,7 @@ mod tests {
         let l_target = tree.register_listener(target, DocumentEventKind::Click);
         let l_overlay = tree.register_listener(overlay, DocumentEventKind::Click);
 
-        tree.on_accessibility_action(action_request(Action::Click, node_id(target)));
+        tree.on_accessibility_action(action_request(Action::Click, node_id(&tree, target)));
 
         let ids: Vec<_> = tree
             .poll_deliveries()
@@ -876,7 +962,7 @@ mod tests {
         // プレスは行フェーズではなく単語フェーズに留まる。
         let (mut t, text) = paragraph();
         t.on_pointer_down(px, py);
-        t.on_accessibility_action(action_request(Action::Click, node_id(text)));
+        t.on_accessibility_action(action_request(Action::Click, node_id(&t, text)));
         t.on_pointer_down(px, py);
         assert_eq!(
             range(&t, text),
@@ -894,7 +980,10 @@ mod tests {
             "precondition: scroll-view starts unscrolled",
         );
 
-        tree.on_accessibility_action(action_request(Action::ScrollIntoView, node_id(target)));
+        tree.on_accessibility_action(action_request(
+            Action::ScrollIntoView,
+            node_id(&tree, target),
+        ));
 
         // 対象は 100px ビューポート内の content-y 300..350 にあり、最小スクロールは
         // その下端をビューポート下端に揃える：オフセット 250。
@@ -921,7 +1010,10 @@ mod tests {
         // 表示し、対象（300..350）は上方の画面外になる。
         tree.element_set_scroll_offset(scroll, 0.0, 400.0);
 
-        tree.on_accessibility_action(action_request(Action::ScrollIntoView, node_id(target)));
+        tree.on_accessibility_action(action_request(
+            Action::ScrollIntoView,
+            node_id(&tree, target),
+        ));
 
         // 最小の上スクロールは対象の先頭（上）端をビューポート上端に揃える：オフセット 300。
         let (_, oy) = tree.element_get_scroll_offset(scroll);
@@ -936,7 +1028,10 @@ mod tests {
         let (mut tree, scroll, target) = scroll_into_view_scene();
         let listener = tree.register_listener(scroll, DocumentEventKind::Scroll);
 
-        tree.on_accessibility_action(action_request(Action::ScrollIntoView, node_id(target)));
+        tree.on_accessibility_action(action_request(
+            Action::ScrollIntoView,
+            node_id(&tree, target),
+        ));
 
         let deliveries = tree.poll_deliveries();
         let ids: Vec<_> = deliveries.iter().map(|d| d.listener_id).collect();
@@ -962,7 +1057,10 @@ mod tests {
         tree.element_set_scroll_offset(scroll, 0.0, 260.0);
         let listener = tree.register_listener(scroll, DocumentEventKind::Scroll);
 
-        tree.on_accessibility_action(action_request(Action::ScrollIntoView, node_id(target)));
+        tree.on_accessibility_action(action_request(
+            Action::ScrollIntoView,
+            node_id(&tree, target),
+        ));
 
         assert_eq!(
             tree.element_get_scroll_offset(scroll),
@@ -990,7 +1088,10 @@ mod tests {
         let l_root = tree.register_listener(root, DocumentEventKind::Scroll);
         let l_target = tree.register_listener(target, DocumentEventKind::Scroll);
 
-        tree.on_accessibility_action(action_request(Action::ScrollIntoView, node_id(target)));
+        tree.on_accessibility_action(action_request(
+            Action::ScrollIntoView,
+            node_id(&tree, target),
+        ));
 
         assert!(
             tree.poll_deliveries().is_empty(),
@@ -1068,7 +1169,7 @@ mod tests {
         let node = update
             .nodes
             .iter()
-            .find(|(id, _)| *id == node_id(button))
+            .find(|(id, _)| *id == node_id(&tree, button))
             .map(|(_, n)| n)
             .expect("button node");
         assert_eq!(node.label(), Some("Renamed"));
@@ -1091,7 +1192,7 @@ mod tests {
         let node = update
             .nodes
             .iter()
-            .find(|(id, _)| *id == node_id(button))
+            .find(|(id, _)| *id == node_id(&tree, button))
             .map(|(_, n)| n)
             .expect("button node");
         assert_eq!(node.role(), Role::Link, "role change must reach the poll");
@@ -1116,7 +1217,7 @@ mod tests {
         let node = update
             .nodes
             .iter()
-            .find(|(id, _)| *id == node_id(input))
+            .find(|(id, _)| *id == node_id(&tree, input))
             .map(|(_, n)| n)
             .expect("input node");
         assert_eq!(
@@ -1136,7 +1237,10 @@ mod tests {
         tree.render(16.0);
         let update = changed(tree.poll_accessibility_update());
         assert!(
-            update.nodes.iter().any(|(id, _)| *id == node_id(added)),
+            update
+                .nodes
+                .iter()
+                .any(|(id, _)| *id == node_id(&tree, added)),
             "newly attached element must appear after a structure change",
         );
     }
@@ -1153,12 +1257,12 @@ mod tests {
         tree.render(0.0);
         let _ = tree.poll_accessibility_update();
 
-        tree.on_accessibility_action(action_request(Action::Focus, node_id(input)));
+        tree.on_accessibility_action(action_request(Action::Focus, node_id(&tree, input)));
         tree.render(16.0);
         let update = changed(tree.poll_accessibility_update());
         assert_eq!(
             update.focus,
-            node_id(input),
+            node_id(&tree, input),
             "focus change must reach the poll",
         );
     }
@@ -1198,13 +1302,13 @@ mod tests {
 
         let update = tree.accessibility_update().expect("tree update");
         assert_eq!(update.tree_id, TreeId::ROOT);
-        assert_eq!(update.focus, node_id(root));
+        assert_eq!(update.focus, node_id(&tree, root));
         assert!(update.nodes.len() >= 3);
 
         let button_node = update
             .nodes
             .iter()
-            .find(|(id, _)| *id == node_id(button))
+            .find(|(id, _)| *id == node_id(&tree, button))
             .map(|(_, n)| n)
             .expect("button node");
         assert_eq!(button_node.role(), Role::Button);
@@ -1213,11 +1317,158 @@ mod tests {
         let input_node = update
             .nodes
             .iter()
-            .find(|(id, _)| *id == node_id(input))
+            .find(|(id, _)| *id == node_id(&tree, input))
             .map(|(_, n)| n)
             .expect("input node");
         assert_eq!(input_node.role(), Role::TextInput);
         assert_eq!(input_node.value(), Some("hello"));
+    }
+
+    #[test]
+    fn accessibility_node_identity_roundtrips_without_exposing_element_id() {
+        let mut tree = ElementTree::new();
+        let root = tree.element_create(4_000, ElementKind::View);
+        tree.set_root(root);
+        let button = tree.element_create(9_000, ElementKind::Button);
+        tree.element_append_child(root, button);
+        tree.element_set_aria_label(button, "Confirm");
+        tree.render(0.0);
+
+        let listener = tree.register_listener(button, DocumentEventKind::Click);
+        let update = tree.accessibility_update().expect("tree update");
+        let button_node_id = update
+            .nodes
+            .iter()
+            .find(|(_, node)| node.label() == Some("Confirm"))
+            .map(|(id, _)| *id)
+            .expect("button accessibility node");
+
+        assert_ne!(
+            button_node_id.0,
+            button.to_u64(),
+            "accessibility identity must not expose the host ElementId",
+        );
+
+        tree.on_accessibility_action(action_request(Action::Click, button_node_id));
+        let deliveries = tree.poll_deliveries();
+        assert_eq!(deliveries.len(), 1);
+        assert_eq!(deliveries[0].listener_id, listener);
+    }
+
+    #[test]
+    fn accessibility_nodes_declare_only_actions_their_semantics_can_execute() {
+        let mut tree = ElementTree::new();
+        let root = tree.element_create(1, ElementKind::View);
+        tree.set_root(root);
+        let button = tree.element_create(2, ElementKind::Button);
+        tree.element_set_aria_label(button, "Action button");
+        tree.element_append_child(root, button);
+        let input = tree.element_create(3, ElementKind::TextInput);
+        tree.element_set_aria_label(input, "Editable field");
+        tree.element_append_child(root, input);
+        let plain = tree.element_create(4, ElementKind::View);
+        tree.element_set_aria_label(plain, "Plain view");
+        tree.element_append_child(root, plain);
+        tree.render(0.0);
+
+        let update = tree.accessibility_update().expect("tree update");
+        let find = |label: &str| {
+            update
+                .nodes
+                .iter()
+                .find(|(_, node)| node.label() == Some(label))
+                .map(|(_, node)| node)
+                .expect("labeled accessibility node")
+        };
+        let button_node = find("Action button");
+        assert!(button_node.supports_action(Action::Focus));
+        assert!(button_node.supports_action(Action::Click));
+        assert!(!button_node.supports_action(Action::SetValue));
+
+        let input_node = find("Editable field");
+        assert!(input_node.supports_action(Action::Focus));
+        assert!(input_node.supports_action(Action::SetValue));
+        assert!(!input_node.supports_action(Action::Click));
+
+        let plain_node = find("Plain view");
+        for action in [Action::Focus, Action::Click, Action::SetValue] {
+            assert!(!plain_node.supports_action(action));
+        }
+    }
+
+    #[test]
+    fn accessibility_node_in_scroll_content_declares_scroll_into_view() {
+        let (tree, scroll, target) = scroll_into_view_scene();
+        let update = tree.accessibility_update().expect("tree update");
+        let target_node = update
+            .nodes
+            .iter()
+            .find(|(id, _)| *id == node_id(&tree, target))
+            .map(|(_, node)| node)
+            .expect("scroll target node");
+        assert!(target_node.supports_action(Action::ScrollIntoView));
+
+        let scroll_node = update
+            .nodes
+            .iter()
+            .find(|(id, _)| *id == node_id(&tree, scroll))
+            .map(|(_, node)| node)
+            .expect("scroll view node");
+        assert!(!scroll_node.supports_action(Action::ScrollIntoView));
+    }
+
+    #[test]
+    fn accessibility_identity_is_stable_for_survivors_and_rejects_stale_nodes() {
+        let mut tree = ElementTree::new();
+        let root = tree.element_create(100, ElementKind::View);
+        tree.set_root(root);
+        let button = tree.element_create(900, ElementKind::Button);
+        tree.element_set_aria_label(button, "Stable button");
+        tree.element_append_child(root, button);
+        tree.render(0.0);
+
+        let first = tree.accessibility_update().expect("first tree");
+        let original_node_id = first
+            .nodes
+            .iter()
+            .find(|(_, node)| node.label() == Some("Stable button"))
+            .map(|(id, _)| *id)
+            .expect("original node");
+
+        let sibling = tree.element_create(42, ElementKind::View);
+        tree.element_append_child(root, sibling);
+        tree.render(1.0);
+        let after_insert = tree.accessibility_update().expect("tree after insert");
+        assert!(after_insert
+            .nodes
+            .iter()
+            .any(|(id, _)| *id == original_node_id));
+
+        tree.element_remove(button);
+        let replacement = tree.element_create(900, ElementKind::Button);
+        tree.element_set_aria_label(replacement, "Replacement button");
+        tree.element_append_child(root, replacement);
+        tree.render(2.0);
+        let listener = tree.register_listener(replacement, DocumentEventKind::Click);
+        let after_recreate = tree.accessibility_update().expect("tree after recreate");
+        let replacement_node_id = after_recreate
+            .nodes
+            .iter()
+            .find(|(_, node)| node.label() == Some("Replacement button"))
+            .map(|(id, _)| *id)
+            .expect("replacement node");
+        assert_ne!(replacement_node_id, original_node_id);
+
+        tree.on_accessibility_action(action_request(Action::Click, original_node_id));
+        assert!(tree.poll_deliveries().is_empty());
+
+        tree.on_accessibility_action(action_request(Action::Click, NodeId(u64::MAX)));
+        assert!(tree.poll_deliveries().is_empty());
+
+        tree.on_accessibility_action(action_request(Action::Click, replacement_node_id));
+        let deliveries = tree.poll_deliveries();
+        assert_eq!(deliveries.len(), 1);
+        assert_eq!(deliveries[0].listener_id, listener);
     }
 
     #[test]
@@ -1248,7 +1499,7 @@ mod tests {
         let heading_node = update
             .nodes
             .iter()
-            .find(|(id, _)| *id == node_id(heading))
+            .find(|(id, _)| *id == node_id(&tree, heading))
             .map(|(_, n)| n)
             .expect("IFC root heading node must be present");
         assert_eq!(
@@ -1259,7 +1510,10 @@ mod tests {
 
         // インライン子自体は box を持たず a11y ノードとしては落ちる（ADR-0063/0064・意図どおり）。
         assert!(
-            !update.nodes.iter().any(|(id, _)| *id == node_id(inline)),
+            !update
+                .nodes
+                .iter()
+                .any(|(id, _)| *id == node_id(&tree, inline)),
             "box を持たないインライン text は独立 a11y ノードにしない（意図）",
         );
         assert_eq!(
@@ -1287,7 +1541,7 @@ mod tests {
         let heading_node = update
             .nodes
             .iter()
-            .find(|(id, _)| *id == node_id(heading))
+            .find(|(id, _)| *id == node_id(&tree, heading))
             .map(|(_, n)| n)
             .expect("heading node");
         assert_eq!(heading_node.value(), Some("Sizing"));
@@ -1320,7 +1574,10 @@ mod tests {
 
         // IFC ルート自体は AccessKit ツリーに残っていなければならない。
         assert!(
-            update.nodes.iter().any(|(id, _)| *id == node_id(ifc_root)),
+            update
+                .nodes
+                .iter()
+                .any(|(id, _)| *id == node_id(&tree, ifc_root)),
             "IFC root subtree was dropped from the AccessKit tree"
         );
 
