@@ -15,7 +15,11 @@ use std::collections::VecDeque;
 use std::path::Path;
 
 use crate::dev_server_target::DevServerTarget;
-use crate::generated::torimi_wire::LOG_ROUTE_PREFIX;
+pub use crate::generated::torimi_wire::{LogBatch, LogEntry};
+use crate::generated::torimi_wire::{
+    LOG_LEVEL_DEBUG, LOG_LEVEL_ERROR, LOG_LEVEL_INFO, LOG_LEVEL_LOG, LOG_LEVEL_WARN,
+    LOG_ROUTE_PREFIX, LOG_SOURCE_HOST, LOG_SOURCE_JS,
+};
 
 /// 定期フラッシュ間隔（ms）。この間隔ごとにバッファをまとめて 1 バッチにして送る。**プレースホルダ値**
 /// 2 秒（実値調整は運用を見て・ADR-0005）。マジックナンバー禁止のため名前付き定数に抽出。
@@ -29,37 +33,44 @@ pub const FLUSH_INTERVAL_MS: f64 = 2_000.0;
 pub const RING_BUFFER_CAPACITY: usize = 1_000;
 
 /// Device Log 1 エントリのログレベル（`console.*` の別名・wire 契約 `LogLevel` のミラー）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LogLevel {
     Log,
     Info,
     Warn,
     Error,
     Debug,
+    Other(String),
 }
 
 impl LogLevel {
     /// wire に載せる文字列（TS `LogLevel` と値で一致させる）。
-    pub fn as_str(self) -> &'static str {
+    pub fn as_str(&self) -> &str {
         match self {
-            LogLevel::Log => "log",
-            LogLevel::Info => "info",
-            LogLevel::Warn => "warn",
-            LogLevel::Error => "error",
-            LogLevel::Debug => "debug",
+            LogLevel::Log => LOG_LEVEL_LOG,
+            LogLevel::Info => LOG_LEVEL_INFO,
+            LogLevel::Warn => LOG_LEVEL_WARN,
+            LogLevel::Error => LOG_LEVEL_ERROR,
+            LogLevel::Debug => LOG_LEVEL_DEBUG,
+            LogLevel::Other(value) => value,
         }
     }
 
-    /// JS 側（`__hayateLog`）から来た level 文字列を写す。未知の別名は `log` に丸める
-    /// （additive-only 互換：新レベルが来ても落とさない・ADR-0005）。
+    /// JS 側（`__hayateLog`）から来た level 文字列を写す。未知の非空値はそのまま保持する
+    /// （generated open vocabulary の additive-only 互換・ADR-0005）。
     pub fn from_wire(s: &str) -> LogLevel {
         match s {
-            "info" => LogLevel::Info,
-            "warn" => LogLevel::Warn,
-            "error" => LogLevel::Error,
-            "debug" => LogLevel::Debug,
-            _ => LogLevel::Log,
+            LOG_LEVEL_INFO => LogLevel::Info,
+            LOG_LEVEL_WARN => LogLevel::Warn,
+            LOG_LEVEL_ERROR => LogLevel::Error,
+            LOG_LEVEL_DEBUG => LogLevel::Debug,
+            LOG_LEVEL_LOG | "" => LogLevel::Log,
+            other => LogLevel::Other(other.to_owned()),
         }
+    }
+
+    fn is_error(&self) -> bool {
+        matches!(self, LogLevel::Error)
     }
 }
 
@@ -74,30 +85,10 @@ impl LogSource {
     /// wire に載せる文字列（TS `LogSource` と値で一致させる）。
     pub fn as_str(self) -> &'static str {
         match self {
-            LogSource::Js => "js",
-            LogSource::Host => "host",
+            LogSource::Js => LOG_SOURCE_JS,
+            LogSource::Host => LOG_SOURCE_HOST,
         }
     }
-}
-
-/// Device Log の 1 エントリ（wire 契約 `LogEntry` のミラー）。
-#[derive(Debug, Clone, PartialEq)]
-pub struct LogEntry {
-    /// 端末ごと単調増加の連番。受け側が `(deviceId, seq)` で再送重複を捨てる。
-    pub seq: u64,
-    /// 端末側で記録した時刻（epoch ms）。
-    pub ts_ms: f64,
-    pub source: LogSource,
-    pub level: LogLevel,
-    pub message: String,
-}
-
-/// `POST <logRoutePrefix><deviceId>` で送るバッチ（wire 契約 `LogBatch` のミラー）。
-#[derive(Debug, Clone, PartialEq)]
-pub struct LogBatch {
-    /// 表示用の端末ラベル（端末モデル名等）。
-    pub device_label: String,
-    pub entries: Vec<LogEntry>,
 }
 
 /// バッチを Dev Server へ送る注入ポート。device では Kotlin/OkHttp の `POST /log/<deviceId>`、
@@ -175,18 +166,19 @@ impl<P: LogSendPort> DeviceLog<P> {
         }
         let seq = self.next_seq;
         self.next_seq += 1;
+        let flush_immediately = level.is_error() || matches!(source, LogSource::Host);
         self.buffer.push_back(LogEntry {
             seq,
-            ts_ms,
-            source,
-            level,
+            ts: ts_ms,
+            source: source.as_str().to_owned(),
+            level: level.as_str().to_owned(),
             message,
         });
         // 上限超過は古い方から捨てる（クラッシュ耐性より新しいログ優先・#788）。
         if self.buffer.len() > RING_BUFFER_CAPACITY {
             self.buffer.pop_front();
         }
-        if matches!(level, LogLevel::Error) || matches!(source, LogSource::Host) {
+        if flush_immediately {
             self.flush();
         }
     }
@@ -281,20 +273,7 @@ pub fn log_url(target: &DevServerTarget, device_id: &str) -> String {
 /// 送信ポートはこれを body にして `POST <logRoutePrefix><deviceId>` する。手書き結合ではなく
 /// `serde_json` でエスケープを正しく通す（既存 demo_manifest と同じく serde_json 依存を使う）。
 pub fn to_wire_json(batch: &LogBatch) -> String {
-    let entries: Vec<serde_json::Value> = batch
-        .entries
-        .iter()
-        .map(|e| {
-            serde_json::json!({
-                "seq": e.seq,
-                "ts": e.ts_ms,
-                "source": e.source.as_str(),
-                "level": e.level.as_str(),
-                "message": e.message,
-            })
-        })
-        .collect();
-    serde_json::json!({ "deviceLabel": batch.device_label, "entries": entries }).to_string()
+    serde_json::to_string(batch).expect("generated LogBatch contains only serializable fields")
 }
 
 #[cfg(target_os = "android")]
@@ -464,9 +443,9 @@ mod tests {
             batch.entries,
             vec![LogEntry {
                 seq: 1,
-                ts_ms: 10.0,
-                source: LogSource::Js,
-                level: LogLevel::Log,
+                ts: 10.0,
+                source: LOG_SOURCE_JS.to_owned(),
+                level: LOG_LEVEL_LOG.to_owned(),
                 message: "hello".to_owned(),
             }],
         );
@@ -654,7 +633,7 @@ mod tests {
         let sent = port.sent.borrow();
         assert_eq!(sent.len(), 1, "a host event flushes immediately (no tick)");
         let entry = &sent[0].1.entries[0];
-        assert_eq!(entry.source, LogSource::Host);
+        assert_eq!(entry.source, LOG_SOURCE_HOST);
         assert_eq!(entry.message, "protocol version 不一致");
     }
 
@@ -667,7 +646,7 @@ mod tests {
         log.record_js(LogLevel::Log, "from console".to_owned(), 3.0);
         log.tick(FLUSH_INTERVAL_MS);
 
-        assert_eq!(port.sent.borrow()[0].1.entries[0].source, LogSource::Js);
+        assert_eq!(port.sent.borrow()[0].1.entries[0].source, LOG_SOURCE_JS);
     }
 
     #[test]
@@ -742,7 +721,7 @@ mod tests {
     }
 
     #[test]
-    fn wire_level_strings_round_trip_and_unknown_aliases_fall_back_to_log() {
+    fn wire_level_strings_round_trip_and_unknown_non_empty_values_are_retained() {
         for level in [
             LogLevel::Log,
             LogLevel::Info,
@@ -752,8 +731,9 @@ mod tests {
         ] {
             assert_eq!(LogLevel::from_wire(level.as_str()), level);
         }
-        // 未知の別名（将来レベル）は落とさず log に丸める（additive-only 互換）。
-        assert_eq!(LogLevel::from_wire("trace"), LogLevel::Log);
+        // 未知の非空値は生成 open vocabulary と同じく、そのまま wire へ戻せる。
+        assert_eq!(LogLevel::from_wire("trace").as_str(), "trace");
+        // 空値だけは wire schema が拒否するため producer の既定 known value へ正規化する。
         assert_eq!(LogLevel::from_wire(""), LogLevel::Log);
     }
 
@@ -770,16 +750,16 @@ mod tests {
             entries: vec![
                 LogEntry {
                     seq: 1,
-                    ts_ms: 1_720_000_000_000.0,
-                    source: LogSource::Js,
-                    level: LogLevel::Warn,
+                    ts: 1_720_000_000_000.0,
+                    source: LOG_SOURCE_JS.to_owned(),
+                    level: LOG_LEVEL_WARN.to_owned(),
                     message: "hi \"quoted\"".to_owned(),
                 },
                 LogEntry {
                     seq: 2,
-                    ts_ms: 1_720_000_000_001.0,
-                    source: LogSource::Host,
-                    level: LogLevel::Error,
+                    ts: 1_720_000_000_001.0,
+                    source: LOG_SOURCE_HOST.to_owned(),
+                    level: LOG_LEVEL_ERROR.to_owned(),
                     message: "boom".to_owned(),
                 },
             ],

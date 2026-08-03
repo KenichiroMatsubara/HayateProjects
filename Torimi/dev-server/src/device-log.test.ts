@@ -3,7 +3,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { devServerContract, type LogBatch } from '@torimi/wire-contract';
-import { createBundleDevServer, LOG_BODY_LIMIT_BYTES, type BundleDevServer } from './index.js';
+import {
+  createBundleDevServer,
+  LOG_BODY_LIMIT_BYTES,
+  type BundleDevServer,
+  type DeviceLogValidationSummary,
+} from './index.js';
 
 /**
  * Device Log 受け口の HTTP 契約テスト。bundle 配信テストと同型に実際に listen して
@@ -15,13 +20,17 @@ describe('POST log route', () => {
   let server: BundleDevServer;
   let origin: string;
   let onLogBatch: ReturnType<typeof vi.fn<(deviceId: string, batch: LogBatch) => void>>;
+  let onLogValidationSummary: ReturnType<
+    typeof vi.fn<(summary: DeviceLogValidationSummary) => void>
+  >;
 
   beforeEach(async () => {
     dir = await mkdtemp(join(tmpdir(), 'torimi-dev-server-'));
     const bundlePath = join(dir, 'bundle.js');
     await writeFile(bundlePath, 'globalThis.__torimiMount = () => {};\n');
     onLogBatch = vi.fn();
-    server = createBundleDevServer({ bundlePath, onLogBatch });
+    onLogValidationSummary = vi.fn();
+    server = createBundleDevServer({ bundlePath, onLogBatch, onLogValidationSummary });
     origin = await server.listen();
   });
 
@@ -56,12 +65,30 @@ describe('POST log route', () => {
 
     expect(res.status).toBe(400);
     expect(onLogBatch).not.toHaveBeenCalled();
+    expect(onLogValidationSummary).toHaveBeenCalledOnce();
+    expect(onLogValidationSummary).toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: 'invalid-json' }),
+    );
   });
 
   it('rejects a body whose entries is not an array with 400', async () => {
     const res = await postLog(
       'device-abc',
       JSON.stringify({ deviceLabel: 'Pixel 8', entries: 'oops' }),
+    );
+
+    expect(res.status).toBe(400);
+    expect(onLogBatch).not.toHaveBeenCalled();
+    expect(onLogValidationSummary).toHaveBeenCalledOnce();
+    expect(onLogValidationSummary).toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: 'invalid-envelope' }),
+    );
+  });
+
+  it('rejects a non-string deviceLabel as an invalid envelope with 400', async () => {
+    const res = await postLog(
+      'device-abc',
+      JSON.stringify({ deviceLabel: 42, entries: [] }),
     );
 
     expect(res.status).toBe(400);
@@ -107,7 +134,7 @@ describe('POST log route', () => {
     });
   });
 
-  it('ignores unknown fields and still interprets known ones (additive-only, ADR-0005)', async () => {
+  it('preserves unknown open-vocabulary values while ignoring unknown fields', async () => {
     const res = await postLog(
       'device-abc',
       JSON.stringify({
@@ -117,8 +144,8 @@ describe('POST log route', () => {
           {
             seq: 1,
             ts: 1720000000000,
-            source: 'js',
-            level: 'warn',
+            source: 'future-source',
+            level: 'trace',
             message: 'hello',
             futureEntryField: 'ignored',
           },
@@ -129,7 +156,15 @@ describe('POST log route', () => {
     expect(res.status).toBe(204);
     expect(onLogBatch).toHaveBeenCalledWith('device-abc', {
       deviceLabel: 'Pixel 8',
-      entries: [{ seq: 1, ts: 1720000000000, source: 'js', level: 'warn', message: 'hello' }],
+      entries: [
+        {
+          seq: 1,
+          ts: 1720000000000,
+          source: 'future-source',
+          level: 'trace',
+          message: 'hello',
+        },
+      ],
     });
   });
 
@@ -152,10 +187,77 @@ describe('POST log route', () => {
     });
   });
 
+  it('does not let an invalid high seq advance the dedup watermark', async () => {
+    const first = await postLog(
+      'device-abc',
+      JSON.stringify({
+        deviceLabel: 'Pixel 8',
+        entries: [
+          {
+            seq: 100.5,
+            ts: 1720000000000,
+            source: 'js',
+            level: 'log',
+            message: 'must be dropped',
+          },
+          { seq: 1, ts: 1720000000001, source: 'js', level: 'log', message: 'one' },
+        ],
+      }),
+    );
+    const second = await postLog(
+      'device-abc',
+      JSON.stringify({
+        deviceLabel: 'Pixel 8',
+        entries: [{ seq: 2, ts: 1720000000002, source: 'js', level: 'log', message: 'two' }],
+      }),
+    );
+
+    expect(first.status).toBe(204);
+    expect(second.status).toBe(204);
+    expect(onLogBatch).toHaveBeenNthCalledWith(1, 'device-abc', {
+      deviceLabel: 'Pixel 8',
+      entries: [{ seq: 1, ts: 1720000000001, source: 'js', level: 'log', message: 'one' }],
+    });
+    expect(onLogBatch).toHaveBeenNthCalledWith(2, 'device-abc', {
+      deviceLabel: 'Pixel 8',
+      entries: [{ seq: 2, ts: 1720000000002, source: 'js', level: 'log', message: 'two' }],
+    });
+  });
+
+  it('acknowledges an all-invalid batch and emits one value-free validation summary', async () => {
+    const secret = 'private log message';
+    const res = await postLog(
+      'device-abc',
+      JSON.stringify({
+        deviceLabel: 'Pixel 8',
+        entries: [
+          { seq: -1, ts: 1720000000000, source: 'js', level: 'log', message: secret },
+          { seq: 2, ts: 1720000000001, source: '', level: 'log', message: secret },
+        ],
+      }),
+    );
+
+    expect(res.status).toBe(204);
+    expect(onLogBatch).not.toHaveBeenCalled();
+    expect(onLogValidationSummary).toHaveBeenCalledOnce();
+    expect(onLogValidationSummary).toHaveBeenCalledWith({
+      outcome: 'accepted',
+      totalEntries: 2,
+      acceptedEntries: 0,
+      invalidEntries: 2,
+      duplicateEntries: 0,
+    });
+    expect(JSON.stringify(onLogValidationSummary.mock.calls[0]?.[0])).not.toContain(secret);
+  });
+
   it('rejects a body over the named size limit with 413', async () => {
     const res = await postLog('device-abc', 'x'.repeat(LOG_BODY_LIMIT_BYTES + 1));
 
     expect(res.status).toBe(413);
     expect(onLogBatch).not.toHaveBeenCalled();
+    expect(onLogValidationSummary).toHaveBeenCalledOnce();
+    expect(onLogValidationSummary).toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: 'body-too-large' }),
+    );
   });
 });

@@ -13,8 +13,8 @@ import {
   devServerContract,
   type LogBatch,
   type LogEntry,
-  type LogLevel,
-  type LogSource,
+  validateLogBatch,
+  validateLogEntry,
 } from '@torimi/wire-contract';
 
 export { createDeviceLogSink, type DeviceLogSinkOptions } from './device-log-sink.js';
@@ -94,6 +94,28 @@ export interface BundleDevServerOptions {
    * （ADR-0005）。
    */
   readonly onLogBatch?: (deviceId: string, batch: LogBatch) => void;
+  /** Count-only wire validation observation, emitted exactly once for each Device Log request. */
+  readonly onLogValidationSummary?: (summary: DeviceLogValidationSummary) => void;
+}
+
+export interface DeviceLogValidationSummary {
+  readonly outcome: 'accepted' | 'invalid-json' | 'invalid-envelope' | 'body-too-large';
+  readonly totalEntries: number;
+  readonly acceptedEntries: number;
+  readonly invalidEntries: number;
+  readonly duplicateEntries: number;
+}
+
+function emptyValidationSummary(
+  outcome: Exclude<DeviceLogValidationSummary['outcome'], 'accepted'>,
+): DeviceLogValidationSummary {
+  return {
+    outcome,
+    totalEntries: 0,
+    acceptedEntries: 0,
+    invalidEntries: 0,
+    duplicateEntries: 0,
+  };
 }
 
 export interface BundleDevServer {
@@ -101,26 +123,6 @@ export interface BundleDevServer {
   listen(): Promise<string>;
   /** listen を解除する。 */
   close(): Promise<void>;
-}
-
-/**
- * wire から来た 1 エントリを、既知フィールドだけの綺麗な {@link LogEntry} に写す。
- * 未知フィールドは黙って無視、既知フィールドの欠落・型不一致はエントリ単位で
- * スキップ（undefined を返す）— additive-only 互換（ADR-0005）。
- */
-function toCleanLogEntry(raw: unknown): LogEntry | undefined {
-  if (typeof raw !== 'object' || raw == null) return undefined;
-  const { seq, ts, source, level, message } = raw as Record<string, unknown>;
-  if (
-    typeof seq !== 'number' ||
-    typeof ts !== 'number' ||
-    typeof source !== 'string' ||
-    typeof level !== 'string' ||
-    typeof message !== 'string'
-  ) {
-    return undefined;
-  }
-  return { seq, ts, source: source as LogSource, level: level as LogLevel, message };
 }
 
 /** 既定 bind ホスト。loopback に固定し、dev server を外部公開しない。 */
@@ -153,7 +155,13 @@ class NodeBundleDevServer implements BundleDevServer {
       res.setHeader('access-control-allow-origin', ACCESS_CONTROL_ALLOW_ORIGIN);
       if (req.method === 'POST' && req.url?.startsWith(devServerContract.logRoutePrefix)) {
         const deviceId = req.url.slice(devServerContract.logRoutePrefix.length);
-        this.#handleLogPost(req, res, deviceId, options.onLogBatch);
+        this.#handleLogPost(
+          req,
+          res,
+          deviceId,
+          options.onLogBatch,
+          options.onLogValidationSummary,
+        );
         return;
       }
       if (req.url === devServerContract.bundleRoute) {
@@ -186,6 +194,7 @@ class NodeBundleDevServer implements BundleDevServer {
     res: ServerResponse,
     deviceId: string,
     onLogBatch: ((deviceId: string, batch: LogBatch) => void) | undefined,
+    onLogValidationSummary: ((summary: DeviceLogValidationSummary) => void) | undefined,
   ): void {
     const chunks: Buffer[] = [];
     let received = 0;
@@ -199,36 +208,77 @@ class NodeBundleDevServer implements BundleDevServer {
       chunks.push(chunk);
     });
     req.on('end', () => {
-      if (received > LOG_BODY_LIMIT_BYTES) {
-        res.statusCode = 413;
+      const finish = (statusCode: number, summary: DeviceLogValidationSummary): void => {
+        // Observability must never change acknowledgement behavior. The summary deliberately
+        // carries counts/categories only: no device id, entry field value, or log message.
+        try {
+          onLogValidationSummary?.(summary);
+        } catch {
+          // A diagnostic observer is not part of the Device Log delivery transaction.
+        }
+        res.statusCode = statusCode;
         res.end();
+      };
+      if (received > LOG_BODY_LIMIT_BYTES) {
+        finish(413, emptyValidationSummary('body-too-large'));
         return;
       }
       let parsed: unknown;
       try {
         parsed = JSON.parse(Buffer.concat(chunks).toString('utf8'));
       } catch {
-        res.statusCode = 400;
-        res.end();
+        finish(400, emptyValidationSummary('invalid-json'));
         return;
       }
-      const body = parsed as { deviceLabel?: unknown; entries?: unknown };
-      if (typeof body !== 'object' || body == null || !Array.isArray(body.entries)) {
-        res.statusCode = 400;
-        res.end();
+      if (typeof parsed !== 'object' || parsed == null || Array.isArray(parsed)) {
+        finish(400, emptyValidationSummary('invalid-envelope'));
         return;
       }
+      const body = parsed as Record<string, unknown>;
+      if (!Array.isArray(body.entries)) {
+        finish(400, emptyValidationSummary('invalid-envelope'));
+        return;
+      }
+      // Validate the generated LogBatch envelope independently from its entries so one malformed
+      // entry cannot turn the whole additive-only batch into HTTP 400.
+      const envelope = validateLogBatch({ ...body, entries: [] });
+      if (!envelope.ok) {
+        finish(400, emptyValidationSummary('invalid-envelope'));
+        return;
+      }
+
       const lastSeq = this.#lastAcceptedSeq.get(deviceId) ?? -Infinity;
-      const entries = (body.entries as unknown[])
-        .flatMap((raw) => toCleanLogEntry(raw) ?? [])
-        .filter((entry) => entry.seq > lastSeq);
+      const seenSeqs = new Set<number>();
+      const entries: LogEntry[] = [];
+      let invalidEntries = 0;
+      let duplicateEntries = 0;
+      for (const raw of body.entries) {
+        const validated = validateLogEntry(raw);
+        if (!validated.ok) {
+          invalidEntries += 1;
+          continue;
+        }
+        const { seq, ts, source, level, message } = validated.value;
+        if (seq <= lastSeq || seenSeqs.has(seq)) {
+          duplicateEntries += 1;
+          continue;
+        }
+        seenSeqs.add(seq);
+        // Strip unknown fields at the sink boundary while retaining unknown non-empty values from
+        // the generated open LogLevel/LogSource vocabularies.
+        entries.push({ seq, ts, source, level, message });
+      }
       if (entries.length > 0) {
         this.#lastAcceptedSeq.set(deviceId, Math.max(...entries.map((entry) => entry.seq)));
-        const deviceLabel = typeof body.deviceLabel === 'string' ? body.deviceLabel : '';
-        onLogBatch?.(deviceId, { deviceLabel, entries });
+        onLogBatch?.(deviceId, { deviceLabel: envelope.value.deviceLabel, entries });
       }
-      res.statusCode = 204;
-      res.end();
+      finish(204, {
+        outcome: 'accepted',
+        totalEntries: body.entries.length,
+        acceptedEntries: entries.length,
+        invalidEntries,
+        duplicateEntries,
+      });
     });
   }
 

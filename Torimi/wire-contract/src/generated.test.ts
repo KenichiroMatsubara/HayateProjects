@@ -65,4 +65,21 @@ describe('human-reviewed fixture parity', () => {
       }
     }
   });
+
+  it('keeps producer buffering and retry policy outside the wire contract', async () => {
+    const [vocabulary, schema] = await Promise.all([
+      readFile(new URL('../spec/vocabulary.json', import.meta.url), 'utf8'),
+      readFile(new URL('../spec/wire.schema.json', import.meta.url), 'utf8'),
+    ]);
+    const contract = `${vocabulary}\n${schema}`;
+    for (const localPolicy of [
+      'RING_BUFFER_CAPACITY',
+      'FLUSH_INTERVAL_MS',
+      'retryPolicy',
+      'bufferCapacity',
+      'flushInterval',
+    ]) {
+      expect(contract).not.toContain(localPolicy);
+    }
+  });
 });
