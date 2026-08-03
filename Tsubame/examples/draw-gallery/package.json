@@ -14,9 +14,8 @@
   "dependencies": {
     "@torimi/hayate-host": "workspace:*",
     "@torimi/tsubame-app": "workspace:*",
+    "@torimi/tsubame-browser-host": "workspace:*",
     "@torimi/tsubame-protocol-generated": "workspace:*",
-    "@torimi/tsubame-renderer-dom": "workspace:*",
-    "@torimi/tsubame-renderer-hayate": "workspace:*",
     "@torimi/tsubame-renderer-protocol": "workspace:*",
     "@torimi/tsubame-solid": "workspace:*",
     "solid-js": "^1.9.14"

@@ -9,6 +9,3 @@ export type {
   HostSession,
   TsubameMount,
 } from './host.js';
-
-// web 専用の DOM 退避判定。Canvas backend の語彙・選択順・query 解釈は Hayate Host が持つ。
-export { shouldUseDomRenderer } from './web-target.js';

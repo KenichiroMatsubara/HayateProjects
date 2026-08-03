@@ -23,11 +23,12 @@
     "@torimi/bundle": "workspace:*",
     "@torimi/host-web": "workspace:*",
     "@torimi/tsubame-app": "workspace:*",
+    "@torimi/tsubame-browser-host": "workspace:*",
     "@torimi/tsubame-protocol-generated": "workspace:*",
-    "@torimi/tsubame-renderer-dom": "workspace:*",
     "@torimi/tsubame-renderer-hayate": "workspace:*",
     "@torimi/tsubame-renderer-protocol": "workspace:*",
     "@torimi/tsubame-solid": "workspace:*",
+    "@torimi/wire-contract": "workspace:*",
     "solid-js": "^1.9.14"
   },
   "devDependencies": {

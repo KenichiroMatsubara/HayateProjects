@@ -270,15 +270,12 @@ importers:
       '@torimi/tsubame-app':
         specifier: workspace:*
         version: link:../../packages/app
+      '@torimi/tsubame-browser-host':
+        specifier: workspace:*
+        version: link:../../packages/browser-host
       '@torimi/tsubame-protocol-generated':
         specifier: workspace:*
         version: link:../../proto
-      '@torimi/tsubame-renderer-dom':
-        specifier: workspace:*
-        version: link:../../packages/renderer-dom
-      '@torimi/tsubame-renderer-hayate':
-        specifier: workspace:*
-        version: link:../../packages/renderer-hayate
       '@torimi/tsubame-renderer-protocol':
         specifier: workspace:*
         version: link:../../packages/renderer-protocol
@@ -316,21 +313,24 @@ importers:
       '@torimi/tsubame-app':
         specifier: workspace:*
         version: link:../../packages/app
+      '@torimi/tsubame-browser-host':
+        specifier: workspace:*
+        version: link:../../packages/browser-host
       '@torimi/tsubame-protocol-generated':
         specifier: workspace:*
         version: link:../../proto
       '@torimi/tsubame-react':
         specifier: workspace:*
         version: link:../../packages/react
-      '@torimi/tsubame-renderer-dom':
-        specifier: workspace:*
-        version: link:../../packages/renderer-dom
       '@torimi/tsubame-renderer-hayate':
         specifier: workspace:*
         version: link:../../packages/renderer-hayate
       '@torimi/tsubame-renderer-protocol':
         specifier: workspace:*
         version: link:../../packages/renderer-protocol
+      '@torimi/wire-contract':
+        specifier: workspace:*
+        version: link:../../../Torimi/wire-contract
       react:
         specifier: ^19.2.8
         version: 19.2.8
@@ -371,12 +371,12 @@ importers:
       '@torimi/tsubame-app':
         specifier: workspace:*
         version: link:../../packages/app
+      '@torimi/tsubame-browser-host':
+        specifier: workspace:*
+        version: link:../../packages/browser-host
       '@torimi/tsubame-protocol-generated':
         specifier: workspace:*
         version: link:../../proto
-      '@torimi/tsubame-renderer-dom':
-        specifier: workspace:*
-        version: link:../../packages/renderer-dom
       '@torimi/tsubame-renderer-hayate':
         specifier: workspace:*
         version: link:../../packages/renderer-hayate
@@ -386,6 +386,9 @@ importers:
       '@torimi/tsubame-solid':
         specifier: workspace:*
         version: link:../../packages/solid
+      '@torimi/wire-contract':
+        specifier: workspace:*
+        version: link:../../../Torimi/wire-contract
       solid-js:
         specifier: ^1.9.14
         version: 1.9.14
@@ -418,6 +421,37 @@ importers:
       '@types/node':
         specifier: ^26.1.1
         version: 26.1.1
+      rimraf:
+        specifier: ^6.1.3
+        version: 6.1.3
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@types/node@26.1.1)(happy-dom@20.11.0)(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(yaml@2.9.0))
+
+  Tsubame/packages/browser-host:
+    dependencies:
+      '@torimi/hayate-host':
+        specifier: workspace:*
+        version: link:../../../Hayate/host
+      '@torimi/tsubame-app':
+        specifier: workspace:*
+        version: link:../app
+      '@torimi/tsubame-renderer-dom':
+        specifier: workspace:*
+        version: link:../renderer-dom
+      '@torimi/tsubame-renderer-hayate':
+        specifier: workspace:*
+        version: link:../renderer-hayate
+      '@torimi/tsubame-renderer-protocol':
+        specifier: workspace:*
+        version: link:../renderer-protocol
+    devDependencies:
+      '@types/node':
+        specifier: ^26.1.1
+        version: 26.1.1
+      happy-dom:
+        specifier: ^20.11.0
+        version: 20.11.0
       rimraf:
         specifier: ^6.1.3
         version: 6.1.3

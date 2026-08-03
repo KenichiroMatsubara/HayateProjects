@@ -1,7 +1,7 @@
 {
-  "name": "@torimi/tsubame-app",
+  "name": "@torimi/tsubame-browser-host",
   "version": "0.1.0",
-  "description": "Tsubame 合成ルート — Host port と framework mount を合成し、browser・具体 renderer・Hayate runtime を知らない（ADR-0012）。",
+  "description": "Tsubame browser App host — DOM/Hayate target selection and browser resource lifetime",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
@@ -32,10 +32,15 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
+    "@torimi/hayate-host": "workspace:*",
+    "@torimi/tsubame-app": "workspace:*",
+    "@torimi/tsubame-renderer-dom": "workspace:*",
+    "@torimi/tsubame-renderer-hayate": "workspace:*",
     "@torimi/tsubame-renderer-protocol": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^26.1.1",
+    "happy-dom": "^20.11.0",
     "rimraf": "^6.1.3",
     "vitest": "^4.1.10"
   }
