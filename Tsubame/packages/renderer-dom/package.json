@@ -1,6 +1,6 @@
 {
   "name": "@torimi/tsubame-renderer-dom",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Tsubame DOM Renderer — Hayate 不使用・純 JS の IRenderer 実装（CSR）",
   "license": "Apache-2.0",
   "repository": {
