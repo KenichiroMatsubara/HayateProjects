@@ -132,7 +132,7 @@ class DevServerSetupActivity : AppCompatActivity() {
 
     /**
      * `<Demo Endpoint>/demos.json` を GET してパースし、(表示名, 解決済みバンドル URL) の並びを返す。
-     * wire フィールドは `name` / `bundleUrl`（TS `@torimi/dev-server-contract` の値複製）。origin 相対
+     * wire フィールドは `name` / `bundleUrl`（TS `@torimi/wire-contract` の値複製）。origin 相対
      * URL は Demo Endpoint origin に載せてフル URL 化する（ネイティブの Direct boot がそのまま fetch する）。
      * **UI スレッドから呼んではならない**（ネットワークは OS スタック＝別スレッド・ADR-0002）。
      */

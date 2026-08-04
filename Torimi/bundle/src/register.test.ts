@@ -1,4 +1,9 @@
-import { TORIMI_PROTOCOL_VERSION_GLOBAL } from '@torimi/protocol-handshake';
+import {
+  HAYATE_HOST_GLOBAL,
+  TORIMI_MOUNT_GLOBAL,
+  TORIMI_PROTOCOL_VERSION_GLOBAL,
+  TSUBAME_GLOBAL,
+} from '@torimi/wire-contract';
 import { PROTOCOL_VERSION } from '@torimi/tsubame-renderer-hayate';
 import { afterEach, describe, expect, it } from 'vitest';
 import { registerTorimiApp } from './register.js';
@@ -13,9 +18,9 @@ const g = globalThis as Record<string, unknown>;
 
 afterEach(() => {
   delete g[TORIMI_PROTOCOL_VERSION_GLOBAL];
-  delete g.__torimiMount;
-  delete g.__hayateHost;
-  delete g.__tsubame;
+  delete g[TORIMI_MOUNT_GLOBAL];
+  delete g[HAYATE_HOST_GLOBAL];
+  delete g[TSUBAME_GLOBAL];
 });
 
 describe('registerTorimiApp — protocol version burn-in', () => {
@@ -34,7 +39,7 @@ describe('registerTorimiApp — Web Host target (`__hayateHost` 不在)', () => 
     });
 
     // 登録だけでは mount しない — mount はホストが bootstrap を渡した時に起きる。
-    const torimiMount = g.__torimiMount as ((host: unknown) => void) | undefined;
+    const torimiMount = g[TORIMI_MOUNT_GLOBAL] as ((host: unknown) => void) | undefined;
     expect(typeof torimiMount).toBe('function');
     expect(mountedWith).toHaveLength(0);
 
@@ -72,7 +77,7 @@ describe('registerTorimiApp — Native Host target (`__hayateHost` 注入済み)
   }
 
   it('mounts immediately with the injected raw and exposes __tsubame (pumpFrame / stop)', () => {
-    g.__hayateHost = fakeRawHayate();
+    g[HAYATE_HOST_GLOBAL] = fakeRawHayate();
 
     let disposed = false;
     registerTorimiApp(() => () => {
@@ -80,7 +85,7 @@ describe('registerTorimiApp — Native Host target (`__hayateHost` 注入済み)
     });
 
     // native ホストは eval 後に `__tsubame` を読む（ADR-0112 の wire シーム）。
-    const tsubame = g.__tsubame as { pumpFrame?: unknown; stop?: unknown } | undefined;
+    const tsubame = g[TSUBAME_GLOBAL] as { pumpFrame?: unknown; stop?: unknown } | undefined;
     expect(typeof tsubame?.pumpFrame).toBe('function');
     expect(typeof tsubame?.stop).toBe('function');
 
@@ -90,11 +95,11 @@ describe('registerTorimiApp — Native Host target (`__hayateHost` 注入済み)
   });
 
   it('does not register the web mount seam when targeting the native host', () => {
-    g.__hayateHost = fakeRawHayate();
+    g[HAYATE_HOST_GLOBAL] = fakeRawHayate();
 
     registerTorimiApp(() => undefined);
 
     // ターゲット差は内部分岐 — native では web の受け渡しシームを立てない（排他）。
-    expect(g.__torimiMount).toBeUndefined();
+    expect(g[TORIMI_MOUNT_GLOBAL]).toBeUndefined();
   });
 });

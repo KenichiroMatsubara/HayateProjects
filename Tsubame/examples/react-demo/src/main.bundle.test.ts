@@ -1,4 +1,4 @@
-import { TORIMI_MOUNT_GLOBAL } from '@torimi/host-web';
+import { TORIMI_MOUNT_GLOBAL } from '@torimi/wire-contract';
 import { PROTOCOL_VERSION } from '@torimi/tsubame-renderer-hayate';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 

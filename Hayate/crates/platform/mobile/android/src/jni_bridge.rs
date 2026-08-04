@@ -10,6 +10,9 @@
 use jni::objects::JObject;
 use jni::{JNIEnv, JavaVM};
 
+const ANDROID_ACCESSIBILITY_BRIDGE: &str =
+    "com/hayateprojects/hayate/adapter_android_demo/AndroidAccessibilityBridge";
+
 /// Kotlin（`MainActivity.nativePushSafeAreaInsets`）→ Rust の JNI エクスポート（edge-to-edge /
 /// b2, issue #794・ADR-0144）。WindowInsets（systemBars + displayCutout、物理px）を受け取り、
 /// フレームループ（`app.rs`）が読むグローバル（`safe_area`）へ格納する。JNI 封じ込め方針
@@ -68,6 +71,80 @@ pub extern "system" fn Java_com_hayateprojects_hayate_adapter_1android_1demo_Mai
     crate::renderer_config::store_pushed_renderer(&renderer);
     let skia_surface = jstring_to_owned(&mut env, &skia_surface);
     crate::renderer_config::store_pushed_skia_surface(&skia_surface);
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_hayateprojects_hayate_adapter_1android_1demo_MainActivity_nativeAccessibilityActivate(
+    _env: JNIEnv<'_>,
+    _class: JClass<'_>,
+) {
+    crate::android_accessibility::activate_callback();
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_hayateprojects_hayate_adapter_1android_1demo_MainActivity_nativeAccessibilityDeactivate(
+    _env: JNIEnv<'_>,
+    _class: JClass<'_>,
+) {
+    crate::android_accessibility::deactivate_callback();
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_hayateprojects_hayate_adapter_1android_1demo_MainActivity_nativeAccessibilityAction<
+    'local,
+>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    action: JString<'local>,
+    node_id: jni::sys::jlong,
+    value: JString<'local>,
+) {
+    let action = jstring_to_owned(&mut env, &action);
+    let value = jstring_to_owned(&mut env, &value);
+    if let Some(request) =
+        crate::android_accessibility::action_request(&action, node_id as u64, Some(value))
+    {
+        crate::android_accessibility::action_callback(request);
+    }
+}
+
+pub(crate) fn android_accessibility_mount() -> Result<(), String> {
+    with_activity_env(|env, activity| {
+        let class = app_class(env, activity, ANDROID_ACCESSIBILITY_BRIDGE)?;
+        let mounted = env
+            .call_static_method(&class, "mount", "()Z", &[])
+            .and_then(|value| value.z())
+            .map_err(|error| describe_java_error(env, error))?;
+        mounted
+            .then_some(())
+            .ok_or_else(|| "AccessibilityNodeProvider mount returned false".to_owned())
+    })
+}
+
+pub(crate) fn android_accessibility_update(snapshot_json: &str) -> Result<bool, String> {
+    with_activity_env(|env, activity| {
+        let class = app_class(env, activity, ANDROID_ACCESSIBILITY_BRIDGE)?;
+        let snapshot = env
+            .new_string(snapshot_json)
+            .map_err(|error| describe_java_error(env, error))?;
+        env.call_static_method(
+            &class,
+            "update",
+            "(Ljava/lang/String;)Z",
+            &[(&snapshot).into()],
+        )
+        .and_then(|value| value.z())
+        .map_err(|error| describe_java_error(env, error))
+    })
+}
+
+pub(crate) fn android_accessibility_unmount() -> Result<(), String> {
+    with_activity_env(|env, activity| {
+        let class = app_class(env, activity, ANDROID_ACCESSIBILITY_BRIDGE)?;
+        env.call_static_method(&class, "unmount", "()V", &[])
+            .map(|_| ())
+            .map_err(|error| describe_java_error(env, error))
+    })
 }
 
 /// `JString` を Rust の `String` に写す。null / 変換失敗は空文字（未指定扱い → 既定へ）。

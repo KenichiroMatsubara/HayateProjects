@@ -18,17 +18,16 @@ use std::time::Duration;
 
 use crate::bundle_source::BundleFetchError;
 use crate::dev_server_target::{DevServerTarget, Scheme};
+use crate::generated::torimi_wire::{RELOAD_MESSAGE, RELOAD_ROUTE};
 use crate::protocol_handshake::{check_protocol_version, ProtocolMismatch};
 
 /// dev-server がホストに full reload を促す WS メッセージ本文。`@torimi/dev-server` の
 /// `RELOAD_MESSAGE` / Web ホストの `RELOAD_MESSAGE` と一致させる wire 契約（値で複製する）。
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
-pub const RELOAD_MESSAGE: &str = "reload";
 
 /// dev-server が reload シグナルを流す WS ルート。`@torimi/dev-server` の `RELOAD_ROUTE` /
 /// Web ホストの `DEFAULT_RELOAD_ROUTE` と一致させる wire 契約（値で複製する）。
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
-pub const RELOAD_ROUTE: &str = "/reload";
 
 /// WS 切断後に再接続するまでの待ち時間。dev-server 再起動・瞬断の後に繋ぎ直す。
 /// **プレースホルダ値**（実値調整は #8, ADR-0001。Web ホストの `WS_RECONNECT_BACKOFF_MS = 1_000`

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { devServerContract } from '@torimi/dev-server-contract';
+import { devServerContract } from '@torimi/wire-contract';
 import { subscribeReload, type ReloadSocket } from './index.js';
 
 /**

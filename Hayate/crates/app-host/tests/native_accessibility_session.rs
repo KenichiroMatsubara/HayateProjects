@@ -5,7 +5,8 @@ use std::sync::{Arc, Mutex};
 use accesskit::{Action, ActionRequest, Affine, TreeId, TreeUpdate};
 use hayate_app_host::{
     AppHost, DeliverySink, HeadlessPresentTarget, NativeAccessibilityDelivery,
-    NativeAccessibilityMountFailure, NativeAccessibilityState, NativeAccessibilityTarget,
+    NativeAccessibilityMountFailure, NativeAccessibilitySession, NativeAccessibilityState,
+    NativeAccessibilityTarget,
 };
 use hayate_core::{DocumentEventKind, ElementKind, ElementTree, EventDelivery};
 
@@ -443,4 +444,40 @@ fn replacing_the_target_discards_the_old_baseline() {
     assert_eq!(replacement_updates.len(), 1);
     assert!(replacement_updates[0].tree.is_some());
     assert!(!replacement_updates[0].nodes.is_empty());
+}
+
+#[test]
+fn replacing_a_tree_on_the_same_surface_requests_a_new_full_baseline() {
+    let updates = Arc::new(Mutex::new(Vec::new()));
+    let (mut session, callbacks) = NativeAccessibilitySession::new(
+        Box::new(RecordingTarget {
+            updates: updates.clone(),
+        }),
+        1.0,
+        Arc::new(|| {}),
+    );
+    let mut first_tree = ElementTree::new();
+    let first_root = first_tree.element_create(1, ElementKind::View);
+    first_tree.element_set_aria_label(first_root, "first");
+    first_tree.set_root(first_root);
+    callbacks.activate();
+    session.drain_before_frame(&mut first_tree);
+    first_tree.commit_rendered_frame(0.0);
+    session.update_after_present(&first_tree);
+
+    let mut replacement_tree = ElementTree::new();
+    let replacement_root = replacement_tree.element_create(2, ElementKind::View);
+    replacement_tree.element_set_aria_label(replacement_root, "replacement");
+    replacement_tree.set_root(replacement_root);
+    session.reset_for_tree_replacement();
+    replacement_tree.commit_rendered_frame(16.0);
+    session.update_after_present(&replacement_tree);
+
+    let updates = updates.lock().unwrap();
+    assert_eq!(updates.len(), 2);
+    assert!(updates[1].tree.is_some());
+    assert!(updates[1]
+        .nodes
+        .iter()
+        .any(|(_, node)| node.label() == Some("replacement")));
 }

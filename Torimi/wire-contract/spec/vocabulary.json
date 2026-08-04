@@ -1,0 +1,33 @@
+{
+  "$schema": "./vocabulary.schema.json",
+  "routes": {
+    "bundle": "/bundle.js",
+    "demoManifest": "/demos.json",
+    "logRoutePrefix": "/log/",
+    "reload": "/reload"
+  },
+  "messages": {
+    "reload": "reload"
+  },
+  "globals": {
+    "hayateHost": "__hayateHost",
+    "hayateLog": "__hayateLog",
+    "torimiMount": "__torimiMount",
+    "torimiProtocolVersion": "__torimiProtocolVersion",
+    "tsubame": "__tsubame"
+  },
+  "vocabularies": {
+    "logLevel": {
+      "compatibility": "open",
+      "values": ["debug", "error", "info", "log", "warn"]
+    },
+    "logSource": {
+      "compatibility": "open",
+      "values": ["host", "js"]
+    },
+    "reloadMessage": {
+      "compatibility": "closed",
+      "values": ["reload"]
+    }
+  }
+}

@@ -1,6 +1,6 @@
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import type { LogBatch, LogEntry } from '@torimi/dev-server-contract';
+import type { LogBatch, LogEntry } from '@torimi/wire-contract';
 
 export interface DeviceLogSinkOptions {
   /**

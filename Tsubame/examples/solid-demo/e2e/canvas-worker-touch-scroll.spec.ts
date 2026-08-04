@@ -39,11 +39,11 @@ async function pipelineObservation(page: Page): Promise<PipelineObservation> {
   return page.evaluate(async () => {
     const host = (
       window as unknown as {
-        __hayateHost?: {
+        __tsubameBrowserHostInspection?: {
           pipelineObservation(): Promise<PipelineObservation>;
         };
       }
-    ).__hayateHost;
+    ).__tsubameBrowserHostInspection;
     if (!host) throw new Error('standard Canvas Worker host is not mounted');
     return host.pipelineObservation();
   });

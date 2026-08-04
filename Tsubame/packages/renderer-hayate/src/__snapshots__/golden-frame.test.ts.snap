@@ -3,12 +3,12 @@
 exports[`golden frame cross-seam harness (ADR-0079) > mounts a focused, typed text-input and captures a tree/style/layout/a11y golden frame 1`] = `
 {
   "accessibility": {
-    "focus": 2,
+    "focus": 131072,
     "nodes": [
       [
-        2,
+        131072,
         {
-          "actions": 0,
+          "actions": 1048578,
           "childActions": 0,
           "flags": 0,
           "properties": {
@@ -24,7 +24,7 @@ exports[`golden frame cross-seam harness (ADR-0079) > mounts a focused, typed te
         },
       ],
       [
-        1,
+        65536,
         {
           "actions": 0,
           "childActions": 0,
@@ -37,7 +37,7 @@ exports[`golden frame cross-seam harness (ADR-0079) > mounts a focused, typed te
               "y1": 240,
             },
             "children": [
-              2,
+              131072,
             ],
           },
           "role": "window",
@@ -45,7 +45,7 @@ exports[`golden frame cross-seam harness (ADR-0079) > mounts a focused, typed te
       ],
     ],
     "tree": {
-      "root": 1,
+      "root": 65536,
       "toolkitName": null,
       "toolkitVersion": null,
     },

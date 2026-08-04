@@ -18,6 +18,7 @@
 // 直接 include しないのは、相対パスと crate コピーパスで二重に取り込まれて
 // #pragma once が効かず多重定義になるのを避けるため（ADR-0112）。
 #include "hayate-adapter-android/src/hermes_bridge.rs.h"
+#include "generated/torimi_wire.hpp"
 
 #include <jsi/jsi.h>
 #include <hermes/hermes.h>
@@ -29,6 +30,7 @@
 #include <exception>
 #include <memory>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -338,16 +340,16 @@ HermesApp::HermesApp(rust::Box<JsHostBridge> host, rust::Str bundle)
   impl_->log_bridge = log_bridge;  // pumpFrame の JS 例外を Device Log へ流すため保持（#789）。
   auto host_obj = std::make_shared<HayateHostObject>(
       std::move(host), impl_->redraw_slot, impl_->pump_flag);
-  rt.global().setProperty(rt, "__hayateHost",
+  rt.global().setProperty(rt, torimi::wire::kHayateHostGlobal.data(),
                           jsi::Object::createFromHostObject(rt, host_obj));
 
   // console.log 等が呼ぶ __hayateLog を **logcat と Device Log の両方** へ橋渡しする（#787）。
   // 従来の logcat 出力はそのまま残し（置き換えない・併存）、加えて Device Log シームへ積んで
   // USB なしで dev-server へ届ける。バッファ・seq 採番・フラッシュは Rust の純粋シームが所有する。
   rt.global().setProperty(
-      rt, "__hayateLog",
+      rt, torimi::wire::kHayateLogGlobal.data(),
       jsi::Function::createFromHostFunction(
-          rt, jsi::PropNameID::forAscii(rt, "__hayateLog"), 2,
+          rt, jsi::PropNameID::forAscii(rt, torimi::wire::kHayateLogGlobal.data()), 2,
           [log_bridge](jsi::Runtime& rt, const jsi::Value&, const jsi::Value* args,
              size_t count) -> jsi::Value {
             std::string level = count > 0 ? args[0].toString(rt).utf8(rt) : "log";
@@ -389,6 +391,19 @@ HermesApp::HermesApp(rust::Box<JsHostBridge> host, rust::Str bundle)
       std::string src(bundle);
       rt.evaluateJavaScript(
           std::make_unique<jsi::StringBuffer>(std::move(src)), "tsubame.js");
+      jsi::Value tsubame_value =
+          rt.global().getProperty(rt, torimi::wire::kTsubameGlobal.data());
+      if (!tsubame_value.isObject()) {
+        throw std::runtime_error("bundle did not expose the __tsubame object");
+      }
+      jsi::Object tsubame = tsubame_value.getObject(rt);
+      for (const char* function_name : {"pumpFrame", "stop"}) {
+        jsi::Value function = tsubame.getProperty(rt, function_name);
+        if (!function.isObject() || !function.getObject(rt).isFunction(rt)) {
+          throw std::runtime_error(std::string("bundle __tsubame.") + function_name +
+                                   " is not a function");
+        }
+      }
       impl_->ready = true;
     } catch (const jsi::JSError& e) {
       HAYATE_LOGE("Tsubame バンドルの eval で JS 例外: %s\nJS stack:\n%s",
@@ -424,7 +439,8 @@ void HermesApp::pump_frame(double timestamp_ms) {
       if (auto* hermesRt = dynamic_cast<facebook::hermes::HermesRuntime*>(&rt)) {
         hermesRt->drainMicrotasks();
       }
-      jsi::Object tsubame = rt.global().getPropertyAsObject(rt, "__tsubame");
+      jsi::Object tsubame = rt.global().getPropertyAsObject(
+          rt, torimi::wire::kTsubameGlobal.data());
       jsi::Function pump = tsubame.getPropertyAsFunction(rt, "pumpFrame");
       pump.callWithThis(rt, tsubame, {jsi::Value(timestamp_ms)});
       // Hermes のマイクロタスク（Solid のスケジューラ）を排出する。
@@ -497,7 +513,8 @@ double HermesApp::protocol_version() const {
   if (!impl_->ready) return -1.0;
   jsi::Runtime& rt = *impl_->runtime;
   try {
-    jsi::Value value = rt.global().getProperty(rt, "__torimiProtocolVersion");
+    jsi::Value value = rt.global().getProperty(
+        rt, torimi::wire::kTorimiProtocolVersionGlobal.data());
     if (!value.isNumber()) return -1.0;
     double v = value.asNumber();
     // 非有限（NaN/Inf）は壊れた埋め込み → 未埋め込み扱い。

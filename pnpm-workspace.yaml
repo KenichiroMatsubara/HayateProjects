@@ -15,10 +15,10 @@ packages:
   - 'Torimi/create-torimi'
   - 'Torimi/demo-endpoint'
   - 'Torimi/dev-server'
-  - 'Torimi/dev-server-contract'
   - 'Torimi/host-web'
   - 'Torimi/integration'
   - 'Torimi/protocol-handshake'
+  - 'Torimi/wire-contract'
   - 'fonts'
 
 # tsup 8.5.1 / rollup-plugin-dts は TypeScript 7 の compiler API と未互換。

@@ -23,6 +23,11 @@ pub mod qr_scanner;
 // wave-1 capability scaffold stub（ADR-0119）。Family Adapter が cfg(target_os) でリンクし
 // `MobileXxx` facade として露出するため pub。純粋 stub なのでホストでもコンパイル/テストされる。
 pub mod capability_stubs;
+/// Torimi の言語中立 wire contract から生成した Rust projection（ADR-0006）。
+/// platform adapter はこの artifact を消費し、Torimi package への Cargo 依存を持たない。
+pub mod generated {
+    pub mod torimi_wire;
+}
 // Torimi Android ホストのバンドル源（#532）。dev-server からの HTTP fetch + marshalling。
 // プラットフォーム非依存（素の TCP / std）なのでホストでもコンパイル・テストされる。
 #[cfg(feature = "tsubame-js")]
@@ -57,6 +62,10 @@ mod scene_demo;
 // Android 非依存の純粋部分としてホストでテストし、NDK FFI はこの module に封じ込める。
 mod frame_schedule;
 mod surface_lifecycle;
+// Android GameActivity/View の Native Accessibility leaf（ADR-0158 / #919）。AccessKit update の
+// Android virtual-view snapshot への射影は host test 可能に保ち、JNI 配信だけを device に限定する。
+#[cfg(any(target_os = "android", test))]
+mod android_accessibility;
 // 安全領域インセット（edge-to-edge / b2, issue #794・ADR-0144）。Kotlin から JNI で push された
 // WindowInsets（systemBars + displayCutout）の格納庫＋純粋計算（レイアウトビューポート縮小・
 // シーン平行移動原点・タッチ座標補正）。android 非依存なのでホストでコンパイル・テストされ、

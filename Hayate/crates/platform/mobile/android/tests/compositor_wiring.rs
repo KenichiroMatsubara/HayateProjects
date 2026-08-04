@@ -162,8 +162,13 @@ fn surface_teardown_stops_the_raster_thread() {
         ("app_tsubame.rs", "src/app_tsubame.rs"),
     ] {
         let s = read_relative(path);
+        let destroy = s
+            .split("SurfaceLifecycleAction::DestroySurface =>")
+            .nth(1)
+            .and_then(|tail| tail.split("SurfaceLifecycleAction::ResizeSurface").next())
+            .unwrap_or_default();
         assert!(
-            s.contains("DestroySurface => raster = None"),
+            destroy.contains("raster = None"),
             "{name} must stop the Raster thread on surface teardown (#635)"
         );
     }

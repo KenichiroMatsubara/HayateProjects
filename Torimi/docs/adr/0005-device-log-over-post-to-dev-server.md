@@ -20,7 +20,7 @@ Torimi の売りは「バンドルをネットワークで流し込むだけ」�
   dev-server の WS は意図的に「書くだけ」の最小実装で、上りを読むにはクライアント frame のマスク解除・分割処理を
   Node 側に手書き追加することになり、reload 用の 20 行がプロトコル実装に育つ。POST はバッチと自然に噛み合い、
   既存 `createServer` に 1 ルート足すだけで済む。契約（ルート・`LogBatch`/`LogEntry` 型）は
-  `@torimi/dev-server-contract` に両側対等 import で置く。
+  `@torimi/wire-contract` に両側対等 import で置く。
 - **Device ID はホスト発行・インストール単位のランダム不透明 ID**（ハードウェア由来 ID でもサーバ割当でもない）。
   表示用の Device Label（端末モデル名）はペイロードが毎回運び、ID に意味を焼き込まない。
 - **送信ポリシー**：送るのは bundle 取得元が Dev Server のときだけ（**Demo Endpoint には決して送らない** —

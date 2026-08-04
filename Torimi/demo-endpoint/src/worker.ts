@@ -3,7 +3,7 @@
  * Demo Manifest を常時 HTTPS 配信する。Dev Server と違い watch もビルドもせず、reload も
  * 送らない。
  */
-import { demoEndpointContract, devServerContract } from '@torimi/dev-server-contract';
+import { demoEndpointContract, devServerContract } from '@torimi/wire-contract';
 import { demoManifest } from './demos.js';
 
 export interface Env {

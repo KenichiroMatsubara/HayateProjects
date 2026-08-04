@@ -27,7 +27,7 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@torimi/dev-server-contract": "workspace:*"
+    "@torimi/wire-contract": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^26.1.1",

@@ -2,15 +2,17 @@
 //! `SceneGraph` に lower し、`android-activity` が渡す `ANativeWindow` に
 //! 紐づく GPU サーフェスへ毎フレーム提示する。`MotionEvent` は `hayate-core` の
 //! 座標ベースのポインタ API に変換され、タップでデモボタンの `:active` 色が
-//! 画面上で切り替わる。IME / AccessKit / クリップボードは未実装。
+//! 画面上で切り替わる。IME と Native Accessibility は Android leaf へ接続済み。
 
 use std::cell::Cell;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Instant;
 
 use android_activity::input::{InputEvent, MotionAction};
 use android_activity::{AndroidApp, MainEvent, PollEvent};
-use hayate_app_host::FrameContinuation;
+use hayate_app_host::{FrameContinuation, NativeAccessibilitySession};
 use hayate_core::{
     compose, CommittedFrame, ElementTree, LayerTopology, SceneGraph, SceneSnapshot,
     ScrollCompositorInput,
@@ -117,6 +119,16 @@ pub fn android_main(app: AndroidApp) {
     let observability = PerformanceObservability::new();
     let frame_scheduler = AndroidFrameScheduler::new();
     frame_scheduler.request_frame();
+    let accessibility_wake_pending = Arc::new(AtomicBool::new(false));
+    let accessibility_waker = app.create_waker();
+    let accessibility_wake: Arc<dyn Fn() + Send + Sync> = {
+        let pending = Arc::clone(&accessibility_wake_pending);
+        Arc::new(move || {
+            pending.store(true, Ordering::Release);
+            accessibility_waker.wake();
+        })
+    };
+    let mut accessibility: Option<NativeAccessibilitySession> = None;
 
     while !quit {
         let lifecycle_wake = Cell::new(false);
@@ -147,6 +159,9 @@ pub fn android_main(app: AndroidApp) {
                     MainEvent::ContentRectChanged { .. } => {
                         if let Some(window) = app.native_window() {
                             let scale = crate::surface_lifecycle::content_scale(&app);
+                            if let Some(session) = accessibility.as_mut() {
+                                session.set_base_dpr(scale as f64);
+                            }
                             let (vw, vh) = safe_viewport(&app, &window, scale);
                             tree.set_viewport(vw, vh);
                         }
@@ -160,6 +175,22 @@ pub fn android_main(app: AndroidApp) {
                         SurfaceLifecycleAction::CreateSurface => {
                             if let Some(window) = app.native_window() {
                                 let scale = crate::surface_lifecycle::content_scale(&app);
+                                crate::android_accessibility::destroy_android_accessibility(
+                                    &mut accessibility,
+                                );
+                                accessibility =
+                                    crate::android_accessibility::mount_android_accessibility(
+                                        scale as f64,
+                                        Arc::clone(&accessibility_wake),
+                                    )
+                                    .map_err(|failure| {
+                                        log::error!(
+                                            "native-accessibility platform={} category={}",
+                                            failure.platform,
+                                            failure.category
+                                        );
+                                    })
+                                    .ok();
                                 let (vw, vh) = safe_viewport(&app, &window, scale);
                                 tree.set_viewport(vw, vh);
                                 // Renderer Selection Policy（skia → vello の一方向 fallback、
@@ -169,9 +200,17 @@ pub fn android_main(app: AndroidApp) {
                             }
                         }
                         // surface 破棄：Raster スレッドを drop → 送信済みを処理して join（安全停止）。
-                        SurfaceLifecycleAction::DestroySurface => raster = None,
+                        SurfaceLifecycleAction::DestroySurface => {
+                            crate::android_accessibility::destroy_android_accessibility(
+                                &mut accessibility,
+                            );
+                            raster = None;
+                        }
                         SurfaceLifecycleAction::ResizeSurface { width, height } => {
                             let scale = crate::surface_lifecycle::content_scale(&app);
+                            if let Some(session) = accessibility.as_mut() {
+                                session.set_base_dpr(scale as f64);
+                            }
                             if let Some(rt) = raster.as_ref() {
                                 let _ = rt.send(RasterCommand::Resize {
                                     width,
@@ -203,12 +242,18 @@ pub fn android_main(app: AndroidApp) {
         if lifecycle_wake.get() || touch_woke || ime_woke {
             frame_scheduler.request_frame();
         }
+        if accessibility_wake_pending.swap(false, Ordering::AcqRel) {
+            frame_scheduler.request_frame();
+        }
 
         // Only a Choreographer callback may commit. OS/input wakes merely arm that one-shot
         // callback; `frameTimeNanos` is the timestamp source for layout and animation.
         let Some(timestamp_ms) = frame_scheduler.take_frame_timestamp_ms() else {
             continue;
         };
+        if let Some(session) = accessibility.as_mut() {
+            session.drain_before_frame(&mut tree);
+        }
         if raster
             .as_ref()
             .is_some_and(RasterHandle::has_terminal_failure)
@@ -239,6 +284,9 @@ pub fn android_main(app: AndroidApp) {
             let _ = observation.measure(PerformancePhase::RendererSubmit, || {
                 rt.send(frame_handoff(&frame))
             });
+            if let Some(session) = accessibility.as_mut() {
+                session.update_after_present(&tree);
+            }
             if FrameContinuation::after_commit(&frame).requests_frame() {
                 frame_scheduler.request_frame();
             }
@@ -270,6 +318,7 @@ pub fn android_main(app: AndroidApp) {
             }
         }
     }
+    crate::android_accessibility::destroy_android_accessibility(&mut accessibility);
 }
 
 /// GameTextInput をフォーカス中の TextInput に同期する（IME, ADR-0094）。

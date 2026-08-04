@@ -32,6 +32,8 @@ hayate-scene-renderer-vello = { path = "../../scene-renderers/vello", optional =
 hayate-scene-renderer-skia = { path = "../../scene-renderers/skia" }
 wgpu = { workspace = true, optional = true }
 winit = { workspace = true }
+accesskit = { workspace = true }
+accesskit_winit = { workspace = true }
 # skia raster フレームの wgpu 非依存 CPU present（winit window への software blit）。
 softbuffer = { workspace = true }
 pollster = { workspace = true }

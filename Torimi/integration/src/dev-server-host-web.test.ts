@@ -5,12 +5,11 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { WebHost } from '@torimi/hayate-host';
 import { createBundleDevServer, type BundleDevServer } from '@torimi/dev-server';
 import {
-  TORIMI_MOUNT_GLOBAL,
   bootTorimiHost,
   subscribeReload,
   type ReloadSubscription,
 } from '@torimi/host-web';
-import { TORIMI_PROTOCOL_VERSION_GLOBAL } from '@torimi/protocol-handshake';
+import { TORIMI_MOUNT_GLOBAL, TORIMI_PROTOCOL_VERSION_GLOBAL } from '@torimi/wire-contract';
 
 /**
  * `@torimi/dev-server` と `@torimi/host-web` を実ネットワーク経由で繋いで通しで検証する。

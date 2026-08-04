@@ -70,6 +70,8 @@ pollster = "1.0.1"
 futures-channel = "0.3.31"
 bytemuck = { version = "1.25.2", features = ["derive"] }
 accesskit = { version = "0.24.1", features = ["serde"] }
+accesskit_consumer = "0.38.0"
+accesskit_winit = "0.33.2"
 
 [patch.crates-io]
 # Vendored crates — upstream は切断し workspace path 依存に切り替え (ADR-0007)

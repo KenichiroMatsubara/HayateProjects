@@ -12,11 +12,13 @@
 //! （`bundle_source` の `BUNDLE_ROUTE` 複製と同じ方針）。プラットフォーム非依存の純 Rust
 //! なのでホストで `cargo test` できる。
 
+#[cfg(test)]
+use crate::generated::torimi_wire::TORIMI_PROTOCOL_VERSION_GLOBAL;
+
 /// eval 済みバンドルが自身の wire 定数バージョンを露出する JS global プロパティ名。Web の
 /// `TORIMI_PROTOCOL_VERSION_GLOBAL`（`@torimi/protocol-handshake`）と一致させる wire 契約。
 /// mount を渡す `__torimiMount` と対称の、バンドル → ホストの受け渡しシーム。
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
-pub const TORIMI_PROTOCOL_VERSION_GLOBAL: &str = "__torimiProtocolVersion";
 
 /// protocol version 不一致。ホスト/バンドル両方の版数と、表示用の明示メッセージを構造化して運ぶ。
 /// 合成ルート（Android ホスト）はこれを使い、mount もクラッシュもさせず明示エラーを出す（#530）。

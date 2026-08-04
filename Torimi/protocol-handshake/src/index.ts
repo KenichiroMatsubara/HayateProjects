@@ -1,3 +1,5 @@
+import { TORIMI_PROTOCOL_VERSION_GLOBAL } from '@torimi/wire-contract';
+
 /**
  * protocol version 突き合わせ結果。一致なら `{ ok: true }`、不一致なら両バージョンと、
  * 表示用の明示メッセージを含む `{ ok: false, ... }`。
@@ -37,8 +39,6 @@ export function checkProtocolVersion(
  * `__torimiMount`（`@torimi/host-web` の TORIMI_MOUNT_GLOBAL）と対称の、バンドル →
  * ホストの受け渡しシーム。global 名は wire 契約なので Web/Android で共有する定数に固定する。
  */
-export const TORIMI_PROTOCOL_VERSION_GLOBAL = '__torimiProtocolVersion';
-
 /**
  * eval 済みバンドルが {@link TORIMI_PROTOCOL_VERSION_GLOBAL} に立てた protocol version を読む。
  * 有限数なら返し、未埋め込み・非数値（契約違反 / 壊れた埋め込み）は `undefined` を返す
