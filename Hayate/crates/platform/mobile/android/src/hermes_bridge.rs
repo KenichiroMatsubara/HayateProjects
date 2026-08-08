@@ -93,6 +93,9 @@ mod ffi {
         /// マイクロタスクキューを排出する。
         fn pump_frame(self: Pin<&mut HermesApp>, timestamp_ms: f64);
 
+        /// 0 = ready, 1 = bundle eval failure, 2 = generated global shape failure.
+        fn boot_failure_category(self: &HermesApp) -> u8;
+
         /// JS が `set_request_redraw` で登録したコールバックを呼ぶ（未登録なら no-op）。
         /// native の入力 wake（タッチ/IME）のたびに呼び、JS 側の frame ループの armed 状態
         /// （`HayateRenderer` の `pendingFrame`）を native の wake と揃える。
@@ -211,9 +214,10 @@ impl JsHostBridge {
     /// 非標準例外をここへ合流させる。エラー表示は Hayate の element tree や GPU surface を
     /// 使わない native Android View なので、frame transaction 自身が壊れていても表示できる。
     fn report_fatal_frame_error(&self, source: &str, message: &str) {
+        let categorized_message = format!("category=runtime-frame {message}");
         let visible_message = format!(
             "Torimi が致命的な実行エラーを捕捉し、アプリを終了せず JS ランタイムを停止しました。\n\n\
-             {message}\n\nバンドルを修正してデモを再読み込みしてください。"
+             {categorized_message}\n\nバンドルを修正してデモを再読み込みしてください。"
         );
         log::error!("{visible_message}");
 

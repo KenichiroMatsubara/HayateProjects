@@ -58,6 +58,7 @@ export type ProtocolMismatch = Extract<ProtocolHandshakeResult, { ok: false }>;
  * 運ぶので、UI はメッセージだけでなく host/bundle の版数も使える。
  */
 export class ProtocolMismatchError extends Error {
+  readonly category = 'protocol-mismatch' as const;
   readonly hostVersion: number;
   readonly bundleVersion: number | undefined;
 

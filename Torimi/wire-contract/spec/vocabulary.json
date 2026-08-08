@@ -16,6 +16,10 @@
     "torimiProtocolVersion": "__torimiProtocolVersion",
     "tsubame": "__tsubame"
   },
+  "properties": {
+    "tsubamePumpFrame": "pumpFrame",
+    "tsubameStop": "stop"
+  },
   "vocabularies": {
     "logLevel": {
       "compatibility": "open",

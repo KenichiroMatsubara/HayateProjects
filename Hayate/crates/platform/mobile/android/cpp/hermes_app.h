@@ -10,6 +10,7 @@
 // `JsHostBridge` は前方宣言だけ行い、完全定義は実装 .cpp が rs.h を include して得る。
 #pragma once
 
+#include <cstdint>
 #include <memory>
 
 #include "rust/cxx.h"
@@ -29,6 +30,10 @@ class HermesApp {
   // globalThis.__tsubame.pumpFrame(timestamp_ms) を呼び、続けて Hermes の
   // マイクロタスクキューを排出する。
   void pump_frame(double timestamp_ms);
+
+  // 0 = ready, 1 = bundle eval failure, 2 = generated global shape failure. The Rust boot
+  // state machine reads this immediately after construction, before the protocol handshake.
+  std::uint8_t boot_failure_category() const;
 
   // JS が `__hayateHost.set_request_redraw(cb)` で登録したコールバックを呼ぶ（あれば）。
   // Android は入力を native→tree 直結で処理するが（issue #475）、JS 側の frame ループは

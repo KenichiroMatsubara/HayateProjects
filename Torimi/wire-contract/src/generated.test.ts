@@ -4,6 +4,8 @@ import {
   BUNDLE_ROUTE,
   HAYATE_HOST_GLOBAL,
   LOG_LEVEL_ERROR,
+  TSUBAME_PUMP_FRAME_PROPERTY,
+  TSUBAME_STOP_PROPERTY,
   isKnownLogLevel,
   validateDemoManifest,
   validateLogBatch,
@@ -14,6 +16,8 @@ describe('generated Torimi wire projection', () => {
   it('projects canonical route, global, open-vocabulary, and validator behavior', () => {
     expect(BUNDLE_ROUTE).toBe('/bundle.js');
     expect(HAYATE_HOST_GLOBAL).toBe('__hayateHost');
+    expect(TSUBAME_PUMP_FRAME_PROPERTY).toBe('pumpFrame');
+    expect(TSUBAME_STOP_PROPERTY).toBe('stop');
     expect(LOG_LEVEL_ERROR).toBe('error');
     expect(isKnownLogLevel('error')).toBe(true);
     expect(isKnownLogLevel('trace')).toBe(false);

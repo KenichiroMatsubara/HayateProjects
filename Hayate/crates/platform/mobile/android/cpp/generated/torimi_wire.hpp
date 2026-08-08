@@ -13,4 +13,6 @@ inline constexpr std::string_view kReloadRoute = "/reload";
 inline constexpr std::string_view kTorimiMountGlobal = "__torimiMount";
 inline constexpr std::string_view kTorimiProtocolVersionGlobal = "__torimiProtocolVersion";
 inline constexpr std::string_view kTsubameGlobal = "__tsubame";
+inline constexpr std::string_view kTsubamePumpFrameProperty = "pumpFrame";
+inline constexpr std::string_view kTsubameStopProperty = "stop";
 }  // namespace torimi::wire

@@ -1,6 +1,6 @@
 # @torimi/bundle
 
-Bundle Registration: the App Bundle's composition root. An app calls `registerTorimiApp(mount)` as its single all-targets entry, and this package hides the wire-contract wiring — baking in the protocol version, registering the mount seam (`__torimiMount` / `__tsubame`), and the native prelude. Target differences are branched at runtime on the presence of `__hayateHost`; framework knowledge is received only as the `TsubameMount` argument (FW-blind). Internally it calls Tsubame's `runTsubameApp`.
+Bundle Registration: the App Bundle's composition root. An app calls `registerTorimiApp(mount)` as its single all-targets entry, and this package hides the wire-contract wiring — baking in the protocol version, registering the mount seam (`__torimiMount` / `__tsubame`), and the native prelude. Target differences are branched at runtime on the native host's reserved `__hayateHost` RawHayate discriminator; unrelated browser debug values are not accepted as native. Framework knowledge is received only as the `TsubameMount` argument (FW-blind). Internally it calls Tsubame's `runTsubameApp`.
 
 It also ships the `@torimi/bundle/vite` App Bundle preset.
 

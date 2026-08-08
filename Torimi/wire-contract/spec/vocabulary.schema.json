@@ -2,13 +2,14 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://hayateprojects.dev/torimi/wire-vocabulary.schema.json",
   "type": "object",
-  "required": ["routes", "messages", "globals", "vocabularies"],
+  "required": ["routes", "messages", "globals", "properties", "vocabularies"],
   "additionalProperties": false,
   "properties": {
     "$schema": { "type": "string" },
     "routes": { "$ref": "#/$defs/stringMap" },
     "messages": { "$ref": "#/$defs/stringMap" },
     "globals": { "$ref": "#/$defs/stringMap" },
+    "properties": { "$ref": "#/$defs/stringMap" },
     "vocabularies": {
       "type": "object",
       "additionalProperties": { "$ref": "#/$defs/vocabulary" }

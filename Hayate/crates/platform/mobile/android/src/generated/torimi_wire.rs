@@ -23,6 +23,8 @@ pub const HAYATE_LOG_GLOBAL: &str = "__hayateLog";
 pub const TORIMI_MOUNT_GLOBAL: &str = "__torimiMount";
 pub const TORIMI_PROTOCOL_VERSION_GLOBAL: &str = "__torimiProtocolVersion";
 pub const TSUBAME_GLOBAL: &str = "__tsubame";
+pub const TSUBAME_PUMP_FRAME_PROPERTY: &str = "pumpFrame";
+pub const TSUBAME_STOP_PROPERTY: &str = "stop";
 
 pub const LOG_LEVEL_DEBUG: &str = "debug";
 pub const LOG_LEVEL_ERROR: &str = "error";

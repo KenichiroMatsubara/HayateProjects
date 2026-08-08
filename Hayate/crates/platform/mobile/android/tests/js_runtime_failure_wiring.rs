@@ -40,7 +40,8 @@ fn every_fatal_pump_frame_exception_is_contained_and_shown_on_the_native_overlay
     let bridge = read_relative("src/hermes_bridge.rs");
     assert!(
         bridge.contains("fn report_fatal_frame_error")
-            && bridge.contains("crate::error_overlay::show_error"),
+            && bridge.contains("crate::error_overlay::show_error")
+            && bridge.contains("category=runtime-frame"),
         "the C++ boundary report must reach the GPU-independent native Android error overlay"
     );
 }

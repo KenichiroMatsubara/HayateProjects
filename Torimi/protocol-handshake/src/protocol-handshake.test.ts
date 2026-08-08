@@ -61,6 +61,15 @@ describe('readBundleProtocolVersion', () => {
     const scope = { [TORIMI_PROTOCOL_VERSION_GLOBAL]: 'v1' };
     expect(readBundleProtocolVersion(scope)).toBeUndefined();
   });
+
+  it('NaN と Infinity は undefined として扱う（有限数だけを handshake に通す）', () => {
+    expect(
+      readBundleProtocolVersion({ [TORIMI_PROTOCOL_VERSION_GLOBAL]: Number.NaN }),
+    ).toBeUndefined();
+    expect(
+      readBundleProtocolVersion({ [TORIMI_PROTOCOL_VERSION_GLOBAL]: Number.POSITIVE_INFINITY }),
+    ).toBeUndefined();
+  });
 });
 
 /**
@@ -74,6 +83,7 @@ describe('ProtocolMismatchError', () => {
     const error = new ProtocolMismatchError(result);
     expect(error).toBeInstanceOf(Error);
     expect(error.name).toBe('ProtocolMismatchError');
+    expect(error.category).toBe('protocol-mismatch');
     expect(error.message).toBe(result.message);
     expect(error.hostVersion).toBe(1);
     expect(error.bundleVersion).toBe(2);

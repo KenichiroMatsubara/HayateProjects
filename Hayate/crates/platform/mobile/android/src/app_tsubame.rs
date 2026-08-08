@@ -7,7 +7,8 @@
 //!
 //! #533 で full reload と protocol version 整合を移植した（Web #529/#530 と対称）:
 //!   - boot（fetch → ランタイム構築/eval → version 突き合わせ）は `torimi_reload::boot_runtime`。
-//!     不一致／取得失敗はランタイムの pump に進めず明示エラーにする（謎クラッシュ回避）。
+//!     eval／global shape／protocol／取得の失敗はランタイムの pump に進めず明示エラーにする
+//!     （謎クラッシュ回避）。
 //!   - dev-server の WS `reload` を `torimi_reload::subscribe_reload`（device connect は
 //!     `reload_socket`）で購読し、受信ごとに **Hermes ランタイムを作り直して再 eval** する
 //!     （full reload。tree も作り直すので state は飛ぶ）。
@@ -44,7 +45,8 @@ use crate::hermes_bridge::{make_bridge, new_hermes_app, HermesApp};
 use crate::reload_socket::{connect_reload_ws, ReloadWsSocket};
 use crate::surface_lifecycle::{window_dimensions, SurfaceLifecycleAction, SurfaceLifecycleState};
 use crate::torimi_reload::{
-    boot_runtime, subscribe_reload, BootError, ReloadSocket, SubscribeReloadOptions,
+    boot_runtime, subscribe_reload, BootError, ReloadSocket, RuntimeBuildFailure,
+    SubscribeReloadOptions,
 };
 use crate::touch_scroll::TouchScrollState;
 use hayate_core::element::ime_reconcile::TextInputState;
@@ -77,8 +79,17 @@ fn read_bundle_protocol_version(hermes: &cxx::UniquePtr<HermesApp>) -> Option<u3
     }
 }
 
-/// boot 失敗をログと画面向けの読める文言にする（mount もクラッシュもさせない・#530）。不一致は
-/// 両版数を、取得失敗はその種別を出す。pump には進めない（current=None のまま）。返した文言は
+fn read_runtime_build_failure(hermes: &cxx::UniquePtr<HermesApp>) -> Option<RuntimeBuildFailure> {
+    match hermes.boot_failure_category() {
+        0 => None,
+        1 => Some(RuntimeBuildFailure::BundleEval),
+        2 => Some(RuntimeBuildFailure::GlobalShape),
+        _ => Some(RuntimeBuildFailure::GlobalShape),
+    }
+}
+
+/// boot 失敗をログと画面向けの読める文言にする（mount もクラッシュもさせない・#530）。
+/// eval／global shape／protocol／取得を区別し、pump には進めない（current=None のまま）。返した文言は
 /// 呼び出し側が `error_overlay::show_error` でそのまま画面に描画する——Web ホストの built-in
 /// error panel と対称に、consumer（アプリ側）の実装にも Hayate/GPU パイプラインにも依存せず
 /// 画面に出す保証（Hayate 自身の初期化が壊れていても呼べるネイティブ View オーバーレイ）。
@@ -90,6 +101,10 @@ fn report_boot_error(error: &BootError) -> String {
         ),
         BootError::Fetch(err) => {
             format!("Torimi: dev-server からのバンドル取得に失敗（mount しません）: {err:?}")
+        }
+        BootError::EvalFailure => "Torimi: App Bundle の eval に失敗（mount しません）".to_owned(),
+        BootError::GlobalShapeFailure => {
+            "Torimi: __tsubame global の shape が不正（mount しません）".to_owned()
         }
     };
     log::error!("{message}");
@@ -204,11 +219,14 @@ pub(crate) fn run(app: AndroidApp) {
                     make_bridge(tree.clone(), Rc::clone(&device_log_for_boot)),
                     bundle,
                 );
-                Runtime {
+                if let Some(failure) = read_runtime_build_failure(&hermes) {
+                    return Err(failure);
+                }
+                Ok(Runtime {
                     hermes,
                     tree,
                     touch_scroll: TouchScrollState::new(),
-                }
+                })
             },
             |runtime: &Runtime| read_bundle_protocol_version(&runtime.hermes),
         )
@@ -231,7 +249,7 @@ pub(crate) fn run(app: AndroidApp) {
         match boot() {
             Ok(runtime) => Some(runtime),
             Err(error) => {
-                // bundle 取得失敗・protocol version 不一致は host イベント（source: "host"）として
+                // すべての boot 失敗は host イベント（source: "host"）として
                 // Device Log に合流し、即時フラッシュ経路（#788）で USB なしに dev-server へ届く（#789）。
                 let message = report_boot_error(&error);
                 device_log.borrow_mut().record_host(
@@ -491,7 +509,7 @@ pub(crate) fn run(app: AndroidApp) {
         }
 
         // full reload：WS `reload` を受けていたら Hermes ランタイムを作り直して新バンドルを再 eval
-        // する（tree ごと作り直すので state は飛ぶ）。不一致／取得失敗は明示エラーで pump させない。
+        // する（tree ごと作り直すので state は飛ぶ）。boot 失敗は明示エラーで pump させない。
         if reload_requested.replace(false) {
             log::info!(
                 "Torimi: reload を受信 — Hermes ランタイムを再構築します（full reload。state は飛びます）"
@@ -510,7 +528,7 @@ pub(crate) fn run(app: AndroidApp) {
                     frame_scheduler.request_frame();
                 }
                 Err(error) => {
-                    // reload 後の boot 失敗（取得失敗・version 不一致）も host イベントとして合流させる（#789）。
+                    // reload 後の boot 失敗も host イベントとして合流させる（#789）。
                     let message = report_boot_error(&error);
                     device_log.borrow_mut().record_host(
                         device_log::LogLevel::Error,
