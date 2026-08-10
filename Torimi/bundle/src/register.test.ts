@@ -3,6 +3,8 @@ import {
   TORIMI_MOUNT_GLOBAL,
   TORIMI_PROTOCOL_VERSION_GLOBAL,
   TSUBAME_GLOBAL,
+  TSUBAME_PUMP_FRAME_PROPERTY,
+  TSUBAME_STOP_PROPERTY,
 } from '@torimi/wire-contract';
 import { PROTOCOL_VERSION } from '@torimi/tsubame-renderer-hayate';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -59,6 +61,24 @@ describe('registerTorimiApp — Web Host target (`__hayateHost` 不在)', () => 
     expect(mountedWith[0]).toBeTruthy();
     expect(framesRequested).toBeGreaterThan(0);
   });
+
+  it('does not mistake a non-object reserved global value for native RawHayate', () => {
+    g[HAYATE_HOST_GLOBAL] = null;
+
+    registerTorimiApp(() => undefined);
+
+    expect(typeof g[TORIMI_MOUNT_GLOBAL]).toBe('function');
+    expect(g[TSUBAME_GLOBAL]).toBeUndefined();
+  });
+
+  it('does not mistake a browser debug object for native RawHayate', () => {
+    g[HAYATE_HOST_GLOBAL] = { target: 'hayate', pipelineObservation() {} };
+
+    registerTorimiApp(() => undefined);
+
+    expect(typeof g[TORIMI_MOUNT_GLOBAL]).toBe('function');
+    expect(g[TSUBAME_GLOBAL]).toBeUndefined();
+  });
 });
 
 describe('registerTorimiApp — Native Host target (`__hayateHost` 注入済み)', () => {
@@ -85,12 +105,12 @@ describe('registerTorimiApp — Native Host target (`__hayateHost` 注入済み)
     });
 
     // native ホストは eval 後に `__tsubame` を読む（ADR-0112 の wire シーム）。
-    const tsubame = g[TSUBAME_GLOBAL] as { pumpFrame?: unknown; stop?: unknown } | undefined;
-    expect(typeof tsubame?.pumpFrame).toBe('function');
-    expect(typeof tsubame?.stop).toBe('function');
+    const tsubame = g[TSUBAME_GLOBAL] as Record<string, unknown> | undefined;
+    expect(typeof tsubame?.[TSUBAME_PUMP_FRAME_PROPERTY]).toBe('function');
+    expect(typeof tsubame?.[TSUBAME_STOP_PROPERTY]).toBe('function');
 
     // stop はアプリツリーの dispose まで畳む（runTsubameApp の合成 dispose を素通し）。
-    (tsubame as { stop: () => void }).stop();
+    (tsubame?.[TSUBAME_STOP_PROPERTY] as () => void)();
     expect(disposed).toBe(true);
   });
 

@@ -21,6 +21,13 @@ use crate::dev_server_target::{DevServerTarget, Scheme};
 use crate::generated::torimi_wire::{RELOAD_MESSAGE, RELOAD_ROUTE};
 use crate::protocol_handshake::{check_protocol_version, ProtocolMismatch};
 
+/// Hermes eval or post-eval global validation failed before the protocol handshake could run.
+#[derive(Debug, PartialEq, Eq)]
+pub enum RuntimeBuildFailure {
+    BundleEval,
+    GlobalShape,
+}
+
 /// dev-server がホストに full reload を促す WS メッセージ本文。`@torimi/dev-server` の
 /// `RELOAD_MESSAGE` / Web ホストの `RELOAD_MESSAGE` と一致させる wire 契約（値で複製する）。
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
@@ -35,20 +42,25 @@ use crate::protocol_handshake::{check_protocol_version, ProtocolMismatch};
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
 pub const WS_RECONNECT_BACKOFF: Duration = Duration::from_secs(1);
 
-/// 1 回分の boot（fetch → 構築/eval → version 突き合わせ）の失敗。どちらも明示エラーにし、
+/// 1 回分の boot（fetch → 構築/eval → global shape 検証 → version 突き合わせ）の失敗。
+/// すべて明示エラーにし、
 /// ランタイムの pump（描画）に進ませない＝謎クラッシュにしない（#530 / #533）。
 #[derive(Debug, PartialEq, Eq)]
 pub enum BootError {
     /// dev-server からのバンドル取得に失敗した。
     Fetch(BundleFetchError),
+    /// App Bundle evaluation threw before its globals could be validated.
+    EvalFailure,
+    /// Eval completed, but the generated global seam had an invalid runtime shape.
+    GlobalShapeFailure,
     /// バンドル encoder の版数がホスト decoder と不一致（明示エラー UI 用に両版数を持つ）。
     ProtocolMismatch(ProtocolMismatch),
 }
 
 /// Torimi Android ホストの 1 boot：dev-server からバンドルを取得 → Hermes ランタイムを
 /// **構築（= eval。`new_hermes_app(.., &bundle)`）** → バンドルが立てた protocol version を読み、
-/// ホスト decoder 版数と突き合わせる。一致時のみランタイムを返し（pump に進める）、不一致／取得失敗は
-/// [`BootError`] で止める（mount もクラッシュもさせない）。full reload はこれを**もう一度呼ぶだけ**で
+/// ホスト decoder 版数と突き合わせる。一致時のみランタイムを返し（pump に進める）、eval／global
+/// shape／protocol／取得の失敗は [`BootError`] で止める（mount もクラッシュもさせない）。full reload はこれを**もう一度呼ぶだけ**で
 /// ランタイムが作り直され新バンドルが再 eval される（state は飛ぶ）。
 ///
 /// device 依存（実 fetch / Hermes 構築 / global 読み）は注入シームに逃がし、ここは順序と
@@ -57,12 +69,15 @@ pub enum BootError {
 pub fn boot_runtime<R>(
     host_version: u32,
     fetch: impl FnOnce() -> Result<String, BundleFetchError>,
-    build: impl FnOnce(&str) -> R,
+    build: impl FnOnce(&str) -> Result<R, RuntimeBuildFailure>,
     read_bundle_version: impl FnOnce(&R) -> Option<u32>,
 ) -> Result<R, BootError> {
     let bundle = fetch().map_err(BootError::Fetch)?;
     // ランタイム構築 = バンドルの eval（global `__torimiProtocolVersion` / `__tsubame` が立つ）。
-    let runtime = build(&bundle);
+    let runtime = build(&bundle).map_err(|failure| match failure {
+        RuntimeBuildFailure::BundleEval => BootError::EvalFailure,
+        RuntimeBuildFailure::GlobalShape => BootError::GlobalShapeFailure,
+    })?;
     let bundle_version = read_bundle_version(&runtime);
     // version 突き合わせは Web #530 と同じ純ロジック。不一致なら pump させずに明示エラーで返す。
     match check_protocol_version(host_version, bundle_version) {
@@ -213,8 +228,10 @@ mod tests {
         let runtime = boot_runtime(
             1,
             || Ok("globalThis.__torimiProtocolVersion = 1;".to_owned()),
-            |src| FakeRuntime {
-                bundle: src.to_owned(),
+            |src| {
+                Ok(FakeRuntime {
+                    bundle: src.to_owned(),
+                })
             },
             |_rt| Some(1),
         )
@@ -231,10 +248,12 @@ mod tests {
             1,
             || Ok("src".to_owned()),
             |src| {
-                built = true;
-                FakeRuntime {
-                    bundle: src.to_owned(),
-                }
+                Ok({
+                    built = true;
+                    FakeRuntime {
+                        bundle: src.to_owned(),
+                    }
+                })
             },
             |_rt| Some(2),
         );
@@ -252,6 +271,30 @@ mod tests {
     }
 
     #[test]
+    fn bundle_eval_failure_is_classified_before_the_protocol_handshake() {
+        let result = boot_runtime(
+            1,
+            || Ok("throw new Error('eval exploded')".to_owned()),
+            |_src| Err(RuntimeBuildFailure::BundleEval),
+            |_rt: &FakeRuntime| panic!("an eval failure must not reach the handshake"),
+        );
+
+        assert_eq!(result, Err(BootError::EvalFailure));
+    }
+
+    #[test]
+    fn global_shape_failure_is_classified_before_the_protocol_handshake() {
+        let result = boot_runtime(
+            1,
+            || Ok("globalThis.__tsubame = {};".to_owned()),
+            |_src| Err(RuntimeBuildFailure::GlobalShape),
+            |_rt: &FakeRuntime| panic!("an invalid global must not reach the handshake"),
+        );
+
+        assert_eq!(result, Err(BootError::GlobalShapeFailure));
+    }
+
+    #[test]
     fn fetch_failure_short_circuits_before_building_the_runtime() {
         let mut built = false;
         let result = boot_runtime(
@@ -262,10 +305,12 @@ mod tests {
                 ))
             },
             |src| {
-                built = true;
-                FakeRuntime {
-                    bundle: src.to_owned(),
-                }
+                Ok({
+                    built = true;
+                    FakeRuntime {
+                        bundle: src.to_owned(),
+                    }
+                })
             },
             |_rt| Some(1),
         );
@@ -291,10 +336,12 @@ mod tests {
                 1,
                 || Ok(bundle.to_owned()),
                 |src| {
-                    *builds.borrow_mut() += 1;
-                    FakeRuntime {
-                        bundle: src.to_owned(),
-                    }
+                    Ok({
+                        *builds.borrow_mut() += 1;
+                        FakeRuntime {
+                            bundle: src.to_owned(),
+                        }
+                    })
                 },
                 |_rt| Some(1),
             )

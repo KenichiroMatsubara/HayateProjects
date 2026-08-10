@@ -12,10 +12,11 @@ beforeEach(() => {
 
 describe('Solid browser entry', () => {
   it('supplies both surfaces to Browser Host and keeps only the Solid mount seam', async () => {
-    await import('./main');
+    const entry = await import('./main');
 
     const dom = document.getElementById('dom-host') as HTMLDivElement;
     const canvas = document.getElementById('canvas-stage') as HTMLCanvasElement;
+    await expect(entry.appHandle.settled).resolves.toEqual({ status: 'mounted' });
     expect(dom.hidden).toBe(false);
     expect(canvas.hidden).toBe(true);
     expect(dom.querySelector('[data-tsubame-id]')).not.toBeNull();
@@ -25,5 +26,9 @@ describe('Solid browser entry', () => {
     expect(source).not.toContain('useDomRenderer');
     expect(source).not.toContain('DomRenderer');
     expect(source).not.toContain('HayateRenderer');
+
+    entry.appHandle.dispose();
+    expect(dom.hidden).toBe(true);
+    expect(canvas.hidden).toBe(true);
   });
 });

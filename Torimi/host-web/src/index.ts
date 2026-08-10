@@ -1,5 +1,9 @@
 import type { CreateHayateWebHostOptions, WebHost } from '@torimi/hayate-host';
-import { devServerContract, TORIMI_MOUNT_GLOBAL } from '@torimi/wire-contract';
+import {
+  devServerContract,
+  TORIMI_MOUNT_GLOBAL,
+  TORIMI_PROTOCOL_VERSION_GLOBAL,
+} from '@torimi/wire-contract';
 import {
   checkProtocolVersion,
   ProtocolMismatchError,
@@ -8,6 +12,13 @@ import {
 
 export type { WebHost } from '@torimi/hayate-host';
 export { ProtocolMismatchError } from '@torimi/protocol-handshake';
+
+export type TorimiFailureCategory =
+  | 'boot'
+  | 'bundle-eval'
+  | 'global-shape'
+  | 'protocol-mismatch'
+  | 'runtime-frame';
 export {
   isCameraScanSupported,
   scanQrFromCamera,
@@ -24,6 +35,32 @@ export {
  * App を mount する（ADR-0001：renderer-hayate も FW もバンドルが持つ）。
  */
 export type TorimiMount = (host: WebHost) => void;
+
+/** The App Bundle threw while the host evaluated it. */
+export class TorimiBundleEvalError extends Error {
+  readonly category = 'bundle-eval' as const;
+
+  constructor(readonly evalCause: unknown) {
+    const detail =
+      evalCause instanceof Error ? evalCause.message : String(evalCause);
+    super(`Torimi: App Bundle evaluation failed: ${detail}`);
+    this.name = 'TorimiBundleEvalError';
+  }
+}
+
+/** A generated global existed with the wrong runtime shape at the boot seam. */
+export class TorimiGlobalShapeError extends Error {
+  readonly category = 'global-shape' as const;
+
+  constructor(
+    readonly globalName: string,
+    readonly expected: string,
+    readonly actualType: string,
+  ) {
+    super(`Torimi: ${globalName} must be ${expected}, received ${actualType}`);
+    this.name = 'TorimiGlobalShapeError';
+  }
+}
 
 /**
  * App Bundle が mount を露出する global プロパティ名。native（`globalThis.__tsubame`,
@@ -53,7 +90,7 @@ export interface BootTorimiHostOptions {
   /** バンドル text を取得する seam。既定は timeout 付き `fetch`。 */
   readonly fetchBundle?: (bundleUrl: string) => Promise<string>;
   /** バンドル text を eval して mount を取り出す seam。既定は indirect eval + global 読み。 */
-  readonly evalBundle?: (source: string) => TorimiMount;
+  readonly evalBundle?: (source: string) => unknown;
   /**
    * eval 済みバンドルが立てた protocol version を読む seam。既定は global
    * （`__torimiProtocolVersion`）を読む。未埋め込み（契約違反）は `undefined`。
@@ -79,16 +116,20 @@ async function defaultFetchBundle(bundleUrl: string): Promise<string> {
  * バンドル text を global scope で indirect eval し、登録された mount を取り出す既定実装。
  * バンドルは IIFE として `globalThis.__torimiMount` を立てる（ADR-0112 の単一 IIFE と同型）。
  */
-function defaultEvalBundle(source: string): TorimiMount {
+function defaultEvalBundle(source: string): unknown {
+  const scope = globalThis as Record<string, unknown>;
+  delete scope[TORIMI_MOUNT_GLOBAL];
+  delete scope[TORIMI_PROTOCOL_VERSION_GLOBAL];
   // indirect eval（`(0, eval)`）で global scope に評価する。バンドルの副作用で global mount が立つ。
   (0, eval)(source);
-  const mount = (globalThis as Record<string, unknown>)[TORIMI_MOUNT_GLOBAL];
-  if (typeof mount !== 'function') {
-    throw new Error(
-      `Torimi: バンドルが ${TORIMI_MOUNT_GLOBAL} を露出していません（mount 契約違反）`,
-    );
-  }
-  return mount as TorimiMount;
+  return scope[TORIMI_MOUNT_GLOBAL];
+}
+
+function requireTorimiMount(value: unknown): TorimiMount {
+  if (typeof value === 'function') return value as TorimiMount;
+  const actualType =
+    value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value;
+  throw new TorimiGlobalShapeError(TORIMI_MOUNT_GLOBAL, 'function', actualType);
 }
 
 /** eval 済みバンドルが global に立てた protocol version を読む既定実装。 */
@@ -120,7 +161,14 @@ export async function bootTorimiHost(options: BootTorimiHostOptions): Promise<We
 
   const bundleUrl = new URL(bundleRoute, options.devServerUrl).href;
   const source = await fetchBundle(bundleUrl);
-  const mount = evalBundle(source);
+  let mountCandidate: unknown;
+  try {
+    mountCandidate = evalBundle(source);
+  } catch (error) {
+    if (error instanceof TorimiBundleEvalError) throw error;
+    throw new TorimiBundleEvalError(error);
+  }
+  const mount = requireTorimiMount(mountCandidate);
 
   // protocol version ハンドシェイク（#530）：eval 済みバンドルの encoder 版数とこのホストの
   // decoder 版数を突き合わせる。不一致は host bootstrap を起こす前に明示エラーで止め、mount も
@@ -258,7 +306,10 @@ export const TORIMI_ERROR_PANEL_ID = 'torimi-error';
  * （Kotlin 側に Toast/TextView を JNI 経由で生やす別作業が要る）という非対称のため。色は
  * `error_screen.rs` 側で手複製し、Rust 側のテストで固定している。
  */
-function renderBuiltinErrorPanel(message: string): void {
+function renderBuiltinErrorPanel(
+  message: string,
+  category: TorimiFailureCategory = 'boot',
+): void {
   if (typeof document === 'undefined') return;
   let panel = document.getElementById(TORIMI_ERROR_PANEL_ID);
   if (!panel) {
@@ -271,6 +322,7 @@ function renderBuiltinErrorPanel(message: string): void {
       'text-align:center;white-space:pre-wrap;z-index:9999;';
     document.body.appendChild(panel);
   }
+  panel.dataset.torimiFailureCategory = category;
   panel.textContent = message;
 }
 
@@ -289,6 +341,13 @@ function formatBootFailureMessage(error: unknown): string {
   return `Torimi の起動に失敗しました:\n${message}`;
 }
 
+function bootFailureCategory(error: unknown): TorimiFailureCategory {
+  if (error instanceof TorimiBundleEvalError) return error.category;
+  if (error instanceof TorimiGlobalShapeError) return error.category;
+  if (error instanceof ProtocolMismatchError) return error.category;
+  return 'boot';
+}
+
 let runtimeCrashReporterInstalled = false;
 
 /**
@@ -300,11 +359,17 @@ function installRuntimeCrashReporter(): void {
   runtimeCrashReporterInstalled = true;
   window.addEventListener('error', (event) => {
     const message = event.error instanceof Error ? event.error.message : event.message;
-    renderBuiltinErrorPanel(`Torimi で未捕捉の例外が発生しました:\n${message}`);
+    renderBuiltinErrorPanel(
+      `Torimi で未捕捉の例外が発生しました:\n${message}`,
+      'runtime-frame',
+    );
   });
   window.addEventListener('unhandledrejection', (event) => {
     const reason = event.reason instanceof Error ? event.reason.message : String(event.reason);
-    renderBuiltinErrorPanel(`Torimi で未処理の Promise 拒否が発生しました:\n${reason}`);
+    renderBuiltinErrorPanel(
+      `Torimi で未処理の Promise 拒否が発生しました:\n${reason}`,
+      'runtime-frame',
+    );
   });
 }
 
@@ -379,7 +444,10 @@ export function startTorimiHost(options: StartTorimiHostOptions): TorimiHostHand
         options.onBootSettled?.({ ok: true });
       },
       (error: unknown) => {
-        renderBuiltinErrorPanel(formatBootFailureMessage(error));
+        renderBuiltinErrorPanel(
+          formatBootFailureMessage(error),
+          bootFailureCategory(error),
+        );
         options.onBootSettled?.({ ok: false, error });
       },
     );

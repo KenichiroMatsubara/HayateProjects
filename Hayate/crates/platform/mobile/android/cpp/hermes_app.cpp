@@ -44,6 +44,12 @@ using namespace facebook;
 
 namespace {
 
+enum class BootFailureCategory : std::uint8_t {
+  None = 0,
+  BundleEval = 1,
+  GlobalShape = 2,
+};
+
 // jsi の TypedArray から連続データのスライスを取り出すヘルパ。Hermes は
 // ArrayBuffer の data() を公開する。byteOffset/length は TypedArray から読む。
 template <typename T>
@@ -313,6 +319,7 @@ struct HermesApp::Impl {
   // バンドルの eval に成功し __tsubame が公開されたか。false の間は frame を
   // 呼ばない（JS エラーで __tsubame 未定義のときに毎フレーム例外を投げないため）。
   bool ready = false;
+  BootFailureCategory boot_failure_category = BootFailureCategory::None;
   // `set_request_redraw` で JS が登録したコールバックの置き場（`request_redraw` が読む）。
   std::shared_ptr<RedrawSlot> redraw_slot = std::make_shared<RedrawSlot>();
   // `request_pump` が立てたフラグの置き場（`consume_wants_pump` が読んで消す）。
@@ -391,21 +398,8 @@ HermesApp::HermesApp(rust::Box<JsHostBridge> host, rust::Str bundle)
       std::string src(bundle);
       rt.evaluateJavaScript(
           std::make_unique<jsi::StringBuffer>(std::move(src)), "tsubame.js");
-      jsi::Value tsubame_value =
-          rt.global().getProperty(rt, torimi::wire::kTsubameGlobal.data());
-      if (!tsubame_value.isObject()) {
-        throw std::runtime_error("bundle did not expose the __tsubame object");
-      }
-      jsi::Object tsubame = tsubame_value.getObject(rt);
-      for (const char* function_name : {"pumpFrame", "stop"}) {
-        jsi::Value function = tsubame.getProperty(rt, function_name);
-        if (!function.isObject() || !function.getObject(rt).isFunction(rt)) {
-          throw std::runtime_error(std::string("bundle __tsubame.") + function_name +
-                                   " is not a function");
-        }
-      }
-      impl_->ready = true;
     } catch (const jsi::JSError& e) {
+      impl_->boot_failure_category = BootFailureCategory::BundleEval;
       HAYATE_LOGE("Tsubame バンドルの eval で JS 例外: %s\nJS stack:\n%s",
                   e.getMessage().c_str(), e.getStack().c_str());
       // bundle が eval すらできない＝真っ黒障害。host イベント（source: host）として Device Log へ
@@ -413,16 +407,61 @@ HermesApp::HermesApp(rust::Box<JsHostBridge> host, rust::Str bundle)
       log_bridge->log_host(
           rust::Str("error"),
           rust::Str("Tsubame バンドルの eval で JS 例外: " + e.getMessage()));
+      return;
     } catch (const std::exception& e) {
+      impl_->boot_failure_category = BootFailureCategory::BundleEval;
       HAYATE_LOGE("Tsubame バンドルの eval で例外: %s", e.what());
       log_bridge->log_host(
           rust::Str("error"),
           rust::Str(std::string("Tsubame バンドルの eval で例外: ") + e.what()));
+      return;
+    }
+
+    // Eval completed. Validate the generated global seam exactly once before the runtime can be
+    // pumped, so a malformed bundle is a boot failure rather than a first-frame exception.
+    try {
+      jsi::Value tsubame_value =
+          rt.global().getProperty(rt, torimi::wire::kTsubameGlobal.data());
+      if (!tsubame_value.isObject()) {
+        throw std::runtime_error(
+            std::string("bundle did not expose the ") +
+            torimi::wire::kTsubameGlobal.data() + " object");
+      }
+      jsi::Object tsubame = tsubame_value.getObject(rt);
+      for (const std::string_view function_name : {
+               torimi::wire::kTsubamePumpFrameProperty,
+               torimi::wire::kTsubameStopProperty,
+           }) {
+        jsi::Value function = tsubame.getProperty(rt, function_name.data());
+        if (!function.isObject() || !function.getObject(rt).isFunction(rt)) {
+          throw std::runtime_error(
+              std::string("bundle ") + torimi::wire::kTsubameGlobal.data() + "." +
+              function_name.data() + " is not a function");
+        }
+      }
+      impl_->ready = true;
+    } catch (const jsi::JSError& e) {
+      impl_->boot_failure_category = BootFailureCategory::GlobalShape;
+      HAYATE_LOGE("Tsubame global shape の検証で JS 例外: %s\nJS stack:\n%s",
+                  e.getMessage().c_str(), e.getStack().c_str());
+      log_bridge->log_host(
+          rust::Str("error"),
+          rust::Str("Tsubame global shape の検証で JS 例外: " + e.getMessage()));
+    } catch (const std::exception& e) {
+      impl_->boot_failure_category = BootFailureCategory::GlobalShape;
+      HAYATE_LOGE("Tsubame global shape の検証で例外: %s", e.what());
+      log_bridge->log_host(
+          rust::Str("error"),
+          rust::Str(std::string("Tsubame global shape の検証で例外: ") + e.what()));
     }
   });
 }
 
 HermesApp::~HermesApp() = default;
+
+std::uint8_t HermesApp::boot_failure_category() const {
+  return static_cast<std::uint8_t>(impl_->boot_failure_category);
+}
 
 void HermesApp::pump_frame(double timestamp_ms) {
   if (!impl_->ready) return;
@@ -441,7 +480,8 @@ void HermesApp::pump_frame(double timestamp_ms) {
       }
       jsi::Object tsubame = rt.global().getPropertyAsObject(
           rt, torimi::wire::kTsubameGlobal.data());
-      jsi::Function pump = tsubame.getPropertyAsFunction(rt, "pumpFrame");
+      jsi::Function pump = tsubame.getPropertyAsFunction(
+          rt, torimi::wire::kTsubamePumpFrameProperty.data());
       pump.callWithThis(rt, tsubame, {jsi::Value(timestamp_ms)});
       // Hermes のマイクロタスク（Solid のスケジューラ）を排出する。
       if (auto* hermesRt = dynamic_cast<facebook::hermes::HermesRuntime*>(&rt)) {

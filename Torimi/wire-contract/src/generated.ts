@@ -10,6 +10,8 @@ export const HAYATE_LOG_GLOBAL = "__hayateLog" as const;
 export const TORIMI_MOUNT_GLOBAL = "__torimiMount" as const;
 export const TORIMI_PROTOCOL_VERSION_GLOBAL = "__torimiProtocolVersion" as const;
 export const TSUBAME_GLOBAL = "__tsubame" as const;
+export const TSUBAME_PUMP_FRAME_PROPERTY = "pumpFrame" as const;
+export const TSUBAME_STOP_PROPERTY = "stop" as const;
 
 export const LOG_LEVEL_DEBUG = "debug" as const;
 export const LOG_LEVEL_ERROR = "error" as const;

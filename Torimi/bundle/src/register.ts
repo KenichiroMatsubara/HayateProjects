@@ -5,6 +5,8 @@ import {
   TORIMI_MOUNT_GLOBAL,
   TORIMI_PROTOCOL_VERSION_GLOBAL,
   TSUBAME_GLOBAL,
+  TSUBAME_PUMP_FRAME_PROPERTY,
+  TSUBAME_STOP_PROPERTY,
 } from '@torimi/wire-contract';
 import { runTsubameApp, type AppHandle, type Host, type TsubameMount } from '@torimi/tsubame-app';
 import { HayateRenderer, PROTOCOL_VERSION } from '@torimi/tsubame-renderer-hayate';
@@ -15,6 +17,14 @@ import { HayateRenderer, PROTOCOL_VERSION } from '@torimi/tsubame-renderer-hayat
  * `HayateRenderer` の構築入力そのもの。
  */
 type HostBootstrap = Pick<WebHost, 'raw' | 'requestFrame' | 'cancelFrame'>;
+
+function isNativeHostObject(value: unknown): value is RawHayate {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as Record<string, unknown>).apply_mutations === 'function'
+  );
+}
 
 /**
  * 押し込まれた host bootstrap（raw + frame-clock）を `Host` port に包み、バンドルが持ち込む
@@ -44,12 +54,12 @@ function mountWithBootstrap(bootstrap: HostBootstrap, mount: TsubameMount): AppH
  * （`__torimiMount` / `__tsubame`）の登録といった wire 契約の配線はここが隠す。FW 知識は
  * {@link TsubameMount} 引数として受けるのみ（FW 盲目）。
  *
- * ターゲット差は `__hayateHost` の有無によるランタイム判定で内部分岐する：
+ * ターゲット差は `__hayateHost` が native RawHayate の最小 shape を満たすかで内部分岐する：
  *
- * - **Native Host target**（`__hayateHost` あり）: ネイティブが JSI で注入した raw を
+ * - **Native Host target**（有効な `__hayateHost` あり）: ネイティブが JSI で注入した raw を
  *   `createHayateNativeHost` の pump 型 frame-clock に結線して即 mount し、ネイティブ vsync
  *   ループ用の `__tsubame`（pumpFrame / stop）を露出する（ADR-0112）。
- * - **Web Host target**（`__hayateHost` なし）: `__torimiMount` を登録する。ホストが eval 後に
+ * - **Web Host target**（有効な `__hayateHost` なし）: `__torimiMount` を登録する。ホストが eval 後に
  *   host bootstrap を渡して呼び、その時点で mount する。
  */
 export function registerTorimiApp(mount: TsubameMount): void {
@@ -60,16 +70,17 @@ export function registerTorimiApp(mount: TsubameMount): void {
   // 版数と突き合わせて一致時のみ mount する。
   g[TORIMI_PROTOCOL_VERSION_GLOBAL] = PROTOCOL_VERSION;
 
-  const injectedRaw = g[HAYATE_HOST_GLOBAL] as RawHayate | undefined;
-  if (injectedRaw !== undefined) {
+  const injectedRaw = g[HAYATE_HOST_GLOBAL];
+  if (isNativeHostObject(injectedRaw)) {
     // Native: host（注入 raw + vsync pump）は WASM をロードしない — Hayate はネイティブ
     // cdylib として既に存在する。フレーム駆動はネイティブ vsync が `__tsubame.pumpFrame` で
     // 1 フレームずつ行う。
     const nativeHost = createHayateNativeHost(injectedRaw);
     const handle = mountWithBootstrap(nativeHost, mount);
     g[TSUBAME_GLOBAL] = {
-      pumpFrame: (timestampMs: number) => nativeHost.pumpFrame(timestampMs),
-      stop: () => handle.dispose(),
+      [TSUBAME_PUMP_FRAME_PROPERTY]: (timestampMs: number) =>
+        nativeHost.pumpFrame(timestampMs),
+      [TSUBAME_STOP_PROPERTY]: () => handle.dispose(),
     };
     return;
   }

@@ -81,6 +81,7 @@ fn jsi_bridge_exposes_the_bundle_protocol_version_reader() {
     assert!(
         cpp.contains("generated/torimi_wire.hpp")
             && cpp.contains("kTorimiProtocolVersionGlobal")
+            && cpp.contains("std::isfinite")
             && generated.contains("kTorimiProtocolVersionGlobal")
             && generated.contains("__torimiProtocolVersion"),
         "the C++ host must read the generated __torimiProtocolVersion global (#533/#914)"
@@ -89,6 +90,32 @@ fn jsi_bridge_exposes_the_bundle_protocol_version_reader() {
     assert!(
         bridge.contains("fn protocol_version(self: &HermesApp)"),
         "the cxx bridge must expose HermesApp::protocol_version to Rust (#533)"
+    );
+}
+
+#[test]
+fn native_global_shape_is_validated_and_classified_immediately_after_eval() {
+    let cpp = read_relative("cpp/hermes_app.cpp");
+    let generated = read_relative("cpp/generated/torimi_wire.hpp");
+    assert!(
+        generated.contains("kTsubamePumpFrameProperty")
+            && generated.contains("kTsubameStopProperty")
+            && cpp.contains("kTsubamePumpFrameProperty")
+            && cpp.contains("kTsubameStopProperty"),
+        "__tsubame validation and frame calls must use generated property-name constants"
+    );
+    assert!(
+        cpp.contains("boot_failure_category") && cpp.contains("GlobalShape"),
+        "an invalid __tsubame object must be retained as a boot category, not delayed to pump_frame"
+    );
+
+    let bridge = read_relative("src/hermes_bridge.rs");
+    let app = app_tsubame_src();
+    assert!(
+        bridge.contains("fn boot_failure_category(self: &HermesApp)")
+            && app.contains("RuntimeBuildFailure::BundleEval")
+            && app.contains("RuntimeBuildFailure::GlobalShape"),
+        "the C++ eval/shape result must cross the JSI seam into the Rust boot state machine"
     );
 }
 

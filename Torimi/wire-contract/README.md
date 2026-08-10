@@ -1,6 +1,6 @@
 # @torimi/wire-contract
 
-Torimi の route、message、global、open/closed vocabulary、Device Log、Demo Manifest の言語中立な wire contract です（ADR-0006）。
+Torimi の route、message、global / property 名、open/closed vocabulary、Device Log、Demo Manifest の言語中立な wire contract です（ADR-0006）。
 
 - `spec/vocabulary.json` と `spec/wire.schema.json` が唯一の正本です。
 - `pnpm generate` が TypeScript、Android Native Host 用 Rust、Hermes JSI 用 C++ projection を生成します。

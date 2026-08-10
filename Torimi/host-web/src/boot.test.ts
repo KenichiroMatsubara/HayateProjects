@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TORIMI_MOUNT_GLOBAL } from '@torimi/wire-contract';
-import { bootTorimiHost } from './index.js';
+import {
+  bootTorimiHost,
+  TorimiBundleEvalError,
+  TorimiGlobalShapeError,
+} from './index.js';
 import type { WebHost } from '@torimi/hayate-host';
 
 /**
@@ -113,14 +117,54 @@ describe('bootTorimiHost', () => {
   });
 
   it('rejects a bundle that does not register the mount global', async () => {
-    await expect(
-      bootTorimiHost({
-        devServerUrl: 'http://dev.example',
-        canvas,
-        hostProtocolVersion: 1,
-        fetchBundle: async () => '/* no mount registered */',
-        createHost: async () => fakeHost(),
-      }),
-    ).rejects.toThrow(TORIMI_MOUNT_GLOBAL);
+    const createHost = vi.fn(async () => fakeHost());
+    const error = await bootTorimiHost({
+      devServerUrl: 'http://dev.example',
+      canvas,
+      hostProtocolVersion: 1,
+      fetchBundle: async () => '/* no mount registered */',
+      createHost,
+    }).catch((cause: unknown) => cause);
+
+    expect(error).toBeInstanceOf(TorimiGlobalShapeError);
+    expect(error).toMatchObject({
+      category: 'global-shape',
+      globalName: TORIMI_MOUNT_GLOBAL,
+      expected: 'function',
+      actualType: 'undefined',
+    });
+    expect(createHost).not.toHaveBeenCalled();
+  });
+
+  it('classifies a thrown bundle evaluation separately from a global shape failure', async () => {
+    const createHost = vi.fn(async () => fakeHost());
+    const error = await bootTorimiHost({
+      devServerUrl: 'http://dev.example',
+      canvas,
+      hostProtocolVersion: 1,
+      fetchBundle: async () => 'throw new Error("eval exploded")',
+      createHost,
+    }).catch((cause: unknown) => cause);
+
+    expect(error).toBeInstanceOf(TorimiBundleEvalError);
+    expect(error).toMatchObject({ category: 'bundle-eval' });
+    expect((error as Error).message).toContain('eval exploded');
+    expect(createHost).not.toHaveBeenCalled();
+  });
+
+  it('does not accept a stale mount global left by the previous bundle', async () => {
+    (globalThis as Record<string, unknown>)[TORIMI_MOUNT_GLOBAL] = vi.fn();
+    const createHost = vi.fn(async () => fakeHost());
+
+    const error = await bootTorimiHost({
+      devServerUrl: 'http://dev.example',
+      canvas,
+      hostProtocolVersion: 1,
+      fetchBundle: async () => '/* this bundle forgets to register its mount */',
+      createHost,
+    }).catch((cause: unknown) => cause);
+
+    expect(error).toBeInstanceOf(TorimiGlobalShapeError);
+    expect(createHost).not.toHaveBeenCalled();
   });
 });
