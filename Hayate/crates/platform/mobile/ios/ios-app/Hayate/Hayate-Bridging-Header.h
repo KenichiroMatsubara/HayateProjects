@@ -12,9 +12,10 @@
 // One-time launch hook (logger init). Analogue of the head of Android's `android_main`.
 void ios_main(void);
 
-// Create the per-view app: builds the wgpu Metal surface from the CAMetalLayer and the
-// demo ElementTree. `scale` is UIScreen.scale (Retina). Returns an opaque handle.
-void *hayate_ios_app_new(void *metal_layer, float scale);
+// Create the per-view app: mounts AccessKit on the UIView, builds the wgpu Metal surface from
+// the CAMetalLayer, and creates the demo ElementTree. `scale` is UIScreen.scale (Retina).
+// Returns an opaque handle; accessibility mount failure does not fail GPU app creation.
+void *hayate_ios_app_new(void *view, void *metal_layer, float scale);
 void hayate_ios_app_free(void *app);
 
 // Drawable resized (points * scale = pixels). Reconfigures the surface + viewport.

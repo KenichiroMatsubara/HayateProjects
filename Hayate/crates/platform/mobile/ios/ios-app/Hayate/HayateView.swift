@@ -45,8 +45,9 @@ final class HayateView: UIView {
         if app == nil {
             // 初回 sized layer = InitWindow（CreateSurface）。Swift が CAMetalLayer を作り、
             // raw-window-metal でそこから wgpu Metal サーフェスを張る。
+            let viewPtr = Unmanaged.passUnretained(self).toOpaque()
             let layerPtr = Unmanaged.passUnretained(metalLayer).toOpaque()
-            app = hayate_ios_app_new(layerPtr, scale)
+            app = hayate_ios_app_new(viewPtr, layerPtr, scale)
             startDisplayLink()
         } else {
             // 以降の layout = WindowResized（ResizeSurface）。
@@ -54,7 +55,12 @@ final class HayateView: UIView {
         }
     }
 
-    func onBecomeActive() { startDisplayLink() }
+    func onBecomeActive() {
+        startDisplayLink()
+        // UIKit owns container focus. The AccessKit target retains Core's focused element while
+        // the scene is inactive; prompt UIKit to query that same target again on foregrounding.
+        UIAccessibility.post(notification: .screenChanged, argument: nil)
+    }
 
     func onResignActive() {
         // TerminateWindow: ドローアブルが背景で無効になるためループを止める。
@@ -68,7 +74,7 @@ final class HayateView: UIView {
         app = nil
     }
 
-    private func startDisplayLink() {
+    fileprivate func startDisplayLink() {
         guard displayLink == nil else { return }
         let link = CADisplayLink(target: self, selector: #selector(frame(_:)))
         link.add(to: .main, forMode: .common)
@@ -118,6 +124,12 @@ final class HayateView: UIView {
             hayate_ios_ime(app, kind, nil)
         }
     }
+}
+
+/// Native Accessibility mailbox callbacks use the same frame wake seam as other iOS work.
+@_cdecl("hayate_ios_request_redraw")
+func hayate_ios_request_redraw() {
+    HayateView.current?.startDisplayLink()
 }
 
 extension HayateView: UIKeyInput {

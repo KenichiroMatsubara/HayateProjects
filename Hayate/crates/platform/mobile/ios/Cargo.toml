@@ -26,3 +26,8 @@ hayate-scene-renderer-vello = { path = "../../../scene-renderers/vello" }
 wgpu = { workspace = true }
 log.workspace = true
 pollster.workspace = true
+
+[target.'cfg(target_os = "ios")'.dependencies]
+accesskit.workspace = true
+accesskit_ios.workspace = true
+hayate-app-host = { path = "../../../app-host" }

@@ -12,8 +12,10 @@
 //! Android の device 専用 `app.rs` と同じ）。実機/シミュレータ検証はローカルで行う。
 
 use std::ffi::{c_char, c_void, CStr};
+use std::sync::Arc;
 use std::time::Instant;
 
+use hayate_app_host::NativeAccessibilitySession;
 use hayate_core::{CommittedFrame, ElementId, ElementTree};
 use hayate_layer_compositor::{
     scroll_layer_geometry_from_inputs, CompositeQuad, DeviceMemoryClass, GpuBudget,
@@ -25,6 +27,7 @@ use hayate_scene_renderer_vello::layer_compositor::{
     CompositeTarget, VelloLayerRasterizer, WgpuQuadCompositor,
 };
 
+use crate::accessibility::mount_ios_accessibility;
 use crate::ime_bridge::IosImeBridge;
 use crate::ime_input::{apply_command, apply_ime_action, ImeBuffer, ImeCommand};
 use crate::scene_demo::build_demo_tree;
@@ -50,6 +53,8 @@ struct GpuSurface {
 /// 1 ビューぶんのアダプタ状態。Swift が `hayate_ios_app_new` で sized な `CAMetalLayer`
 /// から作り、CADisplayLink ごとに `hayate_ios_render` を呼ぶ。
 struct IosApp {
+    // Drop the AccessKit target before the Core tree and GPU surface when this UIView is destroyed.
+    accessibility: Option<NativeAccessibilitySession>,
     tree: ElementTree,
     gpu: GpuSurface,
     /// CADisplayLink タイムスタンプ用の単調クロック起点。
@@ -71,6 +76,10 @@ impl IosApp {
 
     /// CADisplayLink の 1 tick: IME を反映し、ツリーを lower して提示する。
     fn render(&mut self) {
+        if let Some(accessibility) = self.accessibility.as_mut() {
+            accessibility.drain_before_frame(&mut self.tree);
+        }
+
         // ソフトキーボードの表示可否は core が編集可否から決め、bridge が反映する。
         // フォーカスが TextInput 間で変わったらローカルバッファをベースラインに戻す。
         {
@@ -85,8 +94,13 @@ impl IosApp {
 
         let timestamp_ms = self.start.elapsed().as_secs_f64() * 1000.0;
         let frame = self.tree.commit_rendered_frame(timestamp_ms);
-        if let Err(err) = self.gpu.render_frame(&frame) {
-            log::error!("hayate-adapter-ios: render failed: {err}");
+        match self.gpu.render_frame(&frame) {
+            Ok(()) => {
+                if let Some(accessibility) = self.accessibility.as_mut() {
+                    accessibility.update_after_present(&self.tree);
+                }
+            }
+            Err(err) => log::error!("hayate-adapter-ios: render failed: {err}"),
         }
     }
 
@@ -112,14 +126,20 @@ pub extern "C" fn ios_main() {
     log::info!("hayate-adapter-ios: ios_main");
 }
 
-/// sized な `CAMetalLayer`（InitWindow）からアダプタ状態を作る。`metal_layer` は Swift の
-/// `CAMetalLayer` ポインタ、`scale` は `UIScreen.scale`（Retina）。失敗時は null を返す。
+/// `UIView` と sized な `CAMetalLayer`（InitWindow）からアダプタ状態を作る。`view` は
+/// AccessKit の container、`metal_layer` は Swift の `CAMetalLayer` ポインタ、`scale` は
+/// `UIScreen.scale`（Retina）。accessibility mount failure は記録して描画を継続し、GPU
+/// 初期化失敗時だけ null を返す。
 ///
 /// # Safety
-/// `metal_layer` は有効な `CAMetalLayer` を指し、本アダプタの生存期間中サーフェスより長く
-/// 生きること（Swift 側がビューと共に保持する）。
+/// `view` は有効な `UIView`、`metal_layer` は有効な `CAMetalLayer` を指し、本アダプタの
+/// 生存期間中サーフェスより長く生きること（Swift 側がビューと共に保持する）。
 #[no_mangle]
-pub unsafe extern "C" fn hayate_ios_app_new(metal_layer: *mut c_void, scale: f32) -> *mut c_void {
+pub unsafe extern "C" fn hayate_ios_app_new(
+    view: *mut c_void,
+    metal_layer: *mut c_void,
+    scale: f32,
+) -> *mut c_void {
     if metal_layer.is_null() {
         log::error!("hayate-adapter-ios: null CAMetalLayer");
         return std::ptr::null_mut();
@@ -140,7 +160,22 @@ pub unsafe extern "C" fn hayate_ios_app_new(metal_layer: *mut c_void, scale: f32
         surface_metrics(gpu.width as i32, gpu.height as i32, content_scale).viewport_size();
     tree.set_viewport(vw, vh);
 
+    let accessibility = match unsafe {
+        mount_ios_accessibility(view, content_scale as f64, Arc::new(request_ios_redraw))
+    } {
+        Ok(session) => Some(session),
+        Err(failure) => {
+            log::error!(
+                "native-accessibility platform={} category={}",
+                failure.platform,
+                failure.category
+            );
+            None
+        }
+    };
+
     let app = Box::new(IosApp {
+        accessibility,
         tree,
         gpu,
         start: Instant::now(),
@@ -150,6 +185,14 @@ pub unsafe extern "C" fn hayate_ios_app_new(metal_layer: *mut c_void, scale: f32
         content_scale,
     });
     Box::into_raw(app) as *mut c_void
+}
+
+fn request_ios_redraw() {
+    unsafe { hayate_ios_request_redraw() }
+}
+
+unsafe extern "C" {
+    fn hayate_ios_request_redraw();
 }
 
 /// アダプタ状態を解放する（Destroy / sceneDidDisconnect）。
@@ -173,6 +216,13 @@ pub unsafe extern "C" fn hayate_ios_resize(app: *mut c_void, width: i32, height:
         return;
     };
     app.content_scale = scale.max(1.0);
+    if app
+        .accessibility
+        .as_mut()
+        .is_some_and(|session| session.set_base_dpr(app.content_scale as f64))
+    {
+        request_ios_redraw();
+    }
     let (w, h) = window_dimensions(width, height);
     app.gpu.resize(w, h, app.content_scale);
     app.set_viewport_from(w as i32, h as i32);

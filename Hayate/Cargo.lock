@@ -1568,6 +1568,9 @@ dependencies = [
 name = "hayate-adapter-ios"
 version = "0.1.0"
 dependencies = [
+ "accesskit",
+ "accesskit_ios",
+ "hayate-app-host",
  "hayate-core",
  "hayate-layer-compositor",
  "hayate-scene-renderer-vello",

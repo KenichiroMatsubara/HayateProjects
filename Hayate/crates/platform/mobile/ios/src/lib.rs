@@ -30,6 +30,8 @@ mod surface_lifecycle;
 mod touch_input;
 
 #[cfg(target_os = "ios")]
+mod accessibility;
+#[cfg(target_os = "ios")]
 mod app;
 #[cfg(target_os = "ios")]
 mod ime_bridge;
