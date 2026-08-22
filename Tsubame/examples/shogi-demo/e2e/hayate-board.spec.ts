@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
 /**
- * Hayate Renderer 経路の盤（#732）。`?renderer=tiny-skia` は CPU ラスタライザなので
+ * Hayate Renderer 経路の盤。`?renderer=tiny-skia` は CPU ラスタライザなので
  * WebGPU の無い環境でも Canvas モードに入れる。
  *
  * **この spec でしか押さえられないもの**が 1 つある: 盤も駒も 1 枚の canvas に落ちるので、

@@ -137,7 +137,7 @@ pub(crate) struct Element {
     pub text: Option<String>,
     pub src: Option<String>,
     pub text_layout: Option<crate::element::text::TextLayout>,
-    /// `visual.draw` 中の `DrawCommand::Text` をシェープした結果（#732）。
+    /// `visual.draw` 中の `DrawCommand::Text` をシェープした結果（PRD #723 / ADR-0141）。
     ///
     /// walk（`render_scene_graph`）は immutable で interner を持たないのでシェープも
     /// intern もできない。要素テキストと同じ段取り——**レイアウトパスでシェープ →

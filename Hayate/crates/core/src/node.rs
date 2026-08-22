@@ -518,7 +518,7 @@ impl SceneGraph {
     /// concurrently alive scene snapshot still owns.
     pub fn sweep_resources(&mut self) -> ResourceSweepStats {
         // 生存判定は `TextRun` ノードだけでは足りない: draw display list に埋めた
-        // テキストも `TextRunId` を参照する（#732）。ここを見落とすと参照中の id が
+        // テキストも `TextRunId` を参照する（PRD #723 / ADR-0141）。ここを見落とすと参照中の id が
         // 回収され、例外なしに `StaleTextRun` で絵だけが壊れる。
         let live: HashSet<TextRunId> = self
             .data

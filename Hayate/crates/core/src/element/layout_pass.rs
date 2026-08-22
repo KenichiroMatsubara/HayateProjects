@@ -227,7 +227,7 @@ impl LayoutPass {
             *fonts_dirty = false;
             // `is_text_like()` だけで絞ると draw テキストが取り残される: draw を載せる
             // のは `view` なので text-like ではなく、非同期で届いたフォントが反映されず
-            // 豆腐のまま固定される（#732）。draw を運ぶ要素も同じ輪に入れる。
+            // 豆腐のまま固定される（PRD #723 / ADR-0141）。draw を運ぶ要素も同じ輪に入れる。
             let stale_ids: Vec<ElementId> = elements
                 .iter()
                 .filter_map(|(id, el)| {
@@ -360,7 +360,7 @@ impl LayoutPass {
         // ここ 1 箇所で行う（重複発行の解消）。
         let outcome = shaper.finalize(projection, elements, viewport);
 
-        // draw display list のテキスト（#732）。要素テキストと同じ段取りに乗せる:
+        // draw display list のテキスト（PRD #723 / ADR-0141）。要素テキストと同じ段取りに乗せる:
         // ここでシェープして retain し、scene build が intern、walk は塗るだけ。
         // 陳腐化は「シェープ元の `Arc` が今の `visual.draw` と同一か」で判定するので、
         // draw を差し替えたのに再シェープを忘れる経路が作れない。

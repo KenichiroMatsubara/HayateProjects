@@ -635,7 +635,7 @@ fn emit_toolbar_panel(
     );
 }
 
-/// wire の draw display list を scene の語彙へ落とす（#732）。
+/// wire の draw display list を scene の語彙へ落とす（PRD #723 / ADR-0141）。
 ///
 /// テキスト以外は [`SceneDrawCommand::from_wire`] の素通し。テキストだけは、
 /// レイアウトパスがシェープして retain したレイアウト（`shaping`）を引き当て、

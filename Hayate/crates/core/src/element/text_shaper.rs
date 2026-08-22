@@ -121,7 +121,7 @@ impl TextShaper {
         )
     }
 
-    /// draw display list 中の `DrawCommand::Text` を全てシェープする（#732）。
+    /// draw display list 中の `DrawCommand::Text` を全てシェープする（PRD #723 / ADR-0141）。
     ///
     /// 要素の内容ではない単発ランなので `shape_label` と同型で、`max_advance` は
     /// 取らない（折り返しは op に足せば後から生える）。戻り値は

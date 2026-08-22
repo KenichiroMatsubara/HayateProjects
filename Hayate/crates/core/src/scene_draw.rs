@@ -1,4 +1,4 @@
-//! Scene 側の draw display list 語彙（#732）。
+//! Scene 側の draw display list 語彙（PRD #723 / ADR-0141）。
 //!
 //! wire 側の [`crate::wire::protocol::DrawCommand`] と**あえて別の型**にしてある。
 //! 分岐するのはテキストだけで、他のコマンドは形も意味も同じ:

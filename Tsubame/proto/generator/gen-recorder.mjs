@@ -41,7 +41,7 @@ export const CANVAS_METHODS = {
 };
 
 // drawPath / clipPath / fill / stroke は Path・Paint を取る意味的な特別扱い。
-// TEXT は文字列と TextStyle を取るので同じく表駆動から外す（#732）。
+// TEXT は文字列と TextStyle を取るので同じく表駆動から外す（PRD #723 / ADR-0141）。
 export const SPECIAL_COMMANDS = new Set(['FILL', 'STROKE', 'CLIP_PATH', 'TEXT']);
 
 export function generateRecorder() {

@@ -73,7 +73,7 @@ test.describe('Draw Gallery — DOM renderer', () => {
 });
 
 /**
- * テキスト描画（#732）。`drawText` が本当にグリフを出しているかを、
+ * テキスト描画（PRD #723 / ADR-0141）。`drawText` が本当にグリフを出しているかを、
  * 「空白でない」より強い主張で見る — 非空白だけなら塗り 1 個でも通ってしまう。
  */
 test.describe('Draw Gallery — DOM renderer, drawText', () => {

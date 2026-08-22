@@ -222,7 +222,7 @@ fn identical_font_instances_and_text_runs_share_stable_ids() {
     assert_eq!(font.font.index, 0);
 }
 
-// draw display list に埋めた `TextRunId` も生存判定に入る（#732）。
+// draw display list に埋めた `TextRunId` も生存判定に入る（PRD #723 / ADR-0141）。
 //
 // これが無いと sweep は `NodeKind::TextRun` しか見ず、**参照中の id を回収する**。
 // 症状は例外ではなく `StaleTextRun` による無音の描画欠落なので、テストで先に押さえる。
