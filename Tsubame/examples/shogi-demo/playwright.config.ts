@@ -62,6 +62,10 @@ export default defineConfig({
       url: `http://localhost:${PORT}`,
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
+      // 既定（'ignore'）だと webServer が死んでも Playwright は
+      // 「not able to start. Exit code: 1」しか出さず、理由が CI ログに残らない。
+      stdout: 'pipe',
+      stderr: 'pipe',
     },
     {
       // Torimi CLI の web dev。`torimi dev web` が build（vite）→ 配信（@torimi/dev-server）→
@@ -72,6 +76,8 @@ export default defineConfig({
       url: `http://localhost:${TORIMI_DEV_PORT}/bundle.js`,
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
+      stdout: 'pipe',
+      stderr: 'pipe',
     },
   ],
 });
