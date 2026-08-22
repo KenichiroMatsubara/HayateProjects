@@ -61,6 +61,16 @@ jobs:
           pnpm --filter @torimi/dev-server build
           pnpm --filter @torimi/cli build
 
+      # CLI を後からビルドしても、既に完了した install は link フェーズを再実行しない。
+      # CLI の bin 実体は dist/cli.js で、fresh clone では最初の `pnpm install` 時点で未ビルド。
+      # pnpm は bin ターゲットが無いと `.bin/torimi` の作成を warning で黙ってスキップするので、
+      # 張り直さないと webServer の `torimi dev web` が `Command "torimi" not found` で落ちる。
+      # torimi-release.yml が同じ理由で同じ手順を踏んでいる。
+      - name: Re-link the example's bins now that the Torimi CLI is built
+        run: |
+          rm -rf Tsubame/examples/*/node_modules
+          pnpm install --frozen-lockfile
+
       - name: Unit tests (rules / painter / AI)
         run: pnpm --filter @tsubame/example-shogi-demo test
 
