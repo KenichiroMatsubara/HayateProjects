@@ -775,7 +775,7 @@ fn walk_node<P: ScenePainter>(graph: &(impl SceneRead + ?Sized), id: NodeId, pai
             painter.pop_clip();
         }
         NodeKind::DrawList { x, y, commands } => {
-            use crate::wire::protocol::DrawCommand;
+            use crate::scene_draw::SceneDrawCommand as DrawCommand;
             // canvas の唯一の可変状態: 変換 CTM（ボーダーボックス原点相対）と
             // クリップスタック（#728）。座標操作は verbs へソフト適用し、クリップは
             // painter の既存クリップスタックへ push/pop する。原点 `(x, y)` は
@@ -856,6 +856,24 @@ fn walk_node<P: ScenePainter>(graph: &(impl SceneRead + ?Sized), id: NodeId, pai
                         let tv = transform_verbs(verbs, origin.then(ctm));
                         painter.push_clip_draw_path(&tv);
                         clip_depth += 1;
+                    }
+                    DrawCommand::Text {
+                        x: tx,
+                        y: ty,
+                        color,
+                        runs,
+                        ..
+                    } => {
+                        // グリフは fill/stroke の verb と違って座標へソフト適用できない
+                        // （アウトラインを持たず painter がラスタライズする）。CTM は
+                        // painter の変換スタックへ積んで渡す — 回転した文字はこの 1 点で
+                        // 出る。原点は verb 経路と揃えて transform 側に焼き込む。
+                        let to_scene = origin.then(ctm);
+                        painter.push_transform(to_scene.to_f64());
+                        for &text_run in runs {
+                            painter.draw_text_run(*tx, *ty, *color, text_run, graph.resources());
+                        }
+                        painter.pop_transform();
                     }
                 }
             }

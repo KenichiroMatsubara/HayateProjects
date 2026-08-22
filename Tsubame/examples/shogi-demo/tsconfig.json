@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "jsxImportSource": "@torimi/tsubame-react",
+    "types": []
+  },
+  "include": ["src", "vite.config.ts", "vite.config.torimi.ts"]
+}

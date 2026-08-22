@@ -221,3 +221,42 @@ fn identical_font_instances_and_text_runs_share_stable_ids() {
         .expect("interned font instance");
     assert_eq!(font.font.index, 0);
 }
+
+// draw display list に埋めた `TextRunId` も生存判定に入る（PRD #723 / ADR-0141）。
+//
+// これが無いと sweep は `NodeKind::TextRun` しか見ず、**参照中の id を回収する**。
+// 症状は例外ではなく `StaleTextRun` による無音の描画欠落なので、テストで先に押さえる。
+#[test]
+fn a_text_run_referenced_only_from_a_draw_list_survives_the_sweep() {
+    use hayate_core::SceneDrawCommand;
+
+    let mut scene = SceneGraph::new();
+    let font = RenderFont::new(Blob::from(vec![1, 2, 3, 4]), 0);
+    let text_run = scene.intern_text_run(text_run(font, "in a draw list"));
+    let node = scene.insert(Node {
+        kind: NodeKind::DrawList {
+            x: 0.0,
+            y: 0.0,
+            commands: Arc::new(vec![SceneDrawCommand::Text {
+                x: 0.0,
+                y: 0.0,
+                width: 10.0,
+                height: 16.0,
+                color: [0.0, 0.0, 0.0, 1.0],
+                runs: vec![text_run],
+            }]),
+        },
+        children: Vec::new(),
+    });
+
+    // 参照されている間は回収されない。
+    assert_eq!(scene.sweep_resources().text_runs, 0);
+    assert_eq!(
+        scene.resources().text_run(text_run).unwrap().text.as_ref(),
+        "in a draw list"
+    );
+
+    // 参照が消えれば通常どおり回収される（保持しっぱなしのリークではない）。
+    scene.remove(node);
+    assert_eq!(scene.sweep_resources().text_runs, 1);
+}

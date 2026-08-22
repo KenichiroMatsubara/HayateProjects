@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { DRAW_OP } from '@torimi/tsubame-protocol-generated/protocol';
 import {
+  FontStyle,
   PaintingStyle,
   PathFillType,
   StrokeCap,
@@ -12,6 +13,7 @@ import type {
   DrawPaintSource,
   DrawPaintPacket,
   DrawSize,
+  DrawTextStyle,
 } from '@torimi/tsubame-renderer-protocol';
 import {
   curveChart,
@@ -19,6 +21,8 @@ import {
   dashStrokeSampler,
   rotatedClip,
   responsiveGrid,
+  textSampler,
+  rotatedText,
   GALLERY_PAINTERS,
 } from './painters.js';
 
@@ -37,7 +41,14 @@ type DrawCall =
   | { op: 'translate'; args: readonly [number, number] }
   | { op: 'rotate'; radians: number }
   | { op: 'scale'; args: readonly [number, number] }
-  | { op: 'transform'; args: readonly [number, number, number, number, number, number] };
+  | { op: 'transform'; args: readonly [number, number, number, number, number, number] }
+  | {
+      op: 'drawText';
+      text: string;
+      at: readonly [number, number];
+      paint: DrawPaintPacket;
+      style: { fontSize: number; fontFamily: string; fontWeight: number; fontStyle: number };
+    };
 
 class SpyCanvas implements DrawCanvas {
   readonly calls: DrawCall[] = [];
@@ -81,6 +92,29 @@ class SpyCanvas implements DrawCanvas {
   }
   transform(a: number, b: number, c: number, d: number, e: number, f: number): this {
     this.calls.push({ op: 'transform', args: [a, b, c, d, e, f] });
+    return this;
+  }
+  drawText(
+    text: string,
+    x: number,
+    y: number,
+    paint: DrawPaintSource,
+    style?: DrawTextStyle,
+  ): this {
+    // style 省略時のレンダラー既定は spy には見えない（各レンダラーが解決する）。
+    // painter が明示した値だけを記録し、省略は既定値で表す。
+    this.calls.push({
+      op: 'drawText',
+      text,
+      at: [x, y],
+      paint: paint.toDrawPaint(),
+      style: {
+        fontSize: style?.fontSize ?? 16,
+        fontFamily: style?.fontFamily ?? '',
+        fontWeight: style?.fontWeight ?? 400,
+        fontStyle: style?.fontStyle ?? FontStyle.normal,
+      },
+    });
     return this;
   }
 }
@@ -259,14 +293,104 @@ describe('responsiveGrid painter (size-following)', () => {
   });
 });
 
+describe('textSampler painter (typeface sampler)', () => {
+  it('draws one run per sample and varies size, weight, and slant across them', () => {
+    const spy = new SpyCanvas();
+    textSampler(spy, SIZE);
+
+    const texts = spy.calls.filter((c) => c.op === 'drawText') as Extract<
+      DrawCall,
+      { op: 'drawText' }
+    >[];
+    expect(texts.length).toBeGreaterThanOrEqual(3);
+    // 見本なので、太さもスラントも 1 種類では成立しない。
+    expect(new Set(texts.map((t) => t.style.fontWeight)).size).toBeGreaterThan(1);
+    expect(new Set(texts.map((t) => t.style.fontStyle))).toContain(FontStyle.italic);
+    expect(new Set(texts.map((t) => t.style.fontSize)).size).toBeGreaterThan(1);
+    // 行は上から下へ積む（y が単調増加）。
+    const ys = texts.map((t) => t.at[1]);
+    expect([...ys].sort((a, b) => a - b)).toEqual(ys);
+  });
+
+  it('includes a Japanese run — the bundled default font covers kanji with no network', () => {
+    const spy = new SpyCanvas();
+    textSampler(spy, SIZE);
+
+    const texts = spy.calls.filter((c) => c.op === 'drawText') as Extract<
+      DrawCall,
+      { op: 'drawText' }
+    >[];
+    expect(texts.some((t) => /[\u4e00-\u9fff\u3040-\u30ff]/.test(t.text))).toBe(true);
+    // 既定ファミリに任せる（名前付き family を要求しない）ことがバンドル済み
+    // フォントで出るという主張の一部。
+    expect(texts.every((t) => t.style.fontFamily === '')).toBe(true);
+  });
+
+  it('scales with the box: a taller box uses larger type', () => {
+    const short = new SpyCanvas();
+    textSampler(short, { width: 200, height: 100 });
+    const tall = new SpyCanvas();
+    textSampler(tall, { width: 200, height: 400 });
+
+    const maxSize = (spy: SpyCanvas): number =>
+      Math.max(
+        ...(spy.calls.filter((c) => c.op === 'drawText') as Extract<
+          DrawCall,
+          { op: 'drawText' }
+        >[]).map((t) => t.style.fontSize),
+      );
+    expect(maxSize(tall)).toBeGreaterThan(maxSize(short));
+  });
+});
+
+describe('rotatedText painter (glyphs under the canvas transform)', () => {
+  it('draws each run inside a balanced save/rotate/restore, at a distinct angle', () => {
+    const spy = new SpyCanvas();
+    rotatedText(spy, SIZE);
+
+    const seq = spy.calls.map((c) => c.op);
+    expect(seq.filter((o) => o === 'save').length).toBe(seq.filter((o) => o === 'restore').length);
+
+    const texts = spy.calls.filter((c) => c.op === 'drawText');
+    expect(texts.length).toBeGreaterThan(1);
+
+    // 各 drawText は save の後・対応する restore の前に出る。
+    let depth = 0;
+    let drawnAtDepthZero = 0;
+    for (const call of spy.calls) {
+      if (call.op === 'save') depth++;
+      else if (call.op === 'restore') depth--;
+      else if (call.op === 'drawText' && depth === 0) drawnAtDepthZero++;
+    }
+    expect(drawnAtDepthZero, 'every rotated run must sit inside a save/restore pair').toBe(0);
+
+    // 回転角が全て違う（同じ向きばかりなら「回転の実証」にならない）。
+    const angles = (spy.calls.filter((c) => c.op === 'rotate') as Extract<
+      DrawCall,
+      { op: 'rotate' }
+    >[]).map((r) => r.radians);
+    expect(angles.length).toBe(texts.length);
+    expect(new Set(angles).size).toBe(angles.length);
+    expect(angles.some((a) => a !== 0)).toBe(true);
+  });
+});
+
 describe('GALLERY_PAINTERS registry', () => {
   it('exposes every sample painter with a unique id and each paints something at a normal size', () => {
-    expect(GALLERY_PAINTERS.length).toBeGreaterThanOrEqual(5);
+    expect(GALLERY_PAINTERS.length).toBeGreaterThanOrEqual(7);
     const ids = GALLERY_PAINTERS.map((p) => p.id);
     expect(new Set(ids).size).toBe(ids.length);
-    // 受け入れ基準の 5 種を id で担保する。
+    // パス幾何 5 種 ＋ テキスト 2 種を id で担保する。
     expect(ids).toEqual(
-      expect.arrayContaining(['curve-chart', 'even-odd-donut', 'dash-sampler', 'rotated-clip', 'responsive-grid']),
+      expect.arrayContaining([
+        'curve-chart',
+        'even-odd-donut',
+        'dash-sampler',
+        'rotated-clip',
+        'responsive-grid',
+        'text-sampler',
+        'rotated-text',
+      ]),
     );
     for (const entry of GALLERY_PAINTERS) {
       const spy = new SpyCanvas();

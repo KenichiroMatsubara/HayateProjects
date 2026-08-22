@@ -152,6 +152,19 @@ fn expected_commands(commands: &[serde_json::Value]) -> Vec<DrawCommand> {
             "clipPath" => out.push(DrawCommand::ClipPath {
                 verbs: std::mem::take(&mut verbs),
             }),
+            // 文字列 op は表駆動にならないので手アーム。省略されたフォント指定は
+            // recorder の `TextStyle` 既定（16px / 既定ファミリ / 400 / normal）に合わせる。
+            // path を消費しない（`verbs` を take しない）ことも fixture が押さえる。
+            "text" => out.push(DrawCommand::Text {
+                text: command["text"].as_str().expect("text").to_string(),
+                x: f32_at(&command["x"]),
+                y: f32_at(&command["y"]),
+                font_size: command["fontSize"].as_f64().unwrap_or(16.0) as f32,
+                font_weight: command["fontWeight"].as_f64().unwrap_or(400.0) as f32,
+                font_style: command["fontStyle"].as_f64().unwrap_or(0.0) as f32,
+                font_family: command["fontFamily"].as_str().unwrap_or("").to_string(),
+                paint: parse_paint(&command["paint"]),
+            }),
             other => panic!("fixture uses unknown draw command {other}"),
         }
     }

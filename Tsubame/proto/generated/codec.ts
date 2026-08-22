@@ -914,6 +914,13 @@ export interface DrawPaint {
   readonly dashOffset?: number;
 }
 
+/** 長さ前置の UTF-8 バイト列として文字列を draws バッファへ載せる。 */
+function pushDrawString(draws: number[], value: string): void {
+  const bytes = new TextEncoder().encode(value);
+  draws.push(bytes.length);
+  for (const byte of bytes) draws.push(byte);
+}
+
 export function appendDrawMoveTo(draws: number[], x: number, y: number): void {
   draws.push(DRAW_OP.MOVE_TO, x, y);
 }
@@ -1046,4 +1053,37 @@ export function appendDrawClipRect(draws: number[], x: number, y: number, width:
 
 export function appendDrawClipPath(draws: number[]): void {
   draws.push(DRAW_OP.CLIP_PATH);
+}
+
+export function appendDrawText(draws: number[], text: string, x: number, y: number, fontSize: number, fontWeight: number, fontStyle: number, fontFamily: string, paint: DrawPaint): void {
+  draws.push(DRAW_OP.TEXT, x, y, fontSize, fontWeight, fontStyle);
+  pushDrawString(draws, text);
+  pushDrawString(draws, fontFamily);
+  const lenIndex = draws.length;
+  draws.push(0);
+  if (paint.color !== undefined) {
+    draws.push(DRAW_PAINT_FIELD.COLOR, ...paint.color);
+  }
+  if (paint.fillRule !== undefined) {
+    draws.push(DRAW_PAINT_FIELD.FILL_RULE, paint.fillRule);
+  }
+  if (paint.strokeWidth !== undefined) {
+    draws.push(DRAW_PAINT_FIELD.STROKE_WIDTH, paint.strokeWidth);
+  }
+  if (paint.cap !== undefined) {
+    draws.push(DRAW_PAINT_FIELD.CAP, paint.cap);
+  }
+  if (paint.join !== undefined) {
+    draws.push(DRAW_PAINT_FIELD.JOIN, paint.join);
+  }
+  if (paint.miterLimit !== undefined) {
+    draws.push(DRAW_PAINT_FIELD.MITER_LIMIT, paint.miterLimit);
+  }
+  if (paint.dash !== undefined) {
+    draws.push(DRAW_PAINT_FIELD.DASH, paint.dash.length, ...paint.dash);
+  }
+  if (paint.dashOffset !== undefined) {
+    draws.push(DRAW_PAINT_FIELD.DASH_OFFSET, paint.dashOffset);
+  }
+  draws[lenIndex] = draws.length - lenIndex - 1;
 }

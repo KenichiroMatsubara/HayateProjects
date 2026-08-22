@@ -23,6 +23,7 @@ pub mod node;
 pub mod qr_scanner;
 pub mod render;
 pub mod render_scale;
+pub mod scene_draw;
 #[cfg(any(debug_assertions, feature = "scene-validation"))]
 mod scene_validation;
 pub mod scroll;
@@ -107,6 +108,7 @@ pub use render::{
 pub use render_scale::{
     effective_content_scale, hit_test_logical, RenderScaleDriver, RenderScaleGovernor,
 };
+pub use scene_draw::{carries_draw_text, SceneDrawCommand};
 #[cfg(any(debug_assertions, feature = "scene-validation"))]
 pub use scene_validation::{
     validate_scene_graph, SceneGraphValidator, SceneValidationError, SceneValidationReport,

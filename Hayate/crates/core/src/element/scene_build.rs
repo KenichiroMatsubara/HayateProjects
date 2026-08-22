@@ -11,6 +11,7 @@ use crate::element::taffy_projection::TraversalStep;
 use crate::element::tree::{ElementTree, Visual};
 use crate::element::visual_invalidation::{self, VisualInvalidationReach};
 use crate::node::{Node, NodeId, NodeKind, SceneGraph, ShadowOccluder};
+use crate::scene_draw::SceneDrawCommand;
 use crate::render::shadow::{shadow_sigma, HARD_SHADOW_BLUR_THRESHOLD};
 use crate::scroll::{overscroll_stretch_scale, ScrollPhysicsProfile, ScrollPhysicsTuning};
 
@@ -634,6 +635,61 @@ fn emit_toolbar_panel(
     );
 }
 
+/// wire の draw display list を scene の語彙へ落とす（PRD #723 / ADR-0141）。
+///
+/// テキスト以外は [`SceneDrawCommand::from_wire`] の素通し。テキストだけは、
+/// レイアウトパスがシェープして retain したレイアウト（`shaping`）を引き当て、
+/// ここで [`SceneGraph::intern_text_run`] して `TextRunId` を確定する。
+/// chrome ラベル（[`emit_toolbar_label`]）と要素テキストが取っているのと同じ形。
+///
+/// シェープ結果が引けなかった Text コマンドは**落とす**。起こるのは
+/// draw を差し替えた直後の 1 フレームだけで、次のレイアウトパスがシェープして直る
+/// （要素テキストと同じ「止めない・後のフレームで直す」規律）。
+fn lower_draw_list(
+    sg: &mut SceneGraph,
+    commands: &[crate::wire::protocol::DrawCommand],
+    shaping: Option<&crate::element::tree::DrawTextShaping>,
+    opacity: f32,
+) -> Vec<SceneDrawCommand> {
+    // レイアウトは draw 順に並ぶので、カーソルを進めながら索引で引く（線形）。
+    let layouts = shaping.map(|s| s.layouts.as_slice()).unwrap_or_default();
+    let mut cursor = 0usize;
+    let mut out = Vec::with_capacity(commands.len());
+    for (index, command) in commands.iter().enumerate() {
+        if let Some(scene) = SceneDrawCommand::from_wire(command) {
+            out.push(scene);
+            continue;
+        }
+        // ここに来るのは `DrawCommand::Text` だけ（`from_wire` の契約）。
+        let crate::wire::protocol::DrawCommand::Text { x, y, paint, .. } = command else {
+            continue;
+        };
+        while cursor < layouts.len() && layouts[cursor].0 < index {
+            cursor += 1;
+        }
+        let Some((_, layout)) = layouts.get(cursor).filter(|(i, _)| *i == index) else {
+            continue;
+        };
+        cursor += 1;
+        let mut color = paint.color;
+        color[3] *= opacity;
+        let runs = layout
+            .runs
+            .iter()
+            .map(|run| sg.intern_text_run(run.as_ref().clone()))
+            .collect();
+        out.push(SceneDrawCommand::Text {
+            x: *x,
+            y: *y,
+            width: layout.layout.width(),
+            height: layout.layout.height(),
+            color,
+            runs,
+        });
+    }
+    out
+}
+
 /// セル `cell` 内に中央寄せでシェイプ済みラベルのグリフ run を描く。
 fn emit_toolbar_label(
     sg: &mut SceneGraph,
@@ -1194,6 +1250,12 @@ fn emit_element<S: AnchorSink>(
     // パス座標はボーダーボックス相対のまま。クリップは上の overflow ラップに従う
     // （既定 visible = box 外へのはみ出し可）。
     if !visual.draw.is_empty() {
+        let commands = lower_draw_list(
+            ctx.sg,
+            visual.draw.as_slice(),
+            el.draw_text_layouts.as_ref(),
+            visual.opacity,
+        );
         emit(
             ctx.sg,
             effective_parent,
@@ -1201,7 +1263,7 @@ fn emit_element<S: AnchorSink>(
                 kind: NodeKind::DrawList {
                     x,
                     y,
-                    commands: visual.draw.clone(),
+                    commands: std::sync::Arc::new(commands),
                 },
                 children: Vec::new(),
             },

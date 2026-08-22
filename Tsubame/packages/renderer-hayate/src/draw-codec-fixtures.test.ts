@@ -21,6 +21,7 @@ import {
   appendDrawSave,
   appendDrawScale,
   appendDrawStroke,
+  appendDrawText,
   appendDrawTransform,
   appendDrawTranslate,
   type DrawPaint,
@@ -55,7 +56,8 @@ interface DrawFixtureCommand {
     | 'scale'
     | 'transform'
     | 'clipRect'
-    | 'clipPath';
+    | 'clipPath'
+    | 'text';
   readonly x?: number;
   readonly y?: number;
   readonly cx?: number;
@@ -85,6 +87,11 @@ interface DrawFixtureCommand {
   readonly rx?: number;
   readonly ry?: number;
   readonly paint?: DrawPaint;
+  readonly text?: string;
+  readonly fontSize?: number;
+  readonly fontFamily?: string;
+  readonly fontWeight?: number;
+  readonly fontStyle?: number;
 }
 
 interface DrawFixture {
@@ -182,6 +189,21 @@ function encodeCommands(commands: readonly DrawFixtureCommand[]): number[] {
         break;
       case 'clipPath':
         appendDrawClipPath(draws);
+        break;
+      // 文字列 op は表駆動にならないので手アーム。省略されたフォント指定は
+      // recorder の `TextStyle` 既定（16px / 既定ファミリ / 400 / normal）に合わせる。
+      case 'text':
+        appendDrawText(
+          draws,
+          command.text!,
+          command.x!,
+          command.y!,
+          command.fontSize ?? 16,
+          command.fontWeight ?? 400,
+          command.fontStyle ?? 0,
+          command.fontFamily ?? '',
+          command.paint ?? {},
+        );
         break;
     }
   }

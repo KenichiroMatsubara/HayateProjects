@@ -3,7 +3,8 @@
 
 use std::collections::{HashMap, HashSet};
 
-use crate::{DrawCommand, DrawPaint, NodeId, NodeKind, PathVerb, SceneGraph};
+use crate::scene_draw::SceneDrawCommand as DrawCommand;
+use crate::{DrawPaint, NodeId, NodeKind, PathVerb, SceneGraph};
 
 /// renderer に依存しない SceneGraph 契約エラー。
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -309,6 +310,16 @@ fn valid_draw_command(command: &DrawCommand) -> bool {
             height,
         } => finite([*x, *y, *width, *height]) && *width >= 0.0 && *height >= 0.0,
         DrawCommand::ClipPath { verbs } => verbs.iter().all(valid_path_verb),
+        // シェープ済みテキスト。グリフ座標は run（intern 済み resource）側が持つので、
+        // ここで見るのは配置と実測寸法と色だけ。
+        DrawCommand::Text {
+            x,
+            y,
+            width,
+            height,
+            color,
+            ..
+        } => finite([*x, *y, *width, *height]) && *width >= 0.0 && *height >= 0.0 && valid_color(color),
     }
 }
 

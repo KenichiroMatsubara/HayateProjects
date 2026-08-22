@@ -37,6 +37,7 @@ export type {
   DrawRecordedPath,
   DrawPaintSource,
   DrawPaintPacket,
+  DrawTextStyle,
 } from './generated/draw-canvas.js';
 
 export type {

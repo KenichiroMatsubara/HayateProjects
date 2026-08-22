@@ -10,7 +10,7 @@ use crate::element::taffy_bridge::{self, MeasureCtx};
 use crate::element::taffy_projection::{TaffyProjection, TraversalStep};
 use crate::element::text::TextLayout;
 use crate::element::text_shaper::TextShaper;
-use crate::element::tree::{Element, Event};
+use crate::element::tree::{DrawTextShaping, Element, Event};
 
 /// base の `layout_style`（作者の意図）に、現ビューポートで一致する **レイアウト系**
 /// ビューポートバリアントを宣言順（後勝ち）で重ねた実効 Taffy スタイルを返す（ADR-0081）。
@@ -225,20 +225,22 @@ impl LayoutPass {
 
         if *fonts_dirty {
             *fonts_dirty = false;
-            let text_ids: Vec<ElementId> = elements
+            // `is_text_like()` だけで絞ると draw テキストが取り残される: draw を載せる
+            // のは `view` なので text-like ではなく、非同期で届いたフォントが反映されず
+            // 豆腐のまま固定される（PRD #723 / ADR-0141）。draw を運ぶ要素も同じ輪に入れる。
+            let stale_ids: Vec<ElementId> = elements
                 .iter()
                 .filter_map(|(id, el)| {
-                    if el.kind.is_text_like() {
-                        Some(*id)
-                    } else {
-                        None
-                    }
+                    let carries_draw_text =
+                        crate::scene_draw::carries_draw_text(el.visual.draw.as_slice());
+                    (el.kind.is_text_like() || carries_draw_text).then_some(*id)
                 })
                 .collect();
-            for id in text_ids {
+            for id in stale_ids {
                 if let Some(el) = elements.get_mut(&id) {
                     el.text_layout = None;
                     el.content_layout = None;
+                    el.draw_text_layouts = None;
                     self.projection.mark_dirty(id);
                 }
             }
@@ -357,7 +359,34 @@ impl LayoutPass {
         // 欠落 family は IFC/text-input を de-dup した単一集合として値で返り、`FetchFont` 発行は
         // ここ 1 箇所で行う（重複発行の解消）。
         let outcome = shaper.finalize(projection, elements, viewport);
-        for family in outcome.missing_families {
+
+        // draw display list のテキスト（PRD #723 / ADR-0141）。要素テキストと同じ段取りに乗せる:
+        // ここでシェープして retain し、scene build が intern、walk は塗るだけ。
+        // 陳腐化は「シェープ元の `Arc` が今の `visual.draw` と同一か」で判定するので、
+        // draw を差し替えたのに再シェープを忘れる経路が作れない。
+        let mut draw_missing: Vec<String> = Vec::new();
+        let stale_draw: Vec<ElementId> = elements
+            .iter()
+            .filter_map(|(id, el)| {
+                let fresh = el
+                    .draw_text_layouts
+                    .as_ref()
+                    .is_some_and(|s| Arc::ptr_eq(&s.source, &el.visual.draw));
+                (!fresh && crate::scene_draw::carries_draw_text(el.visual.draw.as_slice()))
+                    .then_some(*id)
+            })
+            .collect();
+        for id in stale_draw {
+            let Some(source) = elements.get(&id).map(|el| el.visual.draw.clone()) else {
+                continue;
+            };
+            let layouts = shaper.shape_draw_text(source.as_slice(), &mut draw_missing);
+            if let Some(el) = elements.get_mut(&id) {
+                el.draw_text_layouts = Some(DrawTextShaping { source, layouts });
+            }
+        }
+
+        for family in outcome.missing_families.into_iter().chain(draw_missing) {
             if font_fetches.should_request(&family) {
                 font_fetches.mark_requested(&family);
                 event_queue.push(Event::FetchFont { family });
@@ -406,6 +435,7 @@ mod tests {
             text: None,
             src: None,
             text_layout: None,
+            draw_text_layouts: None,
             transform: None,
             scroll_offset: (0.0, 0.0),
             src_image: None,

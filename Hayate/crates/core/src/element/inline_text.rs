@@ -282,6 +282,7 @@ mod tests {
             text: Some(content.to_string()),
             src: None,
             text_layout: None,
+            draw_text_layouts: None,
             transform: None,
             scroll_offset: (0.0, 0.0),
             src_image: None,

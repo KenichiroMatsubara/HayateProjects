@@ -1,15 +1,17 @@
 import {
+  FontStyle,
   Path,
   Paint,
   PaintingStyle,
   PathFillType,
   StrokeCap,
   StrokeJoin,
+  TextStyle,
 } from '@torimi/tsubame-protocol-generated/recorder';
 import type { DrawCanvas, DrawSize } from '@torimi/tsubame-renderer-protocol';
 
 /**
- * draw ギャラリーのサンプル painter 群（issue #732）。draw v1 語彙を横断する
+ * draw ギャラリーのサンプル painter 群（#730 / #732）。draw の語彙を横断する
  * 小さな painter を、フレームワーク非依存・レンダラー非依存の純関数として置く。
  * 各 painter は `(canvas, size)` を受け取り DrawCanvas 契約だけに触れるので、
  * 同一関数が Hayate Renderer（wire 記録）と DOM Renderer（canvas 2D replay）の
@@ -178,6 +180,72 @@ export function responsiveGrid(canvas: DrawCanvas, size: DrawSize): void {
   }
 }
 
+/** 書体見本の 1 行。 */
+interface TextSample {
+  readonly text: string;
+  readonly weight: number;
+  readonly slant: FontStyle;
+  readonly scale: number;
+}
+
+const TEXT_SAMPLES: readonly TextSample[] = [
+  { text: 'Regular 400', weight: 400, slant: FontStyle.normal, scale: 0.14 },
+  { text: 'Bold 700', weight: 700, slant: FontStyle.normal, scale: 0.18 },
+  { text: 'Italic', weight: 400, slant: FontStyle.italic, scale: 0.14 },
+  { text: '日本語 かな 漢字', weight: 400, slant: FontStyle.normal, scale: 0.13 },
+];
+
+/**
+ * 書体見本。大きさ・太さ・スラントを変えた行を積む。最後の行は日本語で、
+ * バンドル済みの既定フォント（NotoSansJP）が初回フレームからネットワーク無しで
+ * 漢字を出すことの実証を兼ねる。
+ */
+export function textSampler(canvas: DrawCanvas, size: DrawSize): void {
+  const rowH = size.height / (TEXT_SAMPLES.length + 1);
+  const paint = new Paint();
+  paint.style = PaintingStyle.fill;
+  paint.color = [0.15, 0.18, 0.25, 1];
+
+  TEXT_SAMPLES.forEach((sample, i) => {
+    const style = new TextStyle();
+    style.fontSize = Math.max(10, size.height * sample.scale);
+    style.fontWeight = sample.weight;
+    style.fontStyle = sample.slant;
+    canvas.drawText(sample.text, size.width * 0.08, rowH * (i + 0.4), paint, style);
+  });
+}
+
+/**
+ * 回転した文字。同じ 1 文字を中心の周りに 8 方向へ並べ、`rotate` が
+ * **図形だけでなくグリフにも効く**ことを示す。グリフはパス動詞を持たず座標へ
+ * ソフト適用できないので、walk が現在の変換を painter の変換スタックへ積む
+ * 経路がここで試される（将棋の後手駒が立つのと同じ配線）。
+ */
+export function rotatedText(canvas: DrawCanvas, size: DrawSize): void {
+  const cx = size.width / 2;
+  const cy = size.height / 2;
+  const radius = Math.min(size.width, size.height) * 0.3;
+  const spokes = 8;
+
+  const style = new TextStyle();
+  style.fontSize = Math.max(12, Math.min(size.width, size.height) * 0.13);
+  const paint = new Paint();
+  paint.style = PaintingStyle.fill;
+
+  for (let i = 0; i < spokes; i++) {
+    const angle = (Math.PI * 2 * i) / spokes;
+    canvas.save();
+    canvas.translate(cx, cy);
+    canvas.rotate(angle);
+    canvas.translate(0, -radius);
+    // 色相を回転角に連動させ、どの向きの文字がどれか目で追えるようにする。
+    const t = i / spokes;
+    paint.color = [0.25 + 0.6 * t, 0.45, 0.9 - 0.5 * t, 1];
+    canvas.drawText('歩', -style.fontSize * 0.5, -style.fontSize * 0.6, paint, style);
+    canvas.restore();
+  }
+}
+
 /** ギャラリーの 1 枚のカード記述子。App / e2e はこの id で painter を列挙する。 */
 export interface GalleryPainter {
   /** 安定した slug（data-testid / e2e locator の正本）。 */
@@ -188,7 +256,7 @@ export interface GalleryPainter {
 }
 
 /**
- * ギャラリーが横断展示する painter 群（受け入れ基準の 5 種）。App はこの配列を
+ * ギャラリーが横断展示する painter 群（パス幾何 5 種 ＋ テキスト 2 種）。App はこの配列を
  * map してカードを敷き、両レンダラーとも同じ順序・同じ id で描く。
  */
 export const GALLERY_PAINTERS: readonly GalleryPainter[] = [
@@ -221,5 +289,17 @@ export const GALLERY_PAINTERS: readonly GalleryPainter[] = [
     title: 'Size-following grid',
     blurb: 'box が広がるとセル数が増える市松模様',
     paint: responsiveGrid,
+  },
+  {
+    id: 'text-sampler',
+    title: 'Text sampler',
+    blurb: '大きさ・太さ・スラントを変えた書体見本（最後の行は日本語）',
+    paint: textSampler,
+  },
+  {
+    id: 'rotated-text',
+    title: 'Rotated text',
+    blurb: 'rotate が図形だけでなくグリフにも効くことの実証',
+    paint: rotatedText,
   },
 ];

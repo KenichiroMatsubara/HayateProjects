@@ -114,6 +114,20 @@ impl Default for Visual {
     }
 }
 
+/// シェープ済みの draw テキストと、その元になった display list。
+///
+/// 陳腐化はフラグではなく**元の同一性**で判定する（`Arc::ptr_eq`）。`visual.draw` は
+/// 差し替えでしか変わらない不変の `Arc` なので、これを持っておけば「draw を差し替えた
+/// のに再シェープを忘れる」経路が原理的に作れない。フォント到着時の強制再シェープは
+/// レイアウトパスがこれを `None` に落とすことで行う。
+pub(crate) struct DrawTextShaping {
+    /// シェープ元の display list。`visual.draw` と `Arc::ptr_eq` なら結果は有効。
+    pub source: std::sync::Arc<Vec<crate::wire::protocol::DrawCommand>>,
+    /// `(display list 内のコマンド索引, シェープ結果)` を draw 順に持つ。
+    /// 索引で持つのは、scene build が「N 番目の Text」を位置で数えずに引けるようにするため。
+    pub layouts: Vec<(usize, crate::element::text::TextLayout)>,
+}
+
 pub(crate) struct Element {
     pub kind: ElementKind,
     pub parent: Option<ElementId>,
@@ -123,6 +137,12 @@ pub(crate) struct Element {
     pub text: Option<String>,
     pub src: Option<String>,
     pub text_layout: Option<crate::element::text::TextLayout>,
+    /// `visual.draw` 中の `DrawCommand::Text` をシェープした結果（PRD #723 / ADR-0141）。
+    ///
+    /// walk（`render_scene_graph`）は immutable で interner を持たないのでシェープも
+    /// intern もできない。要素テキストと同じ段取り——**レイアウトパスでシェープ →
+    /// scene build で intern → walk は塗るだけ**——に draw を乗せるための retain 先。
+    pub draw_text_layouts: Option<DrawTextShaping>,
     /// レイアウトに上乗せする任意のアフィン変換（kurbo 係数 [a,b,c,d,e,f]）。
     pub transform: Option<[f64; 6]>,
     /// ScrollView 要素のスクロールオフセット（x, y、ピクセル）。
@@ -563,6 +583,7 @@ impl ElementTree {
             text: None,
             src: None,
             text_layout: None,
+            draw_text_layouts: None,
             transform: None,
             scroll_offset: (0.0, 0.0),
             src_image: None,

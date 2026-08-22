@@ -226,7 +226,7 @@ pub enum NodeKind {
     DrawList {
         x: f32,
         y: f32,
-        commands: Arc<Vec<crate::wire::protocol::DrawCommand>>,
+        commands: Arc<Vec<crate::scene_draw::SceneDrawCommand>>,
     },
     /// 要素に retained シーン上の同一性を与える構造専用ノード。transform は持たず、
     /// painter は子を透過的にたどる。
@@ -517,13 +517,20 @@ impl SceneGraph {
     /// Release resource pins no longer referenced by this scene, then reclaim entries that no
     /// concurrently alive scene snapshot still owns.
     pub fn sweep_resources(&mut self) -> ResourceSweepStats {
+        // 生存判定は `TextRun` ノードだけでは足りない: draw display list に埋めた
+        // テキストも `TextRunId` を参照する（PRD #723 / ADR-0141）。ここを見落とすと参照中の id が
+        // 回収され、例外なしに `StaleTextRun` で絵だけが壊れる。
         let live: HashSet<TextRunId> = self
             .data
             .nodes
             .values()
-            .filter_map(|node| match node.kind {
-                NodeKind::TextRun { text_run, .. } => Some(text_run),
-                _ => None,
+            .flat_map(|node| match &node.kind {
+                NodeKind::TextRun { text_run, .. } => vec![*text_run],
+                NodeKind::DrawList { commands, .. } => commands
+                    .iter()
+                    .flat_map(|c| c.text_runs().iter().copied())
+                    .collect(),
+                _ => Vec::new(),
             })
             .collect();
         self.resources.retain_text_runs(&live);

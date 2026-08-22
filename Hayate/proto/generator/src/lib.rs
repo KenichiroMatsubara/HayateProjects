@@ -978,6 +978,12 @@ fn generate_draw_codec(proto: &Proto) -> String {
                 "    StrokePath {\n        verbs: Vec<PathVerb>,\n        paint: DrawPaint,\n    },\n",
             ),
             "CLIP_PATH" => out.push_str("    ClipPath {\n        verbs: Vec<PathVerb>,\n    },\n"),
+            // 文字列 op は表駆動にならない（固定スロットの数値 op しか表で書けない）ので
+            // 手アーム。wire 側は生の文字列とフォント指定を運び、scene 側の語彙
+            // （`SceneDrawCommand::Text`）はシェープ済みの `TextRunId` を持つ。
+            "TEXT" => out.push_str(
+                "    Text {\n        text: String,\n        x: f32,\n        y: f32,\n        font_size: f32,\n        font_weight: f32,\n        font_style: f32,\n        font_family: String,\n        paint: DrawPaint,\n    },\n",
+            ),
             _ => {
                 let variant = to_pascal(&command.name);
                 if command.params.is_empty() {
@@ -992,6 +998,25 @@ fn generate_draw_codec(proto: &Proto) -> String {
             }
         }
     }
+    out.push_str("}\n\n");
+
+    // decode_draw_string: 長さ前置の UTF-8 バイト列（1 スロット 1 バイト）。style packet の
+    // SET_FONT_FAMILY と同じ載せ方で、display list を自己完結させる（別チャネル不要）。
+    out.push_str(
+        "/// 長さ前置の UTF-8 文字列を `at` から読み、文字列と次の読み出し位置を返す。\n",
+    );
+    out.push_str("fn decode_draw_string(data: &[f32], at: usize, what: &str) -> Result<(String, usize), String> {\n");
+    out.push_str(
+        "    if at >= data.len() { return Err(format!(\"draw {what} length truncated\")); }\n",
+    );
+    out.push_str("    let byte_len = data[at] as usize;\n");
+    out.push_str("    let start = at + 1;\n");
+    out.push_str("    if start + byte_len > data.len() { return Err(format!(\"draw {what} bytes truncated\")); }\n");
+    out.push_str(
+        "    let bytes: Vec<u8> = data[start..start + byte_len].iter().map(|v| *v as u8).collect();\n",
+    );
+    out.push_str("    let text = String::from_utf8(bytes).map_err(|_| format!(\"invalid utf8 in draw {what}\"))?;\n");
+    out.push_str("    Ok((text, start + byte_len))\n");
     out.push_str("}\n\n");
 
     // decode_draw_paint
@@ -1124,6 +1149,34 @@ fn generate_draw_codec(proto: &Proto) -> String {
             "CLIP_PATH" => {
                 out.push_str("            DRAW_OP_CLIP_PATH => {\n");
                 out.push_str("                out.push(DrawCommand::ClipPath { verbs: std::mem::take(&mut verbs) });\n");
+                out.push_str("            }\n");
+            }
+            // 固定スロット → 長さ前置の UTF-8 バイト列 ×2 → tagged paint packet。
+            // バイトを 1 スロット 1 バイトで載せるのは SET_FONT_FAMILY と同形。
+            "TEXT" => {
+                out.push_str("            DRAW_OP_TEXT => {\n");
+                out.push_str("                if i + 5 > data.len() { return Err(\"draw op TEXT truncated\".to_string()); }\n");
+                out.push_str("                let x = data[i];\n");
+                out.push_str("                let y = data[i + 1];\n");
+                out.push_str("                let font_size = data[i + 2];\n");
+                out.push_str("                let font_weight = data[i + 3];\n");
+                out.push_str("                let font_style = data[i + 4];\n");
+                out.push_str("                i += 5;\n");
+                out.push_str("                let (text, next) = decode_draw_string(data, i, \"TEXT text\")?;\n");
+                out.push_str("                i = next;\n");
+                out.push_str(
+                    "                let (font_family, next) = decode_draw_string(data, i, \"TEXT font family\")?;\n",
+                );
+                out.push_str("                i = next;\n");
+                out.push_str("                if i >= data.len() { return Err(\"draw op TEXT truncated\".to_string()); }\n");
+                out.push_str("                let paint_len = data[i] as usize;\n");
+                out.push_str("                i += 1;\n");
+                out.push_str("                if i + paint_len > data.len() { return Err(\"draw op TEXT paint packet truncated\".to_string()); }\n");
+                out.push_str(
+                    "                let paint = decode_draw_paint(&data[i..i + paint_len])?;\n",
+                );
+                out.push_str("                i += paint_len;\n");
+                out.push_str("                out.push(DrawCommand::Text { text, x, y, font_size, font_weight, font_style, font_family, paint });\n");
                 out.push_str("            }\n");
             }
             _ => {
