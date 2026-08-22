@@ -3,6 +3,7 @@ import type {
   DrawPaintPacket,
   DrawPaintSource,
   DrawRecordedPath,
+  DrawTextStyle,
 } from '@torimi/tsubame-renderer-protocol';
 import { DRAW_OP } from '@torimi/tsubame-protocol-generated/protocol';
 
@@ -42,6 +43,10 @@ export interface Draw2DContext {
   stroke(): void;
   clip(): void;
   setLineDash(segments: readonly number[]): void;
+  font: string;
+  textBaseline: CanvasTextBaseline;
+  textAlign: CanvasTextAlign;
+  fillText(text: string, x: number, y: number): void;
 }
 
 // spec enum（enums.json の line_cap / line_join / fill_rule）→ 2D コンテキスト語彙。
@@ -57,6 +62,31 @@ const DEFAULT_MITER_LIMIT = 4;
 const NO_DASH: readonly number[] = [];
 
 const TWO_PI = Math.PI * 2;
+
+// spec enum（enums.json の font_style）→ CSS の font-style 語彙。
+const FONT_STYLES: readonly string[] = ['normal', 'italic', 'oblique'];
+
+// `drawText` の style 省略時。recorder 側の `TextStyle` 既定と同じ値にそろえる
+// （両経路が同じ絵を出すという DrawCanvas の契約の一部）。
+const DEFAULT_TEXT_STYLE: DrawTextStyle = {
+  fontSize: 16,
+  fontFamily: '',
+  fontWeight: 400,
+  fontStyle: 0,
+  validate() {
+    return this;
+  },
+};
+
+// font-family 未指定時に使う総称。Hayate 経路のバンドル既定に対応する DOM 側の口。
+const DEFAULT_FONT_FAMILY = 'sans-serif';
+
+/** DrawTextStyle → CSS `font` ショートハンド（`style weight size/1 family`）。 */
+function fontShorthand(style: DrawTextStyle): string {
+  const slant = FONT_STYLES[style.fontStyle] ?? 'normal';
+  const family = style.fontFamily === '' ? DEFAULT_FONT_FAMILY : style.fontFamily;
+  return `${slant} ${style.fontWeight} ${style.fontSize}px ${family}`;
+}
 
 /** ストレート RGBA（0..1）→ CSS の `rgba(r, g, b, a)`（rgb は 0..255）。 */
 function rgbaString(color: readonly [number, number, number, number]): string {
@@ -163,6 +193,29 @@ export class Canvas2DReplay implements DrawCanvas {
   clipPath(path: DrawRecordedPath): this {
     emitPath(this.ctx, path);
     this.ctx.clip();
+    return this;
+  }
+
+  /**
+   * `text` を 1 行のランとして描く。`(x, y)` はレイアウトボックスの左上なので
+   * `textBaseline = 'top'` で合わせる（Hayate 経路の `NodeKind::TextRun` も
+   * レイアウト左上原点）。paint は色だけを使う。
+   */
+  drawText(
+    text: string,
+    x: number,
+    y: number,
+    paint: DrawPaintSource,
+    style: DrawTextStyle = DEFAULT_TEXT_STYLE,
+  ): this {
+    style.validate();
+    const packet = paint.toDrawPaint();
+    // ステートレス: 前の draw の値を漏らさないよう毎回全プロパティを設定する。
+    this.ctx.font = fontShorthand(style);
+    this.ctx.textBaseline = 'top';
+    this.ctx.textAlign = 'left';
+    this.ctx.fillStyle = rgbaString(packet.color ?? DEFAULT_COLOR);
+    this.ctx.fillText(text, x, y);
     return this;
   }
 

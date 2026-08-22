@@ -71,6 +71,14 @@ impl Affine2 {
         ])
     }
 
+    /// painter の変換スタック（[`crate::render::painter::ScenePainter::push_transform`]）が
+    /// 取る kurbo 係数へ。列の並びは同じ（CSS / canvas の matrix(a,b,c,d,e,f)）なので
+    /// 幅を広げるだけ。グリフのように座標へソフト適用できない描画で使う。
+    pub fn to_f64(self) -> [f64; 6] {
+        let [a, b, c, d, e, f] = self.0;
+        [a as f64, b as f64, c as f64, d as f64, e as f64, f as f64]
+    }
+
     /// 面積スケール係数 `sqrt(|det|)`。stroke 幅を近似的に変換へ追従させるのに使う。
     pub fn scale_factor(&self) -> f32 {
         let [a, b, c, d, _, _] = self.0;

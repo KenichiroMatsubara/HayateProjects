@@ -265,8 +265,53 @@ function generateDrawAppendOps(proto) {
   lines.push('');
 
   const PAINT_COMMANDS = new Set(['FILL', 'STROKE']);
+  // 文字列を運ぶ op。表駆動（固定スロットの数値 params）に載らないので手アーム。
+  const STRING_COMMANDS = new Set(['TEXT']);
+
+  if (STRING_COMMANDS.has('TEXT')) {
+    // 長さ前置の UTF-8 バイト列（1 スロット 1 バイト）。style packet の
+    // SET_FONT_FAMILY と同じ載せ方で、display list を自己完結させる。
+    lines.push('/** 長さ前置の UTF-8 バイト列として文字列を draws バッファへ載せる。 */');
+    lines.push('function pushDrawString(draws: number[], value: string): void {');
+    lines.push('  const bytes = new TextEncoder().encode(value);');
+    lines.push('  draws.push(bytes.length);');
+    lines.push('  for (const byte of bytes) draws.push(byte);');
+    lines.push('}');
+    lines.push('');
+  }
+
   for (const op of proto.draw_ops ?? []) {
     const fnName = drawAppendOpName(op.name);
+    // 文字列 op（TEXT）: 固定スロット → text → font-family → tagged paint packet。
+    if (STRING_COMMANDS.has(op.name)) {
+      if (op.name !== 'TEXT') {
+        throw new Error(`draw_ops.${op.name}: unhandled string draw-command encoder (add an arm)`);
+      }
+      lines.push(
+        `export function ${fnName}(draws: number[], text: string, x: number, y: number, fontSize: number, fontWeight: number, fontStyle: number, fontFamily: string, paint: DrawPaint): void {`,
+      );
+      lines.push(`  draws.push(DRAW_OP.${op.name}, x, y, fontSize, fontWeight, fontStyle);`);
+      lines.push('  pushDrawString(draws, text);');
+      lines.push('  pushDrawString(draws, fontFamily);');
+      lines.push('  const lenIndex = draws.length;');
+      lines.push('  draws.push(0);');
+      for (const field of proto.draw_paint_fields ?? []) {
+        const key = tagToPatchKey(field.name);
+        lines.push(`  if (paint.${key} !== undefined) {`);
+        if (field.variable_length === true) {
+          lines.push(`    draws.push(DRAW_PAINT_FIELD.${field.name}, paint.${key}.length, ...paint.${key});`);
+        } else if ((field.params ?? []).length > 1) {
+          lines.push(`    draws.push(DRAW_PAINT_FIELD.${field.name}, ...paint.${key});`);
+        } else {
+          lines.push(`    draws.push(DRAW_PAINT_FIELD.${field.name}, paint.${key});`);
+        }
+        lines.push('  }');
+      }
+      lines.push('  draws[lenIndex] = draws.length - lenIndex - 1;');
+      lines.push('}');
+      lines.push('');
+      continue;
+    }
     // path-verb と、paint packet を持たない draw-command（save/translate/clipRect/
     // clipPath…）はどちらも [OP, ...params] の素直な encoder（#728）。
     if (op.drawRole === 'path-verb' || !PAINT_COMMANDS.has(op.name)) {

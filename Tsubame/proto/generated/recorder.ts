@@ -25,6 +25,7 @@ import {
   appendDrawSave,
   appendDrawScale,
   appendDrawStroke,
+  appendDrawText,
   appendDrawTransform,
   appendDrawTranslate,
   type DrawPaint,
@@ -55,6 +56,13 @@ export enum StrokeJoin {
 export enum PathFillType {
   nonZero = 0,
   evenOdd = 1,
+}
+
+/** CSS font-style（Hayate font_style enum）。 */
+export enum FontStyle {
+  normal = 0,
+  italic = 1,
+  oblique = 2,
 }
 
 /** ストレート RGBA（各 0..1）。 */
@@ -103,6 +111,34 @@ export class Paint {
     return paint;
   }
 }
+
+/**
+ * `canvas.drawText` の書体指定。Skia の SkFont / Flutter の TextStyle と同じく
+ * Paint（インク）とは別オブジェクトにする。既定値だけで呼べるので
+ * `drawText(text, x, y, paint)` がそのまま通る。
+ */
+export class TextStyle {
+  /** 論理 px。 */
+  fontSize = 16;
+  /** CSS font-family スタック。空文字はレンダラ既定に従う。 */
+  fontFamily = '';
+  /** CSS font-weight（100..900）。 */
+  fontWeight = 400;
+  fontStyle: FontStyle = FontStyle.normal;
+
+  /** 現在のフィールドを検証する（不正値はエラー）。 */
+  validate(): this {
+    assertFinite(this.fontSize, "fontSize", 0);
+    assertFinite(this.fontWeight, "fontWeight", 1);
+    assertEnum(FontStyle, this.fontStyle, "fontStyle");
+    if (typeof this.fontFamily !== "string") {
+      throw new Error(`Paint.fontFamily: expected a string, got ${this.fontFamily}`);
+    }
+    return this;
+  }
+}
+
+const DEFAULT_TEXT_STYLE = new TextStyle();
 
 /**
  * 記録済みパス。フレーム間・要素間で再利用できる不変の op 列として保持し、
@@ -193,6 +229,27 @@ export class Canvas implements DrawCanvas {
   clipPath(path: Path): this {
     for (const v of path.record()) this.buf.push(v);
     appendDrawClipPath(this.buf);
+    return this;
+  }
+
+  /**
+   * `text` を 1 行のランとして描く。`(x, y)` はレイアウトボックスの左上で、
+   * 現在の変換の下に置かれる（回転した文字はこの経路で出る）。paint は色だけを
+   * 使う（stroke text は未対応 — paint packet ごと運ぶので契約破壊なしに生える）。
+   */
+  drawText(text: string, x: number, y: number, paint: Paint, style: TextStyle = DEFAULT_TEXT_STYLE): this {
+    style.validate();
+    appendDrawText(
+      this.buf,
+      text,
+      x,
+      y,
+      style.fontSize,
+      style.fontWeight,
+      style.fontStyle,
+      style.fontFamily,
+      paint.toDrawPaint(),
+    );
     return this;
   }
 

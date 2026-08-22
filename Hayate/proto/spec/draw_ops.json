@@ -204,5 +204,19 @@
     "drawRole": "draw-command",
     "params": [],
     "description": "Intersect the clip with the path accumulated since the previous draw command, under the current transform (#728). Consumes the path (like FILL). Cleared by the matching restore."
+  },
+  {
+    "name": "TEXT",
+    "value": 20,
+    "drawRole": "draw-command",
+    "variable_length": true,
+    "params": [
+      { "name": "x", "type": "f32" },
+      { "name": "y", "type": "f32" },
+      { "name": "font_size", "type": "f32" },
+      { "name": "font_weight", "type": "f32" },
+      { "name": "font_style", "type": "f32" }
+    ],
+    "description": "Draw a single run of text with its layout box's top-left at (x, y) under the current transform (Flutter `Canvas.drawParagraph` in its one-op form; ADR-0141 named text as deferred, not sealed). `font_style` is the font_style enum. Three length-prefixed payloads follow the fixed slots inline, in order: `text_len` UTF-8 bytes of the string, `family_len` UTF-8 bytes of the CSS font-family stack (0 = inherit the renderer default), then `paint_len` slots of tagged draw-paint fields — the same packet FILL and STROKE carry, of which only `color` is honoured today. Bytes ride one per f32 slot, exactly as SET_FONT_FAMILY puts a family name on the styles channel. The string is shaped in the layout pass and interned as a scene TextRunId before paint; the display-list walk only fills glyphs. Does not consume the accumulated path."
   }
 ]

@@ -3,7 +3,8 @@ use std::collections::HashSet;
 use crate::node::{NodeId, NodeKind};
 use crate::render::shadow::{SHADOW_REACH_BLUR_FACTOR, SHADOW_REACH_SIGMA_FACTOR};
 use crate::render::{transform_verbs, Affine2};
-use crate::wire::protocol::{DrawCommand, PathVerb};
+use crate::scene_draw::SceneDrawCommand as DrawCommand;
+use crate::wire::protocol::PathVerb;
 use crate::{ElementId, SceneRead};
 
 /// Conservative font-size-relative reach around each shaped glyph origin. This intentionally
@@ -238,6 +239,37 @@ fn accumulate(
                     None
                 }
                 DrawCommand::ClipRect { .. } | DrawCommand::ClipPath { .. } => None,
+                // 文字は path verb を持たないので、実測のレイアウト寸法から矩形を起こす。
+                // ここを None にすると回転した文字が境界の外へ出て切れる。
+                DrawCommand::Text {
+                    x: tx,
+                    y: ty,
+                    width,
+                    height,
+                    ..
+                } => {
+                    let box_verbs = [
+                        PathVerb::MoveTo { x: *tx, y: *ty },
+                        PathVerb::LineTo {
+                            x: tx + width,
+                            y: *ty,
+                        },
+                        PathVerb::LineTo {
+                            x: tx + width,
+                            y: ty + height,
+                        },
+                        PathVerb::LineTo {
+                            x: *tx,
+                            y: ty + height,
+                        },
+                        PathVerb::Close,
+                    ];
+                    if let Some(rect) = path_rect(&transform_verbs(&box_verbs, origin.then(ctm)), 0.0)
+                    {
+                        include_rect(extent, clipped(transform_rect(transform, rect), clip));
+                    }
+                    None
+                }
             };
             let Some((verbs, outset)) = geometry else {
                 continue;

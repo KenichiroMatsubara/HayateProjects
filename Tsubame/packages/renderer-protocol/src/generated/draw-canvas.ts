@@ -35,6 +35,20 @@ export interface DrawPaintSource {
   toDrawPaint(): DrawPaintPacket;
 }
 
+/** `drawText` に渡す書体指定の最小 surface（recorder `TextStyle` が満たす）。 */
+export interface DrawTextStyle {
+  /** 論理 px。 */
+  readonly fontSize: number;
+  /** CSS font-family スタック。空文字はレンダラ既定に従う。 */
+  readonly fontFamily: string;
+  /** CSS font-weight（100..900）。 */
+  readonly fontWeight: number;
+  /** font_style enum（0 = normal, 1 = italic, 2 = oblique）。 */
+  readonly fontStyle: number;
+  /** 現在のフィールドを検証する（不正値はエラー）。 */
+  validate(): this;
+}
+
 /**
  * painter の記録面。Flutter/Skia 流ステートレス設計: canvas 自体の状態は
  * save/restore の変換・クリップスタックのみ。座標はボーダーボックス左上原点・
@@ -46,6 +60,19 @@ export interface DrawCanvas {
 
   /** 以降の描画を `path` で切り抜く（対応する restore で解除）。 */
   clipPath(path: DrawRecordedPath): this;
+
+  /**
+   * `text` を 1 行のランとして描く。`(x, y)` はレイアウトボックスの左上で、
+   * 現在の変換の下に置かれる（回転した文字はこの経路で出る）。paint は色だけを
+   * 使う。`style` 省略時はレンダラ既定の書体。
+   */
+  drawText(
+    text: string,
+    x: number,
+    y: number,
+    paint: DrawPaintSource,
+    style?: DrawTextStyle,
+  ): this;
 
   save(): this;
 

@@ -41,7 +41,8 @@ export const CANVAS_METHODS = {
 };
 
 // drawPath / clipPath / fill / stroke は Path・Paint を取る意味的な特別扱い。
-export const SPECIAL_COMMANDS = new Set(['FILL', 'STROKE', 'CLIP_PATH']);
+// TEXT は文字列と TextStyle を取るので同じく表駆動から外す（#732）。
+export const SPECIAL_COMMANDS = new Set(['FILL', 'STROKE', 'CLIP_PATH', 'TEXT']);
 
 export function generateRecorder() {
   const proto = loadProtocolSpec();
@@ -52,7 +53,12 @@ export function generateRecorder() {
   );
 
   // import する appendDraw* を集める。
-  const imports = new Set(['appendDrawFill', 'appendDrawStroke', 'appendDrawClipPath']);
+  const imports = new Set([
+    'appendDrawFill',
+    'appendDrawStroke',
+    'appendDrawClipPath',
+    'appendDrawText',
+  ]);
   for (const op of [...pathVerbs, ...structuralCommands]) imports.add(appendDrawName(op.name));
 
   const lines = [];
@@ -78,6 +84,9 @@ export function generateRecorder() {
   lines.push('');
   lines.push('/** Flutter PathFillType（Hayate fill_rule enum）。 */');
   lines.push('export enum PathFillType {\n  nonZero = 0,\n  evenOdd = 1,\n}');
+  lines.push('');
+  lines.push('/** CSS font-style（Hayate font_style enum）。 */');
+  lines.push('export enum FontStyle {\n  normal = 0,\n  italic = 1,\n  oblique = 2,\n}');
   lines.push('');
   lines.push('/** ストレート RGBA（各 0..1）。 */');
   lines.push('export type Rgba = readonly [number, number, number, number];');
@@ -125,6 +134,36 @@ export function generateRecorder() {
   lines.push('    return paint;');
   lines.push('  }');
   lines.push('}');
+  lines.push('');
+
+  // ── TextStyle ────────────────────────────────────────────────────────────
+  lines.push('/**');
+  lines.push(' * `canvas.drawText` の書体指定。Skia の SkFont / Flutter の TextStyle と同じく');
+  lines.push(' * Paint（インク）とは別オブジェクトにする。既定値だけで呼べるので');
+  lines.push(' * `drawText(text, x, y, paint)` がそのまま通る。');
+  lines.push(' */');
+  lines.push('export class TextStyle {');
+  lines.push('  /** 論理 px。 */');
+  lines.push('  fontSize = 16;');
+  lines.push('  /** CSS font-family スタック。空文字はレンダラ既定に従う。 */');
+  lines.push('  fontFamily = \'\';');
+  lines.push('  /** CSS font-weight（100..900）。 */');
+  lines.push('  fontWeight = 400;');
+  lines.push('  fontStyle: FontStyle = FontStyle.normal;');
+  lines.push('');
+  lines.push('  /** 現在のフィールドを検証する（不正値はエラー）。 */');
+  lines.push('  validate(): this {');
+  lines.push('    assertFinite(this.fontSize, "fontSize", 0);');
+  lines.push('    assertFinite(this.fontWeight, "fontWeight", 1);');
+  lines.push('    assertEnum(FontStyle, this.fontStyle, "fontStyle");');
+  lines.push('    if (typeof this.fontFamily !== "string") {');
+  lines.push('      throw new Error(`Paint.fontFamily: expected a string, got ${this.fontFamily}`);');
+  lines.push('    }');
+  lines.push('    return this;');
+  lines.push('  }');
+  lines.push('}');
+  lines.push('');
+  lines.push('const DEFAULT_TEXT_STYLE = new TextStyle();');
   lines.push('');
 
   // ── Path ─────────────────────────────────────────────────────────────────
@@ -180,6 +219,27 @@ export function generateRecorder() {
   lines.push('  clipPath(path: Path): this {');
   lines.push('    for (const v of path.record()) this.buf.push(v);');
   lines.push('    appendDrawClipPath(this.buf);');
+  lines.push('    return this;');
+  lines.push('  }');
+  lines.push('');
+  lines.push('  /**');
+  lines.push('   * `text` を 1 行のランとして描く。`(x, y)` はレイアウトボックスの左上で、');
+  lines.push('   * 現在の変換の下に置かれる（回転した文字はこの経路で出る）。paint は色だけを');
+  lines.push('   * 使う（stroke text は未対応 — paint packet ごと運ぶので契約破壊なしに生える）。');
+  lines.push('   */');
+  lines.push('  drawText(text: string, x: number, y: number, paint: Paint, style: TextStyle = DEFAULT_TEXT_STYLE): this {');
+  lines.push('    style.validate();');
+  lines.push('    appendDrawText(');
+  lines.push('      this.buf,');
+  lines.push('      text,');
+  lines.push('      x,');
+  lines.push('      y,');
+  lines.push('      style.fontSize,');
+  lines.push('      style.fontWeight,');
+  lines.push('      style.fontStyle,');
+  lines.push('      style.fontFamily,');
+  lines.push('      paint.toDrawPaint(),');
+  lines.push('    );');
   lines.push('    return this;');
   lines.push('  }');
   lines.push('');

@@ -34,6 +34,16 @@ struct ShapeMemoEntry {
     layout: TextLayout,
 }
 
+/// wire の `font_style` スロット（font_style enum の生値）を型付き値へ。
+/// 未知値は `Normal` に倒す（描画は止めない・不明なスタイルで豆腐にはしない）。
+fn font_style_from_wire(raw: f32) -> FontStyleValue {
+    match raw as u32 {
+        1 => FontStyleValue::Italic,
+        2 => FontStyleValue::Oblique,
+        _ => FontStyleValue::Normal,
+    }
+}
+
 /// 2 つのメモキー幅が許容内で一致するか（[`SHAPE_MEMO_WIDTH_TOLERANCE_PX`]）。
 fn width_keys_match(a: Option<f32>, b: Option<f32>) -> bool {
     match (a, b) {
@@ -109,6 +119,51 @@ impl TextShaper {
             None,
             None,
         )
+    }
+
+    /// draw display list 中の `DrawCommand::Text` を全てシェープする（#732）。
+    ///
+    /// 要素の内容ではない単発ランなので `shape_label` と同型で、`max_advance` は
+    /// 取らない（折り返しは op に足せば後から生える）。戻り値は
+    /// `(コマンド索引, レイアウト)` の draw 順の列と、欠落 family。
+    ///
+    /// **欠落 family をここでも集めるのが要点**: draw を載せるのは `view` で
+    /// `is_text_like()` ではないので、これが無いと `FetchFont` が発火せず、
+    /// 日本語や絵文字が豆腐のまま二度と直らない。
+    pub(crate) fn shape_draw_text(
+        &mut self,
+        commands: &[crate::wire::protocol::DrawCommand],
+        missing_families: &mut Vec<String>,
+    ) -> Vec<(usize, TextLayout)> {
+        use crate::wire::protocol::DrawCommand;
+        let mut out = Vec::new();
+        for (index, command) in commands.iter().enumerate() {
+            let DrawCommand::Text {
+                text,
+                font_size,
+                font_weight,
+                font_style,
+                font_family,
+                ..
+            } = command
+            else {
+                continue;
+            };
+            let family = (!font_family.is_empty()).then_some(font_family.as_str());
+            let layout = text::build_text_layout(
+                &mut self.font_cx,
+                &mut self.layout_cx,
+                text,
+                *font_size,
+                None,
+                family,
+                Some(*font_weight),
+                Some(font_style_from_wire(*font_style)),
+            );
+            self.collect_missing_into(&layout, family, missing_families);
+            out.push((index, layout));
+        }
+        out
     }
 
     /// 新しいレイアウトパスの開始。settle ごとの幅キーのシェイプメモをクリアする。
@@ -472,6 +527,7 @@ mod tests {
             text: None,
             src: None,
             text_layout: None,
+            draw_text_layouts: None,
             transform: None,
             scroll_offset: (0.0, 0.0),
             src_image: None,

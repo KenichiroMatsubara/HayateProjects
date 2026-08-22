@@ -13,7 +13,7 @@ use hayate_core::wire::{
     apply_mutations, DRAW_OP_ARC_TO, DRAW_OP_CIRCLE, DRAW_OP_CLIP_PATH, DRAW_OP_CLIP_RECT,
     DRAW_OP_CLOSE, DRAW_OP_CUBIC_TO, DRAW_OP_FILL, DRAW_OP_LINE_TO, DRAW_OP_MOVE_TO, DRAW_OP_RECT,
     DRAW_OP_RESTORE, DRAW_OP_ROTATE, DRAW_OP_RRECT, DRAW_OP_SAVE, DRAW_OP_STROKE,
-    DRAW_OP_TRANSLATE, DRAW_PAINT_CAP, DRAW_PAINT_COLOR, DRAW_PAINT_DASH, DRAW_PAINT_FILL_RULE,
+    DRAW_OP_TEXT, DRAW_OP_TRANSLATE, DRAW_PAINT_CAP, DRAW_PAINT_COLOR, DRAW_PAINT_DASH, DRAW_PAINT_FILL_RULE,
     DRAW_PAINT_JOIN, DRAW_PAINT_MITER_LIMIT, DRAW_PAINT_STROKE_WIDTH, ELEMENT_KIND_VIEW,
     OP_APPEND_CHILD, OP_CREATE, OP_SET_DRAW, OP_SET_ROOT, OP_SET_STYLE, TAG_BACKGROUND_COLOR,
     TAG_HEIGHT, TAG_OVERFLOW, TAG_WIDTH,
@@ -897,6 +897,83 @@ fn wire_overflow_and_clip_rect_intersect() {
     );
     assert_pixels_match_golden(
         &golden_path("draw_wire_overflow_clip_intersection"),
+        &pixels,
+        CANVAS_W,
+        CANVAS_H,
+    );
+}
+
+/// 長さ前置の UTF-8 バイト列（1 スロット 1 バイト）を draws へ載せる。
+/// SET_FONT_FAMILY が styles チャネルへ family 名を載せるのと同じ形。
+fn push_draw_string(draws: &mut Vec<f32>, value: &str) {
+    let bytes = value.as_bytes();
+    draws.push(bytes.len() as f32);
+    draws.extend(bytes.iter().map(|b| *b as f32));
+}
+
+/// DRAW_OP_TEXT の 1 コマンド分（既定書体・単色 fill）。
+fn text_cmd(text: &str, x: f32, y: f32, font_size: f32, color: [f32; 4]) -> Vec<f32> {
+    let mut draws = vec![DRAW_OP_TEXT as f32, x, y, font_size, 400.0, 0.0];
+    push_draw_string(&mut draws, text);
+    push_draw_string(&mut draws, "");
+    draws.extend([5.0, DRAW_PAINT_COLOR as f32]);
+    draws.extend(color);
+    draws
+}
+
+// draw のテキスト（#732）。wire 入口からグリフがピクセルになるところまでの golden。
+// これが緑なら「レイアウトパスでシェープ → scene build で intern → walk は塗るだけ」の
+// 段取りが端から端まで通っている。
+#[test]
+fn wire_draw_text_matches_golden() {
+    let pixels = single_view_draw(&text_cmd("Hi", 10.0, 30.0, 32.0, [0.0, 0.0, 0.0, 1.0]));
+
+    // グリフが出ていること（ボックス内に黒に寄ったピクセルが在る）を、golden とは
+    // 独立に主張する。golden だけだと「全部白」でも更新すれば通ってしまう。
+    let inked = (10..70).any(|x| (30..65).any(|y| pixel(&pixels, CANVAS_W, x, y)[3] > 128));
+    assert!(inked, "draw text must put glyphs on the canvas");
+    assert_clear(pixel(&pixels, CANVAS_W, 95, 95), "away from the text");
+
+    assert_pixels_match_golden(
+        &golden_path("draw_wire_text"),
+        &pixels,
+        CANVAS_W,
+        CANVAS_H,
+    );
+}
+
+// 回転したテキスト（#732）。グリフは verb を持たず座標へソフト適用できないので、
+// walk は CTM を painter の変換スタックへ積んで渡す。後手の駒がこの経路で立つ。
+// 同じ文字を正立と 180° 回転で 2 つ描き、**別の位置に出る**ことまで見る
+// （変換が効かなければ 2 つは重なる）。
+#[test]
+fn wire_draw_text_honours_the_canvas_rotation() {
+    let mut draws: Vec<f32> = Vec::new();
+    // 正立: 左上寄り。
+    draws.extend(text_cmd("A", 8.0, 8.0, 28.0, [0.0, 0.0, 0.0, 1.0]));
+    // 180° 回転: (70, 70) を中心に回すので、グリフは中心の左上側へ伸びる。
+    draws.extend([DRAW_OP_SAVE as f32, DRAW_OP_TRANSLATE as f32, 70.0, 70.0]);
+    draws.extend([DRAW_OP_ROTATE as f32, std::f32::consts::PI]);
+    draws.extend(text_cmd("A", 0.0, 0.0, 28.0, [0.0, 0.0, 0.0, 1.0]));
+    draws.push(DRAW_OP_RESTORE as f32);
+
+    let pixels = single_view_draw(&draws);
+
+    let inked = |x0: u32, x1: u32, y0: u32, y1: u32| {
+        (x0..x1).any(|x| (y0..y1).any(|y| pixel(&pixels, CANVAS_W, x, y)[3] > 128))
+    };
+    assert!(inked(8, 40, 8, 40), "upright glyph in the top-left quadrant");
+    assert!(
+        inked(40, 72, 40, 72),
+        "rotated glyph must land up-left of its (70, 70) origin, not down-right"
+    );
+    assert_clear(
+        pixel(&pixels, CANVAS_W, 90, 90),
+        "past the rotated origin (rotation would have to be ignored to ink here)",
+    );
+
+    assert_pixels_match_golden(
+        &golden_path("draw_wire_text_rotated"),
         &pixels,
         CANVAS_W,
         CANVAS_H,

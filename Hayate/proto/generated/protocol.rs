@@ -2,7 +2,7 @@
 // Source: proto/spec/*.json
 
 // Protocol version (wire decoder version, source of truth for host handshakes)
-pub const PROTOCOL_VERSION: u32 = 2;
+pub const PROTOCOL_VERSION: u32 = 3;
 
 // Opcode constants
 pub const OP_APPEND_CHILD: u32 = 0;
@@ -1483,6 +1483,7 @@ pub const DRAW_OP_SCALE: u32 = 16;
 pub const DRAW_OP_TRANSFORM: u32 = 17;
 pub const DRAW_OP_CLIP_RECT: u32 = 18;
 pub const DRAW_OP_CLIP_PATH: u32 = 19;
+pub const DRAW_OP_TEXT: u32 = 20;
 
 // Draw paint field constants (tagged paint packet; draw_paint_fields.json)
 pub const DRAW_PAINT_COLOR: u32 = 0;
@@ -1623,6 +1624,27 @@ pub enum DrawCommand {
     ClipPath {
         verbs: Vec<PathVerb>,
     },
+    Text {
+        text: String,
+        x: f32,
+        y: f32,
+        font_size: f32,
+        font_weight: f32,
+        font_style: f32,
+        font_family: String,
+        paint: DrawPaint,
+    },
+}
+
+/// 長さ前置の UTF-8 文字列を `at` から読み、文字列と次の読み出し位置を返す。
+fn decode_draw_string(data: &[f32], at: usize, what: &str) -> Result<(String, usize), String> {
+    if at >= data.len() { return Err(format!("draw {what} length truncated")); }
+    let byte_len = data[at] as usize;
+    let start = at + 1;
+    if start + byte_len > data.len() { return Err(format!("draw {what} bytes truncated")); }
+    let bytes: Vec<u8> = data[start..start + byte_len].iter().map(|v| *v as u8).collect();
+    let text = String::from_utf8(bytes).map_err(|_| format!("invalid utf8 in draw {what}"))?;
+    Ok((text, start + byte_len))
 }
 
 pub fn decode_draw_paint(packed: &[f32]) -> Result<DrawPaint, String> {
@@ -1788,6 +1810,26 @@ pub fn decode_draw_list(data: &[f32]) -> Result<Vec<DrawCommand>, String> {
             }
             DRAW_OP_CLIP_PATH => {
                 out.push(DrawCommand::ClipPath { verbs: std::mem::take(&mut verbs) });
+            }
+            DRAW_OP_TEXT => {
+                if i + 5 > data.len() { return Err("draw op TEXT truncated".to_string()); }
+                let x = data[i];
+                let y = data[i + 1];
+                let font_size = data[i + 2];
+                let font_weight = data[i + 3];
+                let font_style = data[i + 4];
+                i += 5;
+                let (text, next) = decode_draw_string(data, i, "TEXT text")?;
+                i = next;
+                let (font_family, next) = decode_draw_string(data, i, "TEXT font family")?;
+                i = next;
+                if i >= data.len() { return Err("draw op TEXT truncated".to_string()); }
+                let paint_len = data[i] as usize;
+                i += 1;
+                if i + paint_len > data.len() { return Err("draw op TEXT paint packet truncated".to_string()); }
+                let paint = decode_draw_paint(&data[i..i + paint_len])?;
+                i += paint_len;
+                out.push(DrawCommand::Text { text, x, y, font_size, font_weight, font_style, font_family, paint });
             }
             other => return Err(format!("unknown draw op {other}")),
         }

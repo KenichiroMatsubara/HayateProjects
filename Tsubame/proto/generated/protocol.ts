@@ -1,7 +1,7 @@
 // 自動生成ファイル（Tsubame/proto/generator） — 手動で編集しないこと
 // 生成元: @torimi/hayate-protocol-spec
 
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 
 export const OP = {
   APPEND_CHILD: 0,
@@ -51,6 +51,7 @@ export const DRAW_OP = {
   TRANSFORM: 17,
   CLIP_RECT: 18,
   CLIP_PATH: 19,
+  TEXT: 20,
 } as const;
 export type DRAW_OP = typeof DRAW_OP;
 
