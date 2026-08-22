@@ -7,6 +7,7 @@ import { Hand } from './ui/Hand.js';
 import { StatusBar } from './ui/StatusBar.js';
 import { Controls } from './ui/Controls.js';
 import { PromotionPrompt } from './ui/PromotionPrompt.js';
+import { useEngineTurn } from './ui/use-engine.js';
 import {
   INITIAL_INTERACTION,
   reduceInteraction,
@@ -25,6 +26,9 @@ export function App() {
   const [game, setGame] = useState(() => new ShogiGame());
   const [interaction, setInteraction] = useState<InteractionState>(INITIAL_INTERACTION);
   const [flipped, setFlipped] = useState(false);
+  // AI の手番。既定は後手を AI が持つ（人が先手で指し始められる）。`null` で人対人。
+  // `?opponent=human` で人対人から始められる（`?renderer=` と同じくクエリで初期状態を選ぶ）。
+  const [aiColor, setAiColor] = useState<Color | null>(initialAiColor);
   const [, redraw] = useReducer((tick: number) => tick + 1, 0);
   const gameRef = useRef(game);
   gameRef.current = game;
@@ -33,14 +37,19 @@ export function App() {
     redraw();
   }, []);
 
+  const { thinkingDepth, abort } = useEngineTurn({ game, aiColor, onMoved: commit });
+  const busy = thinkingDepth !== null;
+
   const dispatch = useCallback(
     (action: Parameters<typeof reduceInteraction>[2]) => {
       const current = gameRef.current;
+      // AI の手番中は盤を受け付けない（局面が動いている最中に触らせない）。
+      if (aiColor !== null && current.sideToMove === aiColor) return;
       const result = reduceInteraction(current, interaction, action);
       setInteraction(result.state);
       if (result.move !== null && current.play(result.move)) commit();
     },
-    [interaction, commit],
+    [interaction, commit, aiColor],
   );
 
   const onTapSquare = useCallback(
@@ -53,25 +62,28 @@ export function App() {
   );
 
   const newGame = useCallback(() => {
+    abort();
     setGame(new ShogiGame());
     setInteraction(INITIAL_INTERACTION);
     commit();
-  }, [commit]);
+  }, [commit, abort]);
 
   const undo = useCallback(() => {
-    // 人対人なので 1 手ずつ戻す（AI 対局を足したら 2 手に変える）。
-    if (gameRef.current.undo(1)) {
+    abort();
+    // AI 対局では 1 往復（自分と相手）を戻す。人対人なら 1 手。
+    if (gameRef.current.undo(aiColor === null ? 1 : 2)) {
       setInteraction(INITIAL_INTERACTION);
       commit();
     }
-  }, [commit]);
+  }, [commit, abort, aiColor]);
 
   const resign = useCallback(() => {
+    abort();
     if (gameRef.current.resign()) {
       setInteraction(INITIAL_INTERACTION);
       commit();
     }
-  }, [commit]);
+  }, [commit, abort]);
 
   const source = selectionSource(interaction.selection);
   const targets = useMemo(
@@ -125,17 +137,22 @@ export function App() {
         ply={game.ply}
         inCheck={game.inCheck}
         outcome={game.outcome}
-        thinkingDepth={null}
+        thinkingDepth={thinkingDepth}
       />
 
       <Controls
-        busy={false}
+        busy={busy}
         canUndo={game.ply > 0}
         isOver={game.isOver}
         onNewGame={newGame}
         onUndo={undo}
         onResign={resign}
         onFlip={() => setFlipped((value) => !value)}
+        opponent={aiColor === null ? 'human' : 'ai'}
+        onToggleOpponent={() => {
+          abort();
+          setAiColor((color) => (color === null ? Color.WHITE : null));
+        }}
       />
 
       {interaction.pending !== null ? (
@@ -147,6 +164,18 @@ export function App() {
     </view>
   );
 }
+
+/**
+ * 起動時に AI が持つ手番。`?opponent=human` なら人対人（`null`）、既定は AI が後手。
+ * e2e が盤の操作を決定的に確かめられるようにする入口でもある。
+ */
+const initialAiColor: Color | null = (() => {
+  const search = (globalThis as { location?: { search?: string } }).location?.search;
+  if (typeof search === 'string' && new URLSearchParams(search).get('opponent') === 'human') {
+    return null;
+  }
+  return Color.WHITE;
+})();
 
 /** 手番側の玉のマス index。見つからなければ -1（詰将棋の局面など）。 */
 function kingIndex(game: ShogiGame): number {

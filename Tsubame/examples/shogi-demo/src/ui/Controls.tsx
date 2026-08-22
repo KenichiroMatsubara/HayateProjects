@@ -9,6 +9,9 @@ export interface ControlsProps {
   readonly onUndo: () => void;
   readonly onResign: () => void;
   readonly onFlip: () => void;
+  /** 対戦相手。`'ai'` なら AI が後手を持つ。 */
+  readonly opponent: 'human' | 'ai';
+  readonly onToggleOpponent: () => void;
 }
 
 export function Controls({
@@ -19,6 +22,8 @@ export function Controls({
   onUndo,
   onResign,
   onFlip,
+  opponent,
+  onToggleOpponent,
 }: ControlsProps) {
   return (
     <view style={S.controls}>
@@ -33,6 +38,9 @@ export function Controls({
       </button>
       <button style={S.controlButton(false)} onClick={onFlip}>
         反転
+      </button>
+      <button style={S.controlButton(false)} onClick={!busy ? onToggleOpponent : undefined}>
+        {opponent === 'ai' ? 'AI対局' : '人対人'}
       </button>
       <button
         style={S.controlButton(true)}
