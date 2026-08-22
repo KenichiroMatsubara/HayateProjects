@@ -8,6 +8,37 @@ encoding・enum 表・painter interface は「これらが契約破壊なしに�
 している。本書はその合格条件を実際に行使するために、**触る面と、残っている設計判断**を
 洗い出したもの。実装は行っていない。
 
+---
+
+## 訂正（2026-08-22・実装後に追記）
+
+**本書の §3 は、存在しない設計課題を 2 つ立てていた。** 実装（#732）で分かった実態を先に
+書いておく。以下の本文は当時の記録としてそのまま残すが、次の 3 点は**誤り**である。
+
+| 本書の記述 | 実態 |
+| --- | --- |
+| §3(a)「文字列の載せ方が唯一の新規設計」 | **前例が既にあった。** `SET_FONT_FAMILY` は長さ前置の UTF-8 バイトを 1 スロット 1 バイトで `styles: Float32Array` に直接埋めている（`Tsubame/proto/generated/codec.ts` の `encode_fontFamily`、decoder は `Hayate/proto/generator/src/lib.rs` の `variable_length` アーム）。draw も同じ形にすれば済み、`texts` のような別チャネルも dispatch の署名変更も要らなかった。採ったのはこれ |
+| §3(b)「シェープが `text` 要素のレイアウトパスに深く結び付いている」 | **切り離す作業は要らなかった。** `pub fn build_text_layout(font_cx, layout_cx, text, font_size, max_advance, font_family, font_weight, font_style) -> TextLayout`（`crates/core/src/element/text.rs`）が既に公開されており、要素の内容でない単発ラベル（IME ツールバー）が `shape_label` 経由で既に使っていた。draw も同じ入口をそのまま呼ぶ |
+| §3(c)「日本語字形は実行時に CDN から取るので将棋盤は必ず踏む」 | **踏まない。** `NotoSansJP.ttf` は `include_bytes!` で core にバンドルされ、既定 family かつ sans-serif の総称として登録されている（`crates/core/src/element/text_shaper.rs`）。漢字は初回フレームからネットワーク無しで出る。CDN が要るのは韓国語・簡繁体・記号・絵文字 |
+
+**要するに、発明する部分は無く、繋ぐだけだった。** 段取りは要素テキストと同一で、
+「レイアウトパスでシェープ → scene build で `intern_text_run` → walk は塗るだけ」。
+walk（`render_scene_graph`）が `&impl SceneRead` の immutable 経路で interner を持たない
+以上、この順序しか取れない — そしてそれは要素テキストが既に取っている順序である。
+
+実装で本当に難しかったのは §3 が挙げていない 3 点で、いずれも**例外を出さず絵だけが壊れる**:
+
+1. `sweep_resources` の生存判定が `NodeKind::TextRun` しか見ておらず、DrawList 中の
+   `TextRunId` が参照中に回収される（→ `StaleTextRun`）
+2. `fonts_dirty` の再シェープ対象が `is_text_like()` で絞られており、draw を運ぶ `view` が
+   漏れる（届いたフォントが反映されず豆腐で固定される）
+3. レイヤーのラスタ境界が path verb から面積を出すので、verb を持たない文字は実測の
+   レイアウト寸法を持ち回る必要がある
+
+§4（プロトコル版数）と「触る面」の表は概ね正しかった。
+
+---
+
 ## なぜ実アプリで効いたか
 
 将棋盤は「即時2D描画 ＋ 文字 ＋ 回転」を同時に要求する:
@@ -16,9 +47,10 @@ encoding・enum 表・painter interface は「これらが契約破壊なしに�
 - 駒の漢字は `DrawCanvas` では描けない。`HayateCssStyle` にも `transform` / `rotate` は
   無いので、要素側の `text` で重ねても**回せない**。
 
-結果として現在の shogi-demo は「五角形は下向き・漢字は正立で別色」という、紙の将棋から
-逸脱した表現を採っている（`Tsubame/examples/shogi-demo/README.md` に制約由来として明記）。
-draw にテキストが生えれば `translate → rotate(π) → 駒文字` で正しい向きに描ける。
+結果として当時の shogi-demo は「五角形は下向き・漢字は正立で別色」という、紙の将棋から
+逸脱した表現を採っていた。draw にテキストが生えれば `translate → rotate(π) → 駒文字` で
+正しい向きに描ける。（→ #732 で解消。駒は `paintPiece` 1 箇所の描画単位になり、先後は
+反転フラグ 1 つで表す。）
 
 ## 判明したこと
 

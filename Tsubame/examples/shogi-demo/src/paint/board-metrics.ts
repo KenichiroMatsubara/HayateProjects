@@ -19,7 +19,14 @@ const EDGE_RATIO = 0.018;
 export interface BoardMetrics {
   /** 外枠を含む盤全体。 */
   readonly board: Rect;
-  /** 枡目が占める内側の領域（外枠の内側）。 */
+  /**
+   * 枡目が占める領域。**`board` と一致する**。
+   *
+   * 外枠は内側へ描き込む（枡目を内側へ押し込まない）。要素側は同じ箱を 9 等分した
+   * grid でタップ領域を敷くので、枡目を内側へ寄せると painter の絵と当たり判定が
+   * その分だけずれる — 枡目と要素グリッドを同じ割り付けにしておくのが、この
+   * モジュールが「単一の出所」である理由そのもの。
+   */
   readonly grid: Rect;
   /** 1 マスの一辺。 */
   readonly cell: number;
@@ -40,12 +47,10 @@ export function boardMetrics(size: DrawSize): BoardMetrics {
     width: side,
     height: side,
   };
-  const gridSide = side - edge * 2;
-  const cell = gridSide / 9;
   return {
     board,
-    grid: { x: board.x + edge, y: board.y + edge, width: gridSide, height: gridSide },
-    cell,
+    grid: board,
+    cell: side / 9,
     edge,
   };
 }

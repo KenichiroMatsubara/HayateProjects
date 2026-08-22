@@ -1,10 +1,4 @@
-import {
-  Paint,
-  PaintingStyle,
-  Path,
-  StrokeJoin,
-  type Rgba,
-} from '@torimi/tsubame-protocol-generated/recorder';
+import { Paint, PaintingStyle, Path, type Rgba } from '@torimi/tsubame-protocol-generated/recorder';
 import type {
   DrawCanvas,
   DrawPainter,
@@ -13,11 +7,12 @@ import type {
 import { Color, Square, type ImmutablePosition } from 'tsshogi';
 import * as C from './palette.js';
 import { boardMetrics, squareRect, type BoardMetrics, type Rect } from './board-metrics.js';
-import { pieceShape } from './piece-shape.js';
+import { paintPiece } from './piece.js';
 
 /**
- * 盤の painter。木地・罫線・星・ハイライト・駒の五角形までを 1 枚の display list で描く。
- * 駒の漢字だけは要素側の `text` が重ねる（draw v1 に文字命令が無いため）。
+ * 盤の painter。木地・罫線・星・ハイライト・**駒（五角形と漢字の両方）** を 1 枚の
+ * display list で描く。盤を走査するのは 1 回だけで、駒は
+ * {@link paintPiece} に任せる（駒を描く場所はそこ 1 箇所）。
  *
  * 再描画は {@link BoardPainter.shouldRepaint} が**プリミティブだけ**を比べて決める。
  * 局面オブジェクトはその場更新されるので identity 比較は効かない — 版数で見る。
@@ -99,22 +94,9 @@ export class BoardPainter implements DrawPainter {
     for (const square of position.board.listNonEmptySquares()) {
       const piece = position.board.at(square);
       if (piece === null) continue;
-      const rect = squareRect(metrics, square.index, flipped);
       // 盤を反転しているときは、手前に来る側が上向きになるよう向きも反転する。
-      const pointingUp = (piece.color === Color.BLACK) !== flipped;
-      const shape = pieceShape(rect, pointingUp);
-
-      const fill = new Paint();
-      fill.color = piece.color === Color.BLACK ? C.PIECE_BLACK : C.PIECE_WHITE;
-      fill.style = PaintingStyle.fill;
-      canvas.drawPath(shape, fill);
-
-      const edge = new Paint();
-      edge.color = C.PIECE_EDGE;
-      edge.style = PaintingStyle.stroke;
-      edge.strokeWidth = Math.max(0.75, metrics.cell * 0.022);
-      edge.strokeJoin = StrokeJoin.round;
-      canvas.drawPath(shape, edge);
+      const upright = (piece.color === Color.BLACK) !== flipped;
+      paintPiece(canvas, squareRect(metrics, square.index, flipped), piece, !upright);
     }
   }
 }
@@ -128,12 +110,13 @@ function paintBoard(canvas: DrawCanvas, metrics: BoardMetrics): void {
   edge.style = PaintingStyle.stroke;
   edge.strokeWidth = metrics.edge;
   const frame = new Path();
-  // stroke は線の中心が輪郭に乗るので、外枠の内側が grid にちょうど接するよう半分内側に寄せる。
+  // 枠は枡目の**内側**へ描き込む（枡目を内側へ寄せない）。stroke は線の中心が輪郭に
+  // 乗るので、盤の縁から半分だけ内へ寄せると枠がちょうど盤の中に収まる。
   frame.addRect(
-    metrics.grid.x - metrics.edge / 2,
-    metrics.grid.y - metrics.edge / 2,
-    metrics.grid.width + metrics.edge,
-    metrics.grid.height + metrics.edge,
+    metrics.board.x + metrics.edge / 2,
+    metrics.board.y + metrics.edge / 2,
+    metrics.board.width - metrics.edge,
+    metrics.board.height - metrics.edge,
   );
   canvas.drawPath(frame, edge);
 

@@ -75,6 +75,20 @@ describe('BoardPainter.shouldRepaint', () => {
 });
 
 describe('board-metrics', () => {
+  it('枡目は箱を 9 等分する — 要素側の 9×9 grid とちょうど重なる', () => {
+    // 要素側は `board` の箱をそのまま 9 等分した grid でタップ領域を敷く。
+    // 枡目を外枠のぶん内側へ寄せると、絵と当たり判定がその分ずれる（駒の絵は
+    // painter 側、タップは要素側なので、ずれは目に見えて操作に出る）。
+    const metrics = boardMetrics(SIZE);
+    expect(metrics.grid).toEqual(metrics.board);
+    expect(metrics.cell).toBeCloseTo(SIZE.width / 9);
+    for (const order of [0, 1, 40, 79, 80]) {
+      const rect = squareRect(metrics, order, false);
+      expect(rect.x).toBeCloseTo((order % 9) * (SIZE.width / 9));
+      expect(rect.y).toBeCloseTo(Math.floor(order / 9) * (SIZE.height / 9));
+    }
+  });
+
   it('81マスが盤の内側をちょうど敷き詰める', () => {
     const metrics = boardMetrics(SIZE);
     const first = squareRect(metrics, 0, false);

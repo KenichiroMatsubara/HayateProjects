@@ -1,5 +1,6 @@
 import type { HayateCssStyle } from '@torimi/tsubame-renderer-protocol';
 import { CSS } from '../paint/palette.js';
+import { HAND_GAP_PX, HAND_SLOT_PX } from '../paint/hand-painter.js';
 
 /**
  * 画面の style 定数。house style（react-demo）に倣ってモジュール定数として並べる。
@@ -39,26 +40,14 @@ export const board: HayateCssStyle = {
 };
 
 /**
- * 盤のマス。当たり判定だけを担い、絵は painter が描く
+ * 盤のマス。**当たり判定だけ**を担う透明な箱で、子を持たない
  * （`InteractionEvent` の座標は viewport 基準で要素ローカルに落とせないため、
- * 座標計算ではなく要素でマスを取る）。
+ * 座標計算ではなく要素でマスを取る）。絵は駒も含めてすべて painter が描く。
  */
 export const cell: HayateCssStyle = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
   backgroundColor: 'transparent',
   cursor: 'pointer',
 };
-
-/** マスの駒文字。draw v1 に文字命令が無いので要素側で重ねる。 */
-export function pieceText(gote: boolean, size: number): HayateCssStyle {
-  return {
-    defaultColor: gote ? CSS.pieceInkWhite : CSS.pieceInkBlack,
-    defaultFontSize: size,
-    fontWeight: 700,
-  };
-}
 
 export const handRow: HayateCssStyle = {
   width: '100%',
@@ -79,27 +68,26 @@ export const handRow: HayateCssStyle = {
   borderColor: CSS.line,
 };
 
-export function handPiece(selected: boolean): HayateCssStyle {
-  return {
-    display: 'flex',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 1,
-    paddingLeft: 7,
-    paddingRight: 7,
-    paddingTop: 4,
-    paddingBottom: 4,
-    borderRadius: 7,
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: selected ? CSS.accent : CSS.line,
-    backgroundColor: selected ? '#fbe4d5' : '#ffffff',
-    cursor: 'pointer',
-  };
-}
+/**
+ * 駒台の描画面。持ち駒の絵はこの一枚が `draw` で描き、子は枠ぶんのタップ領域だけ。
+ * 幅・間隔は painter と同じ定数（`HAND_SLOT_PX` / `HAND_GAP_PX`）から取るので、
+ * 絵と当たり判定がずれない。
+ */
+export const handStage: HayateCssStyle = {
+  height: HAND_SLOT_PX,
+  flexGrow: 1,
+  display: 'flex',
+  flexDirection: 'row',
+  gap: HAND_GAP_PX,
+};
 
-export const handLabel: HayateCssStyle = { defaultFontSize: 17, fontWeight: 700 };
-export const handCount: HayateCssStyle = { defaultFontSize: 11, defaultColor: CSS.muted };
+/** 持ち駒 1 枠のタップ領域（盤の `cell` と同じく透明で子を持たない）。 */
+export const handSlot: HayateCssStyle = {
+  width: HAND_SLOT_PX,
+  height: '100%',
+  backgroundColor: 'transparent',
+  cursor: 'pointer',
+};
 export const handSideLabel: HayateCssStyle = {
   defaultFontSize: 11,
   defaultColor: CSS.muted,

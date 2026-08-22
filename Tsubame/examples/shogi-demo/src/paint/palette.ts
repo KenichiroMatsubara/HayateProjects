@@ -9,11 +9,16 @@ export const BOARD_WOOD: Rgba = [0.898, 0.792, 0.588, 1];
 export const BOARD_EDGE: Rgba = [0.404, 0.302, 0.196, 1];
 export const GRID_LINE: Rgba = [0.29, 0.216, 0.141, 1];
 
-/** 先手（下側）の駒。木地より明るい飴色。 */
-export const PIECE_BLACK: Rgba = [0.965, 0.898, 0.749, 1];
-/** 後手（上側）の駒。回転で向きは分かるが、地色も一段濃くして遠目にも効かせる。 */
-export const PIECE_WHITE: Rgba = [0.847, 0.741, 0.565, 1];
+/**
+ * 駒の地色。木地より明るい飴色。**先後で色を変えない** — 先後は駒の向きが表す
+ * （紙の将棋と同じ）。色で誤魔化していたのは、文字を回せなかった頃の名残。
+ */
+export const PIECE_FACE: Rgba = [0.965, 0.898, 0.749, 1];
 export const PIECE_EDGE: Rgba = [0.325, 0.239, 0.161, 1];
+/** 駒の字。 */
+export const PIECE_INK: Rgba = [0.102, 0.078, 0.063, 1];
+/** 成駒の字は朱で書く（向きとは独立した情報なので色で分ける）。 */
+export const PIECE_INK_PROMOTED: Rgba = [0.616, 0.145, 0.09, 1];
 
 /** 選択中のマス。 */
 export const SELECTED: Rgba = [0.114, 0.612, 0.851, 0.38];
@@ -35,8 +40,4 @@ export const CSS = {
   line: '#d9cfbc',
   accent: '#c2410c',
   boardEdge: '#674d32',
-  /** 先手の駒文字。 */
-  pieceInkBlack: '#1a1410',
-  /** 後手の駒文字。回転しても先後が一目で分かるよう色でも差を付ける。 */
-  pieceInkWhite: '#7a1f12',
 } as const;

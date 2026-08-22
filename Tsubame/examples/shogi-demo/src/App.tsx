@@ -117,18 +117,22 @@ export function App() {
       <Hand
         color={topColor}
         hand={game.position.hand(topColor)}
+        revision={game.revision}
         active={!game.isOver && game.sideToMove === topColor}
         selected={game.sideToMove === topColor ? selectedHandPiece : null}
+        flipped={flipped}
         onTapPiece={onTapHand}
       />
 
-      <Board position={game.position} painterState={painterState} onTapSquare={onTapSquare} />
+      <Board painterState={painterState} onTapSquare={onTapSquare} />
 
       <Hand
         color={bottomColor}
         hand={game.position.hand(bottomColor)}
+        revision={game.revision}
         active={!game.isOver && game.sideToMove === bottomColor}
         selected={game.sideToMove === bottomColor ? selectedHandPiece : null}
+        flipped={flipped}
         onTapPiece={onTapHand}
       />
 
