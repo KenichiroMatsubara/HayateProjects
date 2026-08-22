@@ -9,6 +9,19 @@ const executablePath = existsSync(PREINSTALLED_CHROMIUM) ? PREINSTALLED_CHROMIUM
 
 const PORT = Number(process.env.E2E_PORT ?? 5190);
 
+// ANGLE バックエンド。既定は `gl`。
+//
+// `vulkan` を選ぶと、native Vulkan ICD が不安定な環境（Mesa/amdgpu 等）では WebGPU の
+// canvas が恒久的に空白になる（コンソールに
+// `OperationError: A valid external Instance reference no longer exists.`）。
+// 要素やレイアウトは描かれて canvas の中身だけ出ないので、**「Hayate 経路は動かない」と
+// 読み違えやすい** — 実際 2026-08-22 にそれで誤った結論を出した。この spec は描かれ
+// なければ skip する作りなので、症状は「常に skip」という静かな形でも出る。
+//
+// `gl` は ANGLE 経由で ICD を迂回するだけで WebGPU の機能は同じなので、既定はこちらに
+// する。vulkan 側を確かめたいときは `E2E_ANGLE=vulkan`。
+const ANGLE = process.env.E2E_ANGLE ?? 'gl';
+
 export default defineConfig({
   testDir: './e2e',
   testMatch: '**/*.spec.ts',
@@ -30,7 +43,7 @@ export default defineConfig({
           executablePath,
           // tiny-skia CPU backend は WebGPU 不要だが、vello 経路の手動確認や将来の
           // GPU 有効 CI 用に WebGPU フラグも付けておく（無害）。
-          args: ['--enable-unsafe-webgpu', '--ignore-gpu-blocklist', '--use-angle=vulkan'],
+          args: ['--enable-unsafe-webgpu', '--ignore-gpu-blocklist', `--use-angle=${ANGLE}`],
         },
       },
     },

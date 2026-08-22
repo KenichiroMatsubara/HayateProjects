@@ -21,6 +21,13 @@ const PORT = Number(process.env.E2E_PORT ?? 5184);
 // Torimi 最小 dev server のポート（host.html が shogi バンドルを fetch する先）。
 const TORIMI_DEV_PORT = Number(process.env.TORIMI_DEV_PORT ?? 5185);
 
+// ANGLE バックエンド。既定は `gl`（draw-gallery の playwright.config.ts と同じ理由）。
+// native Vulkan ICD が不安定な環境では `vulkan` を選ぶと WebGPU canvas が恒久的に空白に
+// なり（`A valid external Instance reference no longer exists.`）、要素は描かれて canvas の
+// 中身だけ出ないので**コード側の問題に見える**。`gl` は ICD を迂回するだけで WebGPU の
+// 機能は変わらない。`E2E_ANGLE=vulkan` で戻せる。
+const ANGLE = process.env.E2E_ANGLE ?? 'gl';
+
 export default defineConfig({
   testDir: './e2e',
   // ユニットテスト（src/**/*.test.ts, vitest）とは明確に分離する。
@@ -38,7 +45,15 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'], launchOptions: { executablePath } },
+      use: {
+        ...devices['Desktop Chrome'],
+        launchOptions: {
+          executablePath,
+          // Hayate Renderer 経路（`hayate-board.spec.ts`）が WebGPU / CPU バックエンドへ
+          // 入れるようにする。DOM 経路には無害。
+          args: ['--enable-unsafe-webgpu', '--ignore-gpu-blocklist', `--use-angle=${ANGLE}`],
+        },
+      },
     },
   ],
   webServer: [

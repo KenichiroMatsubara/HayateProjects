@@ -9,11 +9,17 @@ const executablePath = existsSync(PREINSTALLED_CHROMIUM)
     ? SYSTEM_CHROME
     : undefined;
 const WORKER_WORKLOAD_PORT = 5182;
+
+// ANGLE バックエンド。既定は `gl`（draw-gallery の playwright.config.ts と同じ理由）。
+// native Vulkan ICD が不安定な環境では `vulkan` を選ぶと WebGPU canvas が恒久的に空白に
+// なり（`A valid external Instance reference no longer exists.`）、コード側の問題に見える。
+// `gl` は ICD を迂回するだけで WebGPU の機能は変わらない。`E2E_ANGLE=vulkan` で戻せる。
+const ANGLE = process.env.E2E_ANGLE ?? 'gl';
 const WEBGPU_LAUNCH_ARGS = [
   '--enable-unsafe-webgpu',
   '--enable-features=Vulkan',
   '--enable-gpu',
-  '--use-angle=vulkan',
+  `--use-angle=${ANGLE}`,
 ] as const;
 
 export default defineConfig({
