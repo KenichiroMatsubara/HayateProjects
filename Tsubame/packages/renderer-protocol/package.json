@@ -1,6 +1,6 @@
 {
   "name": "@torimi/tsubame-renderer-protocol",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Tsubame Renderer Protocol — IRenderer インターフェースと型定義（DOM / Canvas Renderer 共通の境界）",
   "license": "Apache-2.0",
   "repository": {

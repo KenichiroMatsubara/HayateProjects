@@ -1,6 +1,6 @@
 {
   "name": "@torimi/bundle",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Bundle Registration — App Bundle 側の合成ルート。アプリは registerTorimiApp(mount) を呼ぶ全ターゲット共通の 1 エントリだけを書き、protocol version 焼き込み・mount seam（__torimiMount / __tsubame）・native prelude といった wire 契約の配線はこのパッケージが隠す。ターゲット差は __hayateHost の有無でランタイム内部分岐する（ADR-0008 §4 / CONTEXT.md「Bundle Registration」）。",
   "license": "Apache-2.0",
   "repository": {

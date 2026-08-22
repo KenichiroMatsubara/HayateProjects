@@ -1,6 +1,6 @@
 {
   "name": "@torimi/tsubame-solid",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "tsubame-solid — solid-js/universal を Tsubame Renderer Protocol に向け替える Adapter",
   "license": "Apache-2.0",
   "repository": {

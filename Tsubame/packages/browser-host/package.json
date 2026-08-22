@@ -1,6 +1,6 @@
 {
   "name": "@torimi/tsubame-browser-host",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Tsubame browser App host — DOM/Hayate target selection and browser resource lifetime",
   "license": "Apache-2.0",
   "repository": {

@@ -1,6 +1,6 @@
 {
   "name": "@torimi/tsubame-app",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Tsubame 合成ルート — Host port と framework mount を合成し、browser・具体 renderer・Hayate runtime を知らない（ADR-0012）。",
   "license": "Apache-2.0",
   "repository": {

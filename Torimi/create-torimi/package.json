@@ -1,10 +1,15 @@
 {
   "name": "create-torimi",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "`npm create torimi` — Torimi アプリの雛形スキャフォルダ（ADR-0008 §6）。テンプレートを同梱し、生成時にネットワーク fetch しない。`create-torimi@X` は必ず X リリース列車の雛形を吐く。",
   "license": "Apache-2.0",
-  "repository": { "type": "git", "url": "https://github.com/KenichiroMatsubara/HayateProjects" },
-  "publishConfig": { "access": "public" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/KenichiroMatsubara/HayateProjects"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "bin": {
     "create-torimi": "./dist/cli.js"
