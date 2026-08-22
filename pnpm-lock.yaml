@@ -357,6 +357,67 @@ importers:
         specifier: ^4.1.10
         version: 4.1.10(@types/node@26.1.1)(happy-dom@20.11.0)(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(yaml@2.9.0))
 
+  Tsubame/examples/shogi-demo:
+    dependencies:
+      '@torimi/bundle':
+        specifier: workspace:*
+        version: link:../../../Torimi/bundle
+      '@torimi/hayate-host':
+        specifier: workspace:*
+        version: link:../../../Hayate/host
+      '@torimi/host-web':
+        specifier: workspace:*
+        version: link:../../../Torimi/host-web
+      '@torimi/tsubame-app':
+        specifier: workspace:*
+        version: link:../../packages/app
+      '@torimi/tsubame-browser-host':
+        specifier: workspace:*
+        version: link:../../packages/browser-host
+      '@torimi/tsubame-protocol-generated':
+        specifier: workspace:*
+        version: link:../../proto
+      '@torimi/tsubame-react':
+        specifier: workspace:*
+        version: link:../../packages/react
+      '@torimi/tsubame-renderer-hayate':
+        specifier: workspace:*
+        version: link:../../packages/renderer-hayate
+      '@torimi/tsubame-renderer-protocol':
+        specifier: workspace:*
+        version: link:../../packages/renderer-protocol
+      '@torimi/wire-contract':
+        specifier: workspace:*
+        version: link:../../../Torimi/wire-contract
+      react:
+        specifier: ^19.2.8
+        version: 19.2.8
+      react-reconciler:
+        specifier: ^0.33.0
+        version: 0.33.0(react@19.2.8)
+      tsshogi:
+        specifier: ^2.3.4
+        version: 2.3.4
+    devDependencies:
+      '@playwright/test':
+        specifier: ^1.61.1
+        version: 1.61.1
+      '@torimi/cli':
+        specifier: workspace:*
+        version: link:../../../Torimi/cli
+      '@types/react':
+        specifier: ^19.2.17
+        version: 19.2.17
+      '@types/react-reconciler':
+        specifier: ^0.33.0
+        version: 0.33.0(@types/react@19.2.17)
+      vite:
+        specifier: ^8.1.5
+        version: 8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(yaml@2.9.0)
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@types/node@26.1.1)(happy-dom@20.11.0)(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(yaml@2.9.0))
+
   Tsubame/examples/solid-demo:
     dependencies:
       '@torimi/bundle':
@@ -3050,6 +3111,9 @@ packages:
   tslib@2.8.1:
     resolution: {integrity: sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w==}
 
+  tsshogi@2.3.4:
+    resolution: {integrity: sha512-+nl6SWiMJfxmNCMG4KsnDE+ozZZsovZaBZGvSM52DJQiShU05HdgwbxalvkiZVQBzcTib75CeFzfZiEPuS5haQ==}
+
   tsup@8.5.1:
     resolution: {integrity: sha512-xtgkqwdhpKWr3tKPmCkvYmS9xnQK3m3XgxZHwSUjvfTjp7YfXe5tT3GgWi0F2N+ZSMsOeWeZFh7ZZFg5iPhing==}
     engines: {node: '>=18'}
@@ -5558,6 +5622,8 @@ snapshots:
 
   tslib@2.8.1:
     optional: true
+
+  tsshogi@2.3.4: {}
 
   tsup@8.5.1(postcss@8.5.21)(supports-color@10.2.2)(typescript@6.0.3)(yaml@2.9.0):
     dependencies:
