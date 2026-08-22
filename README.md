@@ -102,6 +102,9 @@ pnpm dev
 
 # The draw-gallery demo (same painter on GPU and DOM paths)
 pnpm --filter @tsubame/example-draw-gallery dev
+
+# The shogi GUI demo (full rules via tsshogi, plus a frame-sliced AI)
+pnpm --filter @tsubame/example-shogi-demo dev
 ```
 
 Renderer is switchable at runtime via the top-right toggle or a URL query:

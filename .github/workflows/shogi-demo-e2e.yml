@@ -1,0 +1,74 @@
+name: Shogi demo e2e
+
+# 将棋GUI example のユニットテストと Playwright e2e を CI で回す。ルールコア（tsshogi の
+# ラッパ）と AI のフレーム分割は Rust/WASM 無しで検証できるので、この軽量ジョブが門番になる。
+# Hayate Renderer 経路（Torimi host）は WASM 未ビルド環境では spec 側が理由付きで skip する
+# ので、Rust を積まずに安定して green になる（draw-gallery-e2e.yml と同じ流儀）。
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Tsubame/examples/shogi-demo/**'
+      - 'Tsubame/packages/**'
+      - 'Torimi/**'
+      - 'Hayate/host/**'
+      - '.github/workflows/shogi-demo-e2e.yml'
+  pull_request:
+    paths:
+      - 'Tsubame/examples/shogi-demo/**'
+      - 'Tsubame/packages/**'
+      - 'Torimi/**'
+      - 'Hayate/host/**'
+      - '.github/workflows/shogi-demo-e2e.yml'
+  workflow_dispatch:
+
+jobs:
+  e2e:
+    name: Unit + Playwright (DOM path)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        # preinstall（bootstrap-wasm-pkgs）が WASM 成果物の stub を用意するので、Rust を
+        # 積まなくても import は解決できる（Hayate 経路は実行時に spec が skip する）。
+        run: pnpm install --frozen-lockfile
+
+      - name: Build @torimi/hayate-host
+        run: pnpm --filter @torimi/hayate-host build
+
+      - name: Build Tsubame packages
+        run: pnpm --filter "./Tsubame/packages/*" build
+
+      - name: Build Torimi packages
+        # e2e の webServer が `torimi dev web` を起動する（App Bundle を HTTP 配信して
+        # host.html に流す）。CLI は dev-server の型に依存するので順に建てる。
+        run: |
+          pnpm --filter @torimi/wire-contract build
+          pnpm --filter @torimi/protocol-handshake build
+          pnpm --filter @torimi/bundle build
+          pnpm --filter @torimi/host-web build
+          pnpm --filter @torimi/dev-server build
+          pnpm --filter @torimi/cli build
+
+      - name: Unit tests (rules / painter / AI)
+        run: pnpm --filter @tsubame/example-shogi-demo test
+
+      - name: Typecheck
+        run: pnpm --filter @tsubame/example-shogi-demo typecheck
+
+      - name: Install Playwright Chromium
+        run: pnpm --filter @tsubame/example-shogi-demo exec playwright install --with-deps chromium
+
+      - name: Playwright e2e
+        run: pnpm --filter @tsubame/example-shogi-demo test:e2e

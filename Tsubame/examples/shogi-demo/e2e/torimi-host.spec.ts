@@ -8,6 +8,10 @@ import { expect, test } from '@playwright/test';
  *
  * 「Viewer 一本で全 JS フレームワーク・全アプリが動く」ことを、Sketch より遥かに重い
  * アプリで確かめる（react-demo の同名 spec と同型）。
+ *
+ * この経路は WASM ビルド（`pnpm --filter hayate run build:all`）が要る。未ビルド環境では
+ * host bootstrap が stub に当たって `WorkerBootError` になるので、理由付きで skip する
+ * （draw-gallery の Hayate 経路 spec と同じ流儀）。DOM 経路の spec は常に走る。
  */
 
 const TORIMI_DEV_PORT = Number(process.env.TORIMI_DEV_PORT ?? 5185);
@@ -20,9 +24,20 @@ test.describe('Torimi host — renders the HTTP-served shogi bundle', () => {
 
     // fetch → eval → createHayateWebHost → mount が端から端まで貫けたこと
     // （将棋バンドルでもホストは無改造）。data 属性は FW 非依存ホスト（host-boot.ts）が立てる。
-    await expect(page.locator('html')).toHaveAttribute('data-torimi-status', 'mounted', {
-      timeout: 30_000,
-    });
+    const status = page.locator('html');
+    await expect
+      .poll(async () => status.getAttribute('data-torimi-status'), { timeout: 30_000 })
+      .not.toBeNull();
+
+    const settled = await status.getAttribute('data-torimi-status');
+    test.skip(
+      settled === 'error' &&
+        ((await status.getAttribute('data-torimi-error')) ?? '').includes('WorkerBootError'),
+      'Hayate host が起動できない（WASM 未ビルド or バックエンド初期化不可）。' +
+        '実描画の確認は WASM ビルド済み環境で行う。',
+    );
+
+    await expect(status).toHaveAttribute('data-torimi-status', 'mounted', { timeout: 30_000 });
 
     const canvas = page.locator('#torimi-canvas');
     await expect(canvas).toBeVisible();

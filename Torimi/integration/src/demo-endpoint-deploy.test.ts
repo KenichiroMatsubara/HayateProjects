@@ -44,9 +44,14 @@ describe('Demo Endpoint manual deploy', () => {
         workspacePackage: '@tsubame/example-react-demo',
         artifactPath: 'Tsubame/examples/react-demo/dist-torimi/bundle.hermes.js',
       },
+      {
+        workspacePackage: '@tsubame/example-shogi-demo',
+        artifactPath: 'Tsubame/examples/shogi-demo/dist-torimi/bundle.hermes.js',
+      },
     ]);
     expect(existsSync(resolve(repoRoot, 'Tsubame/examples/solid-demo/package.json'))).toBe(true);
     expect(existsSync(resolve(repoRoot, 'Tsubame/examples/react-demo/package.json'))).toBe(true);
+    expect(existsSync(resolve(repoRoot, 'Tsubame/examples/shogi-demo/package.json'))).toBe(true);
     expect(existsSync(resolve(repoRoot, 'Tsubame/examples/todo'))).toBe(false);
     expect(existsSync(resolve(repoRoot, 'Tsubame/examples/react-todo'))).toBe(false);
   });
