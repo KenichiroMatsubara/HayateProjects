@@ -9,6 +9,13 @@
       "autoPort": false
     },
     {
+      "name": "demo-site",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 5177,
+      "autoPort": false
+    },
+    {
       "name": "torimi-host",
       "runtimeExecutable": "pnpm",
       "runtimeArgs": ["--filter", "@tsubame/example-react-demo", "exec", "vite", "--port", "5182", "--strictPort"],
