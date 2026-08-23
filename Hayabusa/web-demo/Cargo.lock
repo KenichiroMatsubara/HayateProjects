@@ -220,10 +220,19 @@ dependencies = [
 ]
 
 [[package]]
-name = "futures-core"
-version = "0.3.33"
+name = "futures-channel"
+version = "0.3.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2cd50c473c80f6d7c3670a752354b8e569b1a7cbfdc0419ec88e5edad85e0dc7"
+checksum = "b1f9e3d69d39e4862ffed03ed071a76f9a13ba1d9109d355b0f0aa6b15e393c4"
+dependencies = [
+ "futures-core",
+]
+
+[[package]]
+name = "futures-core"
+version = "0.3.34"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "92d699e522242e69e3003b94ecc1f960f3a5e015aa7c5d7486e65ad01dd94f5e"
 
 [[package]]
 name = "futures-task"
@@ -312,8 +321,10 @@ dependencies = [
  "anyhow",
  "console_error_panic_hook",
  "console_log",
+ "futures-channel",
  "hayate-app-host",
  "hayate-core",
+ "hayate-frame-pipeline",
  "hayate-layer-compositor",
  "hayate-scene-renderer-tiny-skia",
  "image",
@@ -332,6 +343,7 @@ dependencies = [
 name = "hayate-app-host"
 version = "0.1.0"
 dependencies = [
+ "accesskit",
  "anyhow",
  "hayate-core",
  "hayate-layer-compositor",
@@ -356,10 +368,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "hayate-frame-pipeline"
+version = "0.1.0"
+dependencies = [
+ "hayate-core",
+]
+
+[[package]]
 name = "hayate-layer-compositor"
 version = "0.1.0"
 dependencies = [
  "hayate-core",
+ "hayate-frame-pipeline",
 ]
 
 [[package]]
