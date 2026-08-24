@@ -23,6 +23,26 @@
       "autoPort": false
     },
     {
+      "name": "shogi-demo",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@tsubame/example-shogi-demo", "exec", "vite", "--port", "5188", "--strictPort"],
+      "port": 5188,
+      "autoPort": false
+    },
+    {
+      "name": "shogi-demo-houou",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@tsubame/example-shogi-demo", "exec", "vite", "--port", "5191", "--strictPort"],
+      "port": 5191,
+      "autoPort": false
+    },
+    {
+      "name": "koma-tuner",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "8794", "--directory", "Tsubame/examples/shogi-demo/tools"],
+      "port": 8794
+    },
+    {
       "name": "hayabusa-web-demo",
       "runtimeExecutable": "python3",
       "runtimeArgs": ["-m", "http.server", "8791", "--directory", "Hayabusa/web-demo"],

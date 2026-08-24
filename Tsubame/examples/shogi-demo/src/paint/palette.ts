@@ -31,7 +31,42 @@ export const TARGET_RING: Rgba = [0.839, 0.294, 0.204, 0.75];
 /** 王手を受けている玉。 */
 export const CHECK_RING: Rgba = [0.839, 0.145, 0.145, 0.9];
 
-/** 要素側 style 用（painter と対を成す CSS 文字列）。 */
+/**
+ * 0〜1 の `Rgba` を CSS の色文字列にする。同じ色を painter 用と style 用に二度書かない
+ * ための変換で、`CSS` の中身はここを通して上の定数から導く。
+ */
+function css(color: Rgba): string {
+  const byte = (v: number): string =>
+    Math.round(Math.min(1, Math.max(0, v)) * 255)
+      .toString(16)
+      .padStart(2, '0');
+  const [r, g, b, a] = color;
+  return `#${byte(r)}${byte(g)}${byte(b)}${a >= 1 ? '' : byte(a)}`;
+}
+
+/**
+ * 半透明の色を地の色へ焼き込んで不透明の 1 色にする。
+ *
+ * 盤の枡は「木地の上にハイライトを重ねた絵」ではなく**要素の背景 1 色**として塗る
+ * （背景は 1 色しか持てない）。重ね順を絵で作らずに済むぶん、ハイライトは style の
+ * 差し替えだけになり、駒の下に潜り込む順序も構造的に保たれる。
+ */
+function over(front: Rgba, back: Rgba): string {
+  const a = front[3];
+  return css([
+    front[0] * a + back[0] * (1 - a),
+    front[1] * a + back[1] * (1 - a),
+    front[2] * a + back[2] * (1 - a),
+    1,
+  ]);
+}
+
+/**
+ * 要素側 style 用（painter と対を成す CSS 文字列）。
+ *
+ * 盤の木地・罫線・外枠・枡のハイライトは**要素が持つ**（絵ではない）。draw painter が
+ * 描くのは、要素の style では表せないもの — 駒の五角形・星・合法手の印だけ。
+ */
 export const CSS = {
   paper: '#f3ece0',
   panel: '#fffdf8ee',
@@ -39,5 +74,15 @@ export const CSS = {
   muted: '#6b6357',
   line: '#d9cfbc',
   accent: '#c2410c',
-  boardEdge: '#674d32',
+  boardEdge: css(BOARD_EDGE),
+  /** 枡の地色。 */
+  wood: css(BOARD_WOOD),
+  /** 罫線。枡の隙間からこの色が覗く（盤要素の背景）。 */
+  gridLine: css(GRID_LINE),
+  /** 選択中の枡。 */
+  woodSelected: over(SELECTED, BOARD_WOOD),
+  /** 直前の指し手の枡。 */
+  woodLastMove: over(LAST_MOVE, BOARD_WOOD),
+  /** 駒台で選んでいる駒の座布団（駒台の地は木地ではないので半透明のまま重ねる）。 */
+  handSelected: css(SELECTED),
 } as const;

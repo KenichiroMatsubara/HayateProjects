@@ -22,17 +22,17 @@ import type { Rect } from './board-metrics.js';
  */
 
 /**
- * マス幅に対する駒文字の大きさ。五角形は頭が細いので、字は駒の胴に収まる幅にする。
+ * マス幅に対する駒文字の大きさ。字は肩より下の胴に収まる幅にする。
  */
-const GLYPH_RATIO = 0.46;
+const GLYPH_RATIO = 0.54;
 /**
  * 字のレイアウトボックス上端を、マス中心からどれだけ上に置くか（字の大きさ比）。
  *
- * ボックスをちょうど中央に置く（0.5）と字は少し上に浮く。CJK の墨がボックスの
- * やや下寄りに来ること、加えて**五角形は頭が尖っていて重心が下にある**ことの
- * 両方から、実測に合わせて浅めに戻して駒の胴へ据える。
+ * ボックスをちょうど中央に置く（0.5）と、CJK の墨がボックスの上寄りに乗るぶん
+ * 字が浮く。肩を実寸に合わせて高く広くした（{@link ./piece-shape.js}）ことで胴の
+ * 面積が増えたので、以前より深く（字を上へ）取って駒の中央に据える。
  */
-const GLYPH_TOP_RATIO = 0.32;
+const GLYPH_TOP_RATIO = 0.48;
 
 /**
  * 駒の表示文字。成駒は 1 文字の略字（と・杏・圭・全・馬・龍）を使う。
@@ -101,7 +101,7 @@ export function paintPiece(
   const edge = new Paint();
   edge.style = PaintingStyle.stroke;
   edge.color = C.PIECE_EDGE;
-  edge.strokeWidth = Math.max(0.75, Math.min(rect.width, rect.height) * 0.022);
+  edge.strokeWidth = Math.max(0.75, Math.min(rect.width, rect.height) * 0.02);
   edge.strokeJoin = StrokeJoin.round;
   canvas.drawPath(shape, edge);
 

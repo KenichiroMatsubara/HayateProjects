@@ -9,19 +9,27 @@ import type { Rect } from './board-metrics.js';
  * 置かれる唯一の場所がそこなので、形の側が向きを知る必要はない。
  */
 
+/**
+ * 比率はすべて実寸の王将駒（高さ約 32mm・底辺約 27mm・肩幅約 21mm・頭から肩まで
+ * 約 6mm）から起こしてある。値を動かすときは `tools/koma-tuner.html` を開くと、
+ * ここと同じ計算で描いた駒を見ながら詰められる。
+ */
+
 /** マスに対する駒の大きさ（マスいっぱいには描かない）。 */
-const PIECE_SCALE = 0.86;
-/** 駒幅に対する肩（尖り始める高さ）の位置。 */
-const SHOULDER_RATIO = 0.26;
-/** 駒幅に対する頭（上辺）の幅。 */
-const HEAD_WIDTH_RATIO = 0.42;
-/** 駒幅に対する足（下辺）の幅。 */
-const FOOT_WIDTH_RATIO = 0.9;
+const PIECE_SCALE = 0.9;
+/** 駒の高さに対する、肩（側面が尖り始める高さ）の位置。 */
+const SHOULDER_RATIO = 0.19;
+/** 駒幅に対する肩の幅。頭は点なので、ここが「頭の広さ」を決める。 */
+const HEAD_WIDTH_RATIO = 0.78;
+/** 駒幅に対する足（下辺）の幅。肩幅との差が側面の傾きになる。 */
+const FOOT_WIDTH_RATIO = 1;
+/** 駒の高さに対する幅（縦横比）。 */
+const WIDTH_RATIO = 0.86;
 
 /** `cell` の中央に収まる、頭が上を向いた駒の五角形を作る。 */
 export function pieceShape(cell: Rect): Path {
   const size = Math.min(cell.width, cell.height) * PIECE_SCALE;
-  const width = size * 0.88;
+  const width = size * WIDTH_RATIO;
   const height = size;
   const cx = cell.x + cell.width / 2;
   const cy = cell.y + cell.height / 2;

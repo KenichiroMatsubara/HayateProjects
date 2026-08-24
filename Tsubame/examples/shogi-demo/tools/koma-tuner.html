@@ -1,0 +1,599 @@
+<meta charset="utf-8" />
+<title>駒の五角形チューナー</title>
+<style>
+  :root {
+    --bg: #e8e6df;
+    --surface: #f8f7f3;
+    --surface-2: #f1efe8;
+    --line: #d2cec3;
+    --line-strong: #b6b1a3;
+    --fg: #1c1b17;
+    --muted: #6b6759;
+    --accent: #9d2517;
+    --accent-soft: #9d251714;
+    --shadow: 0 1px 2px #1c1b170f, 0 8px 24px -12px #1c1b1726;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16171a;
+      --surface: #1e2023;
+      --surface-2: #24262a;
+      --line: #33363b;
+      --line-strong: #4a4e55;
+      --fg: #e8e5dd;
+      --muted: #979389;
+      --accent: #e0674c;
+      --accent-soft: #e0674c1f;
+      --shadow: 0 1px 2px #0006, 0 10px 30px -14px #000a;
+    }
+  }
+  :root[data-theme="light"] {
+    --bg: #e8e6df; --surface: #f8f7f3; --surface-2: #f1efe8;
+    --line: #d2cec3; --line-strong: #b6b1a3; --fg: #1c1b17; --muted: #6b6759;
+    --accent: #9d2517; --accent-soft: #9d251714;
+    --shadow: 0 1px 2px #1c1b170f, 0 8px 24px -12px #1c1b1726;
+  }
+  :root[data-theme="dark"] {
+    --bg: #16171a; --surface: #1e2023; --surface-2: #24262a;
+    --line: #33363b; --line-strong: #4a4e55; --fg: #e8e5dd; --muted: #979389;
+    --accent: #e0674c; --accent-soft: #e0674c1f;
+    --shadow: 0 1px 2px #0006, 0 10px 30px -14px #000a;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: clamp(20px, 4vw, 44px) clamp(16px, 4vw, 32px) 72px;
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+  }
+
+  header { display: flex; flex-direction: column; gap: 6px; }
+  .eyebrow {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  h1 {
+    margin: 0;
+    font-family: "Hiragino Mincho ProN", "Yu Mincho", "Noto Serif JP", serif;
+    font-size: clamp(26px, 4vw, 38px);
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-wrap: balance;
+  }
+  .lede { margin: 0; color: var(--muted); max-width: 62ch; }
+  .lede code {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 0.86em;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 0.1em 0.35em;
+  }
+
+  .layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+    gap: 24px;
+    align-items: start;
+  }
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: minmax(0, 1fr); }
+    .stage { position: static !important; }
+  }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    box-shadow: var(--shadow);
+  }
+
+  .stage { position: sticky; top: 20px; overflow: hidden; }
+  .stage canvas { display: block; width: 100%; height: auto; }
+
+  .stage-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 14px;
+    align-items: center;
+    padding: 10px 14px;
+    border-top: 1px solid var(--line);
+    background: var(--surface-2);
+  }
+  .toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 13px;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .toggle input { accent-color: var(--accent); margin: 0; }
+  .stage-bar .spacer { flex: 1 1 auto; }
+  .readout {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    color: var(--muted);
+  }
+
+  .controls { padding: 18px; display: flex; flex-direction: column; gap: 18px; }
+
+  .group { display: flex; flex-direction: column; gap: 12px; }
+  .group > h2 {
+    margin: 0;
+    font-size: 11px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--line);
+  }
+  .group > h2 span { text-transform: none; letter-spacing: 0; opacity: 0.75; }
+
+  .field { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; align-items: baseline; }
+  .field label { font-size: 13.5px; }
+  .field .hint { grid-column: 1 / -1; font-size: 12px; color: var(--muted); margin-top: -2px; }
+  .field .val {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+    padding: 1px 6px;
+    border-radius: 4px;
+    border: 1px solid transparent;
+  }
+  .field.changed .val { color: var(--accent); background: var(--accent-soft); border-color: var(--accent-soft); }
+  .field input[type="range"] { grid-column: 1 / -1; width: 100%; accent-color: var(--accent); margin: 4px 0 0; }
+  .field input[type="range"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 3px; }
+
+  .row { display: flex; flex-wrap: wrap; gap: 8px; }
+  button {
+    font: inherit;
+    font-size: 13px;
+    color: var(--fg);
+    background: var(--surface-2);
+    border: 1px solid var(--line-strong);
+    border-radius: 6px;
+    padding: 6px 12px;
+    cursor: pointer;
+  }
+  button:hover { border-color: var(--accent); color: var(--accent); }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.primary:hover { color: #fff; filter: brightness(1.08); }
+
+  .code {
+    margin: 0;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 12px 14px;
+    overflow-x: auto;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 12px;
+    line-height: 1.6;
+    tab-size: 2;
+    white-space: pre;
+  }
+  .code .cm { color: var(--muted); }
+  .code .nm { color: var(--accent); }
+
+  .file {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 12px;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  footer { color: var(--muted); font-size: 13px; max-width: 70ch; }
+  footer p { margin: 0 0 8px; }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">shogi-demo / paint</div>
+    <h1>駒の五角形チューナー</h1>
+    <p class="lede">
+      <code>piece-shape.ts</code> と <code>piece.ts</code> の比率をそのまま動かして、盤上・駒台と同じ描き方でプレビューします。決まったら定数をコピーして貼るだけ。
+    </p>
+  </header>
+
+  <div class="layout">
+    <section class="panel stage" aria-label="プレビュー">
+      <canvas id="cv" aria-label="現在の比率で描いた駒のプレビュー"></canvas>
+      <div class="stage-bar">
+        <label class="toggle"><input type="checkbox" id="ghost" /> 現行コードの形を重ねる</label>
+        <label class="toggle"><input type="checkbox" id="glyphoff" /> 字を隠す</label>
+        <span class="spacer"></span>
+        <span class="readout" id="derived"></span>
+      </div>
+    </section>
+
+    <section class="panel controls" aria-label="比率の調整">
+      <div class="group">
+        <h2>プリセット</h2>
+        <div class="row" id="presets"></div>
+      </div>
+
+      <div class="group">
+        <h2>五角形 <span>piece-shape.ts</span></h2>
+        <div id="shapeFields"></div>
+      </div>
+
+      <div class="group">
+        <h2>字と縁 <span>piece.ts</span></h2>
+        <div id="glyphFields"></div>
+      </div>
+
+      <div class="group">
+        <h2>貼り付け用</h2>
+        <div class="file">
+          <span>src/paint/piece-shape.ts</span>
+          <button type="button" class="primary" data-copy="shape">この定数をコピー</button>
+        </div>
+        <pre class="code" id="codeShape"></pre>
+        <div class="file">
+          <span>src/paint/piece.ts</span>
+          <button type="button" class="primary" data-copy="glyph">この定数をコピー</button>
+        </div>
+        <pre class="code" id="codeGlyph"></pre>
+      </div>
+    </section>
+  </div>
+
+  <footer>
+    <p><strong>現行コードの根拠：</strong>一般的な王将駒（高さ約32mm・底辺約27mm・肩幅約21mm・頭から肩まで約6mm）から起こした値が入っています。「旧・尖り形」は以前の値（肩幅0.42・肩の高さ0.26）で、五角形というより三角テントに見えていたものです。</p>
+    <p>プレビューの文字組みは canvas 2D で近似しています。字の上下位置（<code>GLYPH_TOP_RATIO</code>）だけは実機と数 % ずれることがあるので、最後は実機で微調整してください。</p>
+  </footer>
+</div>
+
+<script>
+  (function () {
+    // piece-shape.ts / piece.ts の現行値。ゴースト表示と「変更あり」判定の基準。
+    var CURRENT = {
+      scale: 0.9, width: 0.86, shoulder: 0.19, head: 0.78, foot: 1.0,
+      glyph: 0.54, glyphTop: 0.42, edge: 0.02
+    };
+
+    var PRESETS = [
+      { key: 'current', label: '現行コード（実寸準拠）', v: CURRENT },
+      { key: 'old', label: '旧・尖り形', v: { scale: 0.86, width: 0.88, shoulder: 0.26, head: 0.42, foot: 0.9, glyph: 0.46, glyphTop: 0.32, edge: 0.022 } },
+      { key: 'slim', label: '細身（古風）', v: { scale: 0.88, width: 0.82, shoulder: 0.22, head: 0.68, foot: 0.96, glyph: 0.46, glyphTop: 0.32, edge: 0.022 } },
+      { key: 'stout', label: '幅広（見やすさ寄り）', v: { scale: 0.94, width: 0.92, shoulder: 0.17, head: 0.82, foot: 1.0, glyph: 0.54, glyphTop: 0.34, edge: 0.024 } }
+    ];
+
+    var FIELDS = [
+      { k: 'scale', box: 'shapeFields', name: 'PIECE_SCALE', label: '駒の大きさ', hint: 'マスに対する駒の高さ', min: 0.6, max: 1.0, step: 0.005 },
+      { k: 'width', box: 'shapeFields', name: 'WIDTH_RATIO', label: '縦横比', hint: '駒の高さに対する幅', min: 0.6, max: 1.05, step: 0.005 },
+      { k: 'shoulder', box: 'shapeFields', name: 'SHOULDER_RATIO', label: '肩の高さ', hint: '頭の頂点から肩までの高さ（駒の高さ比）。小さいほど頭が浅い', min: 0.05, max: 0.45, step: 0.005 },
+      { k: 'head', box: 'shapeFields', name: 'HEAD_WIDTH_RATIO', label: '肩の幅', hint: '肩の位置での幅（駒幅比）。大きいほど本物に近い', min: 0.2, max: 1.0, step: 0.005 },
+      { k: 'foot', box: 'shapeFields', name: 'FOOT_WIDTH_RATIO', label: '足の幅', hint: '下辺の幅（駒幅比）。肩幅との差が側面の傾き', min: 0.6, max: 1.0, step: 0.005 },
+      { k: 'glyph', box: 'glyphFields', name: 'GLYPH_RATIO', label: '字の大きさ', hint: 'マス幅に対する字の大きさ', min: 0.3, max: 0.75, step: 0.005 },
+      { k: 'glyphTop', box: 'glyphFields', name: 'GLYPH_TOP_RATIO', label: '字の上下位置', hint: '大きいほど字が上へ動く', min: 0.15, max: 0.6, step: 0.005 },
+      { k: 'edge', box: 'glyphFields', name: '縁の太さ', hint: 'マス幅に対する輪郭線の太さ', min: 0.0, max: 0.05, step: 0.001 }
+    ];
+
+    var C = {
+      wood: '#e5ca96', woodEdge: '#674d32', grid: '#4a3724',
+      face: '#f6e5bf', edge: '#533d29', ink: '#1a1410', inkProm: '#9d2517'
+    };
+
+    var state = load() || copy(CURRENT);
+    var cv = document.getElementById('cv');
+    var ctx = cv.getContext('2d');
+    var inputs = {};
+
+    function copy(o) { var r = {}; for (var k in o) r[k] = o[k]; return r; }
+    function load() {
+      try {
+        var raw = localStorage.getItem('koma-tuner');
+        if (!raw) return null;
+        var v = JSON.parse(raw);
+        return (v && typeof v.head === 'number') ? v : null;
+      } catch (e) { return null; }
+    }
+    function save() {
+      try { localStorage.setItem('koma-tuner', JSON.stringify(state)); } catch (e) {}
+    }
+    function num(v) {
+      var s = v.toFixed(3).replace(/0+$/, '').replace(/\.$/, '');
+      return s === '' || s === '-' ? '0' : s;
+    }
+
+    // ---- controls ----------------------------------------------------------
+    FIELDS.forEach(function (f) {
+      var box = document.getElementById(f.box);
+      var wrap = document.createElement('div');
+      wrap.className = 'field';
+      wrap.id = 'field-' + f.k;
+
+      var label = document.createElement('label');
+      label.htmlFor = 'in-' + f.k;
+      label.textContent = f.label;
+
+      var val = document.createElement('span');
+      val.className = 'val';
+      val.id = 'val-' + f.k;
+
+      var hint = document.createElement('span');
+      hint.className = 'hint';
+      hint.textContent = f.hint;
+
+      var input = document.createElement('input');
+      input.type = 'range';
+      input.id = 'in-' + f.k;
+      input.min = f.min; input.max = f.max; input.step = f.step;
+      input.value = state[f.k];
+      input.addEventListener('input', function () {
+        state[f.k] = parseFloat(input.value);
+        save(); render();
+      });
+
+      wrap.appendChild(label); wrap.appendChild(val);
+      wrap.appendChild(hint); wrap.appendChild(input);
+      box.appendChild(wrap);
+      inputs[f.k] = input;
+    });
+
+    var presetBox = document.getElementById('presets');
+    PRESETS.forEach(function (p) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = p.label;
+      b.addEventListener('click', function () {
+        state = copy(p.v);
+        FIELDS.forEach(function (f) { inputs[f.k].value = state[f.k]; });
+        save(); render();
+      });
+      presetBox.appendChild(b);
+    });
+
+    document.getElementById('ghost').addEventListener('change', render);
+    document.getElementById('glyphoff').addEventListener('change', render);
+
+    // ---- geometry (piece-shape.ts と同じ計算) -------------------------------
+    function shapePoints(cell, p) {
+      var size = Math.min(cell.w, cell.h) * p.scale;
+      var width = size * p.width;
+      var height = size;
+      var cx = cell.x + cell.w / 2;
+      var cy = cell.y + cell.h / 2;
+      var halfHead = (width * p.head) / 2;
+      var halfFoot = (width * p.foot) / 2;
+      var top = cy - height / 2;
+      var shoulder = top + height * p.shoulder;
+      var bottom = cy + height / 2;
+      return [
+        [cx, top],
+        [cx + halfHead, shoulder],
+        [cx + halfFoot, bottom],
+        [cx - halfFoot, bottom],
+        [cx - halfHead, shoulder]
+      ];
+    }
+
+    function tracePath(pts) {
+      ctx.beginPath();
+      pts.forEach(function (pt, i) {
+        if (i === 0) ctx.moveTo(pt[0], pt[1]); else ctx.lineTo(pt[0], pt[1]);
+      });
+      ctx.closePath();
+    }
+
+    // ---- piece (piece.ts と同じ順序で塗り→縁→字) ---------------------------
+    function paintPiece(cell, label, promoted, flipped, p, showGlyph) {
+      var cx = cell.x + cell.w / 2;
+      var cy = cell.y + cell.h / 2;
+      ctx.save();
+      ctx.translate(cx, cy);
+      if (flipped) ctx.rotate(Math.PI);
+      ctx.translate(-cx, -cy);
+
+      tracePath(shapePoints(cell, p));
+      ctx.fillStyle = C.face;
+      ctx.fill();
+      ctx.lineJoin = 'round';
+      ctx.lineWidth = Math.max(0.75, Math.min(cell.w, cell.h) * p.edge);
+      ctx.strokeStyle = C.edge;
+      ctx.stroke();
+
+      if (showGlyph) {
+        var size = Math.min(cell.w, cell.h) * p.glyph;
+        ctx.font = '700 ' + size + 'px "Hiragino Mincho ProN", "Yu Mincho", "Noto Serif JP", "Noto Sans JP", serif';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+        ctx.fillStyle = promoted ? C.inkProm : C.ink;
+        ctx.fillText(label, cx - size / 2, cy - size * p.glyphTop);
+      }
+      ctx.restore();
+    }
+
+    function ghost(cell, flipped) {
+      var cx = cell.x + cell.w / 2, cy = cell.y + cell.h / 2;
+      ctx.save();
+      ctx.translate(cx, cy);
+      if (flipped) ctx.rotate(Math.PI);
+      ctx.translate(-cx, -cy);
+      tracePath(shapePoints(cell, CURRENT));
+      ctx.setLineDash([5, 4]);
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = '#9d2517';
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // ---- scene -------------------------------------------------------------
+    var BACK_RANK = ['香', '桂', '銀', '金', '玉', '金', '銀', '桂', '香'];
+    var SMALL_ROW = [['歩', false], ['と', true], ['飛', false], ['龍', true], ['角', false], ['馬', true]];
+
+    function render() {
+      FIELDS.forEach(function (f) {
+        document.getElementById('val-' + f.k).textContent = num(state[f.k]);
+        document.getElementById('field-' + f.k)
+          .classList.toggle('changed', Math.abs(state[f.k] - CURRENT[f.k]) > 1e-9);
+      });
+
+      var showGhost = document.getElementById('ghost').checked;
+      var showGlyph = !document.getElementById('glyphoff').checked;
+
+      var dpr = window.devicePixelRatio || 1;
+      var W = Math.max(320, cv.parentElement.clientWidth);
+      var pad = 16;
+      var bigCell = Math.min(190, (W - pad * 2) / 2.6);
+      var stripCell = Math.min(58, (W - pad * 2) / 9);
+      var smallCell = Math.min(34, (W - pad * 2) / 8);
+      var zone1 = bigCell + 30;
+      var zone2 = stripCell * 2 + 26;
+      var zone3 = smallCell + 30;
+      var H = zone1 + zone2 + zone3;
+
+      cv.width = Math.round(W * dpr);
+      cv.height = Math.round(H * dpr);
+      cv.style.height = H + 'px';
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      ctx.fillStyle = C.wood;
+      ctx.fillRect(0, 0, W, H);
+
+      // 大きく見る（左: 生駒 / 右: 成駒を相手向きに）
+      var y1 = 15;
+      var gap = 18;
+      var bx = (W - bigCell * 2 - gap) / 2;
+      var cellA = { x: bx, y: y1, w: bigCell, h: bigCell };
+      var cellB = { x: bx + bigCell + gap, y: y1, w: bigCell, h: bigCell };
+      paintPiece(cellA, '玉', false, false, state, showGlyph);
+      paintPiece(cellB, '龍', true, true, state, showGlyph);
+      if (showGhost) { ghost(cellA, false); ghost(cellB, true); }
+
+      // 盤の上（自陣・敵陣の並び）
+      var y2 = zone1 + 8;
+      var boardW = stripCell * 9;
+      var bx2 = (W - boardW) / 2;
+      var boardH = stripCell * 2;
+      ctx.strokeStyle = C.grid;
+      ctx.lineWidth = 1;
+      for (var i = 0; i <= 9; i++) {
+        ctx.beginPath();
+        ctx.moveTo(Math.round(bx2 + i * stripCell) + 0.5, y2);
+        ctx.lineTo(Math.round(bx2 + i * stripCell) + 0.5, y2 + boardH);
+        ctx.stroke();
+      }
+      for (var r = 0; r <= 2; r++) {
+        ctx.beginPath();
+        ctx.moveTo(bx2, Math.round(y2 + r * stripCell) + 0.5);
+        ctx.lineTo(bx2 + boardW, Math.round(y2 + r * stripCell) + 0.5);
+        ctx.stroke();
+      }
+      BACK_RANK.forEach(function (ch, i) {
+        paintPiece({ x: bx2 + i * stripCell, y: y2, w: stripCell, h: stripCell }, ch, false, true, state, showGlyph);
+        paintPiece({ x: bx2 + i * stripCell, y: y2 + stripCell, w: stripCell, h: stripCell }, ch, false, false, state, showGlyph);
+      });
+
+      // 小さい駒でも字が潰れないか
+      var y3 = zone1 + zone2 + 12;
+      var sw = smallCell * SMALL_ROW.length + 8 * (SMALL_ROW.length - 1);
+      var sx = (W - sw) / 2;
+      SMALL_ROW.forEach(function (item, i) {
+        paintPiece({ x: sx + i * (smallCell + 8), y: y3, w: smallCell, h: smallCell }, item[0], item[1], false, state, showGlyph);
+      });
+
+      // 派生値（形の当たりを数字でも見る）
+      var headDeg = Math.atan2(
+        (state.head * state.width) / 2,
+        state.shoulder
+      ) * 2 * 180 / Math.PI;
+      document.getElementById('derived').textContent =
+        '頭の角度 ' + headDeg.toFixed(0) + '°  /  肩幅:足幅 ' + (state.head / state.foot).toFixed(2) +
+        '  /  幅:高さ ' + state.width.toFixed(2);
+
+      writeCode();
+    }
+
+    // ---- code output -------------------------------------------------------
+    function shapeSrc() {
+      return [
+        '/** マスに対する駒の大きさ（マスいっぱいには描かない）。 */',
+        'const PIECE_SCALE = ' + num(state.scale) + ';',
+        '/** 駒幅に対する肩（尖り始める高さ）の位置。 */',
+        'const SHOULDER_RATIO = ' + num(state.shoulder) + ';',
+        '/** 駒幅に対する頭（上辺）の幅。 */',
+        'const HEAD_WIDTH_RATIO = ' + num(state.head) + ';',
+        '/** 駒幅に対する足（下辺）の幅。 */',
+        'const FOOT_WIDTH_RATIO = ' + num(state.foot) + ';',
+        '/** 駒の高さに対する幅（縦横比）。 */',
+        'const WIDTH_RATIO = ' + num(state.width) + ';'
+      ].join('\n');
+    }
+
+    function glyphSrc() {
+      return [
+        'const GLYPH_RATIO = ' + num(state.glyph) + ';',
+        'const GLYPH_TOP_RATIO = ' + num(state.glyphTop) + ';',
+        '',
+        '// paintPiece の縁：',
+        'edge.strokeWidth = Math.max(0.75, Math.min(rect.width, rect.height) * ' + num(state.edge) + ');'
+      ].join('\n');
+    }
+
+    function highlight(src) {
+      return src
+        .replace(/[&<>]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]; })
+        .replace(/(\/\*\*?[^\n]*\*\/|\/\/[^\n]*)/g, '<span class="cm">$1</span>')
+        .replace(/(=\s)(-?[\d.]+)/g, '$1<span class="nm">$2</span>');
+    }
+
+    function writeCode() {
+      document.getElementById('codeShape').innerHTML = highlight(shapeSrc());
+      document.getElementById('codeGlyph').innerHTML = highlight(glyphSrc());
+    }
+
+    document.querySelectorAll('[data-copy]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var text = b.getAttribute('data-copy') === 'shape' ? shapeSrc() : glyphSrc();
+        var done = function () {
+          var old = b.textContent;
+          b.textContent = 'コピーしました';
+          setTimeout(function () { b.textContent = old; }, 1400);
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(done, fallback);
+        } else { fallback(); }
+        function fallback() {
+          var ta = document.createElement('textarea');
+          ta.value = text;
+          ta.style.position = 'fixed';
+          ta.style.opacity = '0';
+          document.body.appendChild(ta);
+          ta.select();
+          try { document.execCommand('copy'); done(); } catch (e) {}
+          document.body.removeChild(ta);
+        }
+      });
+    });
+
+    window.addEventListener('resize', render);
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(render);
+    render();
+  })();
+</script>
