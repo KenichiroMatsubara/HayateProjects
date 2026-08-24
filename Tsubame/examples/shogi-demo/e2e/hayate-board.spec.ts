@@ -232,12 +232,22 @@ test.describe('将棋盤 — Hayate Renderer 経路（tiny-skia CPU backend）',
 
     const from = at(7, 7);
     const to = at(7, 6);
-    await page.mouse.click(from.x, from.y);
-    await page.waitForTimeout(200);
-    await page.mouse.click(to.x, to.y);
-
+    // **盤は見えた瞬間にはまだ叩けない**。枡ごとの `draw`（駒 1 枚ずつの display list）
+    // は要素ごとに layout size の購読を張ってから記録される非同期経路で、その登録が
+    // 片付くまでクリックのリスナーも効き始めない。木地と罫線は要素の背景なので初回
+    // フレームで出てしまう — つまり「木地が見えた」は「操作できる」より早い。
+    // 叩ける瞬間を外から知る術が無いので、指し手が入るまで叩き直す。
     await expect
-      .poll(() => page.evaluate(() => window.__shogiDebug.lastMove()), { timeout: 10_000 })
+      .poll(
+        async () => {
+          await page.mouse.click(from.x, from.y);
+          await page.waitForTimeout(120);
+          await page.mouse.click(to.x, to.y);
+          await page.waitForTimeout(120);
+          return page.evaluate(() => window.__shogiDebug.lastMove());
+        },
+        { timeout: 20_000 },
+      )
       .toBe('7g7f');
   });
 });

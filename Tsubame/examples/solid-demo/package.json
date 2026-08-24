@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:site": "vite --port 5177 --strictPort",
     "build": "vite build",
     "torimi:native:build": "torimi build native",
     "torimi:web:build": "torimi build web",

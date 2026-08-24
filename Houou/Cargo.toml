@@ -1,0 +1,22 @@
+[workspace]
+members = ["crates/houou-core", "crates/houou-cli", "crates/houou-wasm"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Houou — 自作将棋エンジン"
+repository = "https://github.com/KenichiroMatsubara/HayateProjects"
+
+# 探索は release でしか意味のある速度が出ない。perft/bench は必ず release で測る。
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+
+# `cargo test` の既定プロファイル。debug のままだと perft(4) が数十秒かかるので、
+# テストだけは最適化を上げておく（デバッグ情報は残す）。
+[profile.test]
+opt-level = 2

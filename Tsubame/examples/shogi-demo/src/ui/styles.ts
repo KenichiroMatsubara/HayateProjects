@@ -11,6 +11,11 @@ import { HAND_GAP_PX, HAND_SLOT_PX } from '../paint/hand-painter.js';
 
 const FONT = 'Noto Sans JP, Hiragino Sans, Yu Gothic, system-ui, sans-serif';
 
+/** 罫線の太さ（論理 px）。枡どうしの隙間の幅で、盤の背景色がそこから覗く。 */
+const GRID_LINE_PX = 1;
+/** 外枠の太さ（論理 px）。 */
+const BOARD_EDGE_PX = 8;
+
 export const shell: HayateCssStyle = {
   width: '100%',
   height: '100%',
@@ -28,7 +33,12 @@ export const shell: HayateCssStyle = {
   overflow: 'hidden',
 };
 
-/** 盤。`aspectRatio: 1` で正方形を保ち、9×9 の grid が枡目と 1 対 1 に対応する。 */
+/**
+ * 盤。**絵ではなく要素**で組む — 木地・罫線・外枠はすべてここの style が持つ。
+ *
+ * 罫線は線を引くのではなく、9×9 grid の `gap` から盤の背景（罫線色）を覗かせて作る。
+ * Hayate CSS には辺ごとのボーダーが無く、枡ごとに枠を付けると内側が二重になるため。
+ */
 export const board: HayateCssStyle = {
   width: '100%',
   maxWidth: 520,
@@ -37,17 +47,40 @@ export const board: HayateCssStyle = {
   display: 'grid',
   gridTemplateColumns: ['1fr', '1fr', '1fr', '1fr', '1fr', '1fr', '1fr', '1fr', '1fr'],
   gridTemplateRows: ['1fr', '1fr', '1fr', '1fr', '1fr', '1fr', '1fr', '1fr', '1fr'],
+  gap: GRID_LINE_PX,
+  backgroundColor: CSS.gridLine,
+  borderWidth: BOARD_EDGE_PX,
+  borderStyle: 'solid',
+  borderColor: CSS.boardEdge,
+  boxSizing: 'border-box',
+};
+
+/** 枡の状態。地色（＝要素の背景）だけで表せるものはここに集める。 */
+export type CellTone = 'plain' | 'selected' | 'last-move';
+
+const CELL_BACKGROUND: Readonly<Record<CellTone, string>> = {
+  plain: CSS.wood,
+  selected: CSS.woodSelected,
+  'last-move': CSS.woodLastMove,
 };
 
 /**
- * 盤のマス。**当たり判定だけ**を担う透明な箱で、子を持たない
- * （`InteractionEvent` の座標は viewport 基準で要素ローカルに落とせないため、
- * 座標計算ではなく要素でマスを取る）。絵は駒も含めてすべて painter が描く。
+ * 盤のマス。地色・タップ領域・ハイライトを担う。**駒と印だけ**が `draw` で載る
+ * （style で表せないのはその 2 つだけ）。
+ *
+ * ハイライトが背景色なのは、重ね順を絵で作らずに済ませるため — 背景は必ず draw の
+ * 下に来るので、ハイライトが駒を覆う描き順の事故が起こらない（ADR-0141: 背景 →
+ * ボーダー → draw → 子）。
  */
-export const cell: HayateCssStyle = {
-  backgroundColor: 'transparent',
-  cursor: 'pointer',
+const CELL_STYLE: Readonly<Record<CellTone, HayateCssStyle>> = {
+  plain: { backgroundColor: CELL_BACKGROUND.plain, cursor: 'pointer' },
+  selected: { backgroundColor: CELL_BACKGROUND.selected, cursor: 'pointer' },
+  'last-move': { backgroundColor: CELL_BACKGROUND['last-move'], cursor: 'pointer' },
 };
+
+export function cell(tone: CellTone): HayateCssStyle {
+  return CELL_STYLE[tone];
+}
 
 export const handRow: HayateCssStyle = {
   width: '100%',
@@ -68,11 +101,7 @@ export const handRow: HayateCssStyle = {
   borderColor: CSS.line,
 };
 
-/**
- * 駒台の描画面。持ち駒の絵はこの一枚が `draw` で描き、子は枠ぶんのタップ領域だけ。
- * 幅・間隔は painter と同じ定数（`HAND_SLOT_PX` / `HAND_GAP_PX`）から取るので、
- * 絵と当たり判定がずれない。
- */
+/** 駒台の枠を並べる行。枠そのものが駒を描くので、ここは並べるだけ。 */
 export const handStage: HayateCssStyle = {
   height: HAND_SLOT_PX,
   flexGrow: 1,
@@ -81,12 +110,29 @@ export const handStage: HayateCssStyle = {
   gap: HAND_GAP_PX,
 };
 
-/** 持ち駒 1 枠のタップ領域（盤の `cell` と同じく透明で子を持たない）。 */
-export const handSlot: HayateCssStyle = {
-  width: HAND_SLOT_PX,
-  height: '100%',
-  backgroundColor: 'transparent',
-  cursor: 'pointer',
+/**
+ * 持ち駒 1 枠。駒の五角形だけが `draw`、座布団（選択中）と枚数は要素が持つ。
+ * 枚数を右下に置くために `position: relative` の基準にもなる。
+ */
+export function handSlot(selected: boolean): HayateCssStyle {
+  return {
+    width: HAND_SLOT_PX,
+    height: '100%',
+    position: 'relative',
+    borderRadius: Math.round(HAND_SLOT_PX * 0.16),
+    backgroundColor: selected ? CSS.handSelected : 'transparent',
+    cursor: 'pointer',
+  };
+}
+
+/** 2 枚以上のときだけ出す枚数。駒の絵の上（＝子要素）に来る。 */
+export const handCount: HayateCssStyle = {
+  position: 'absolute',
+  right: 1,
+  bottom: 0,
+  defaultFontSize: 11,
+  fontWeight: 700,
+  defaultColor: CSS.accent,
 };
 export const handSideLabel: HayateCssStyle = {
   defaultFontSize: 11,

@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useReducer, useRef, useState } from 'react';
 import { Color, PieceType, Square, reverseColor } from 'tsshogi';
 import { ShogiGame } from './rules/game.js';
-import type { BoardPainterState } from './paint/board-painter.js';
+import type { BoardViewState } from './ui/Board.js';
 import { Board } from './ui/Board.js';
 import { Hand } from './ui/Hand.js';
 import { StatusBar } from './ui/StatusBar.js';
@@ -93,9 +93,8 @@ export function App() {
     [game, game.revision, source],
   );
 
-  const painterState: BoardPainterState = {
+  const boardState: BoardViewState = {
     position: game.position,
-    revision: game.revision,
     selected: source instanceof Square ? source.index : -1,
     targets,
     lastFrom: game.lastMove?.from instanceof Square ? game.lastMove.from.index : -1,
@@ -117,19 +116,17 @@ export function App() {
       <Hand
         color={topColor}
         hand={game.position.hand(topColor)}
-        revision={game.revision}
         active={!game.isOver && game.sideToMove === topColor}
         selected={game.sideToMove === topColor ? selectedHandPiece : null}
         flipped={flipped}
         onTapPiece={onTapHand}
       />
 
-      <Board painterState={painterState} onTapSquare={onTapSquare} />
+      <Board state={boardState} onTapSquare={onTapSquare} />
 
       <Hand
         color={bottomColor}
         hand={game.position.hand(bottomColor)}
-        revision={game.revision}
         active={!game.isOver && game.sideToMove === bottomColor}
         selected={game.sideToMove === bottomColor ? selectedHandPiece : null}
         flipped={flipped}

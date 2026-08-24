@@ -1,0 +1,13 @@
+[package]
+name = "houou-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Houou の盤・合法手生成・探索。依存ゼロ。"
+
+# **依存を増やさない**。この crate は最終的に
+#  - wasm-bindgen 層（Web）
+#  - Torimi の Android Rust ホストへの staticlib（ネイティブ）
+# の両方に載る。どちらの経路でも余計な依存が足枷になるので、`[dependencies]` は空のまま保つ。
+[dependencies]

@@ -58,6 +58,8 @@ importers:
 
   Hayate/wasm-pkgs/pkg-tiny-skia: {}
 
+  Houou/wasm-pkgs/houou: {}
+
   Torimi/bundle:
     dependencies:
       '@torimi/hayate-host':
@@ -359,6 +361,9 @@ importers:
 
   Tsubame/examples/shogi-demo:
     dependencies:
+      '@houou/wasm':
+        specifier: workspace:*
+        version: link:../../../Houou/wasm-pkgs/houou
       '@torimi/bundle':
         specifier: workspace:*
         version: link:../../../Torimi/bundle

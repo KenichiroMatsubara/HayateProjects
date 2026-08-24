@@ -1,0 +1,21 @@
+{
+  "name": "@houou/wasm",
+  "type": "module",
+  "description": "Houou — 自作将棋エンジンの wasm 束ね",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/KenichiroMatsubara/HayateProjects"
+  },
+  "files": [
+    "houou_bg.wasm",
+    "houou.js",
+    "houou.d.ts"
+  ],
+  "main": "houou.js",
+  "types": "houou.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

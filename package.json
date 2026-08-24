@@ -10,7 +10,7 @@
     "test":       "pnpm -r --filter \"!tsubame-monorepo\" run test",
     "clean":      "pnpm -r --filter \"!tsubame-monorepo\" run clean",
 
-    "dev":        "pnpm --filter @tsubame/example-solid-demo dev",
+    "dev":        "pnpm --parallel --filter @tsubame/example-solid-demo --filter @tsubame/example-react-demo --filter @tsubame/example-shogi-demo run dev:site",
 
     "check:proto":    "pnpm --filter hayate run check:proto && pnpm --filter tsubame-monorepo run check:proto",
     "check:wire-contract": "node scripts/check-wire-contract.mjs",
