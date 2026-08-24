@@ -18,6 +18,7 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
+    "@houou/wasm": "workspace:*",
     "@torimi/hayate-host": "workspace:*",
     "@torimi/bundle": "workspace:*",
     "@torimi/host-web": "workspace:*",

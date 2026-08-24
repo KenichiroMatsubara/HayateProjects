@@ -19,6 +19,7 @@ packages:
   - 'Torimi/integration'
   - 'Torimi/protocol-handshake'
   - 'Torimi/wire-contract'
+  - 'Houou/wasm-pkgs/houou'
   - 'fonts'
 
 # tsup 8.5.1 / rollup-plugin-dts は TypeScript 7 の compiler API と未互換。

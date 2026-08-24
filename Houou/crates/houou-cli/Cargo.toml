@@ -1,0 +1,14 @@
+[package]
+name = "houou-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Houou のネイティブ入口 — perft / bench（後で USI サーバと教師局面生成が入る）"
+
+[[bin]]
+name = "houou"
+path = "src/main.rs"
+
+[dependencies]
+houou-core = { path = "../houou-core" }

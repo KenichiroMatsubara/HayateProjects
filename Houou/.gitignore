@@ -1,0 +1,8 @@
+/target
+/trainer/data
+/trainer/checkpoints
+
+# `wasm-pkgs/` そのものは無視しない。中の生成物は各パッケージの .gitignore が
+# `*` + `!package.json` で落とすが、**package.json だけは追跡する**必要がある
+# — ルートの pnpm-workspace.yaml が `Houou/wasm-pkgs/houou` を参照しているので、
+# これが無いと clone 直後の `pnpm install` が解決に失敗する（Hayate/wasm-pkgs と同じ形）。
